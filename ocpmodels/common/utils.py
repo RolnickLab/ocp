@@ -839,3 +839,7 @@ def resolve(path):
         pathlib.Path: the resolved Path
     """
     return Path(os.path.expandvars(os.path.expanduser(str(path)))).resolve()
+
+
+def make_super_node(edge_index, edge_attr, pos, batch):
+    return edge_index, edge_attr

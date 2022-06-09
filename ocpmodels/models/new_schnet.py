@@ -18,6 +18,7 @@ from ocpmodels.common.utils import (
     conditional_grad,
     get_pbc_distances,
     radius_graph_pbc,
+    make_super_node,
 )
 
 
@@ -322,6 +323,10 @@ class NewSchNetWrap(NewSchNet):
             batch=batch,
             max_num_neighbors=self.max_num_neighbors,
         )
+
+        if self.super_node:
+            edge_index, edge_attr = make_super_node(edge_index, edge_attr, pos, batch)
+
         row, col = edge_index
         edge_weight = (pos[row] - pos[col]).norm(dim=-1)
         edge_attr = self.distance_expansion(edge_weight)
@@ -332,6 +337,7 @@ class NewSchNetWrap(NewSchNet):
         h = self.lin1(h)
         h = self.act(h)
         h = self.lin2(h)
+        # TODO (victor) log some tags and h
 
         if self.atomref is not None:
             h = h + self.atomref(z)
