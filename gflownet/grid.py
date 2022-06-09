@@ -29,7 +29,7 @@ class Grid(GFlowNetEnv):
     def __init__(
         self,
         n_dim=2,
-        length=4,
+        length=3,
         min_step_len=1,
         max_step_len=1,
         cell_min=-1,
@@ -53,8 +53,8 @@ class Grid(GFlowNetEnv):
             oracle_func,
             debug,
         )
-        self.state = [0] * self.n_dim
         self.n_dim = n_dim
+        self.state = [0] * self.n_dim
         self.length = length
         self.obs_dim = self.length * self.n_dim
         self.min_step_len = min_step_len
@@ -86,6 +86,7 @@ class Grid(GFlowNetEnv):
         self.obs2seq = self.obs2state
         self.seq2oracle = self.state2oracle
         self.letters2seq = self.readable2state
+        self.seq2letters = self.state2readable
 
     def get_actions_space(self):
         """
@@ -98,6 +99,29 @@ class Grid(GFlowNetEnv):
             actions_r = [el for el in itertools.product(dims, repeat=r)]
             actions += actions_r
         return actions
+
+    def true_density(self):
+        # Return pre-computed true density if already stored
+        if self._true_density is not None:
+            return self._true_density
+        # Calculate true density
+        all_states = np.int32(
+            list(itertools.product(*[list(range(self.length))] * self.n_dim))
+        )
+        state_mask = np.array(
+            [
+                len(self.parent_transitions(s, [0])[0]) > 0 or sum(s) == 0
+                for s in all_states
+            ]
+        )
+        all_oracle = self.state2oracle(all_states)
+        rewards = self.oracle(all_oracle)[state_mask]
+        self._true_density = (
+            rewards / rewards.sum(),
+            rewards,
+            list(map(tuple, all_states[state_mask])),
+        )
+        return self._true_density
 
     def state2oracle(self, state_list):
         """
@@ -156,6 +180,13 @@ class Grid(GFlowNetEnv):
         """
         return [int(el) for el in readable.strip("[]").split(" ")]
 
+    def state2readable(self, state, alphabet={}):
+        """
+        Converts a state (a list of positions) into a human-readable string
+        representing a state.
+        """
+        return str(state).replace("(", "[").replace(")", "]").replace(",", "")
+
     def reset(self, env_id=None):
         """
         Resets the environment.
@@ -187,8 +218,8 @@ class Grid(GFlowNetEnv):
         actions : list
             List of actions that lead to state for each parent in parents
         """
-        if action == self.eos:
-            return [self.state2obs(state)], [action]
+        if action[0] == self.eos:
+            return [self.state2obs(state)], action
         else:
             parents = []
             actions = []
@@ -226,8 +257,8 @@ class Grid(GFlowNetEnv):
         if all([s == self.length - 1 for s in self.state]):
             self.done = True
             self.n_actions += 1
-            return self.state, self.eos, True
-        if action < self.eos:
+            return self.state, [self.eos], True
+        if action != self.eos:
             state_next = self.state.copy()
             if action.ndim == 0:
                 action = [action]
@@ -239,12 +270,11 @@ class Grid(GFlowNetEnv):
                 self.state = state_next
                 valid = True
                 self.n_actions += 1
+            return self.state, action, valid
         else:
             self.done = True
-            valid = True
             self.n_actions += 1
-
-        return self.state, action, valid
+            return self.state, [self.eos], True
 
     @staticmethod
     def func_corners(x_list):
