@@ -26,7 +26,7 @@ class Electrocatalyst(GFlowNetEnv):
         oracle_func="default",
         debug=False,
     ):
-        super(Grid, self).__init__(
+        super(GFlowNetEnv, self).__init__(
             env_id,
             reward_beta,
             reward_norm,

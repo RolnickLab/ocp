@@ -4,6 +4,7 @@ Classes to represent a hyper-grid environments
 import itertools
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from gflownetenv import GFlowNetEnv
 
 
@@ -290,7 +291,7 @@ class Grid(GFlowNetEnv):
 
     @staticmethod
     def func_corners_floor_B(x_list):
-        def _func_corners_floor_B(x_list):
+        def _func_corners_floor_B(x):
             ax = abs(x)
             return -1.0 * (
                 (ax > 0.5).prod(-1) * 0.5
@@ -302,7 +303,7 @@ class Grid(GFlowNetEnv):
 
     @staticmethod
     def func_corners_floor_A(x_list):
-        def _func_corners_floor_A(x_list):
+        def _func_corners_floor_A(x):
             ax = abs(x)
             return -1.0 * (
                 (ax > 0.5).prod(-1) * 0.5
@@ -314,9 +315,9 @@ class Grid(GFlowNetEnv):
 
     @staticmethod
     def func_cos_N(x_list):
-        def _func_cos_N(x_list):
+        def _func_cos_N(x):
             ax = abs(x)
-            return -1.0 * (((np.cos(x * 50) + 1) * norm.pdf(x * 5)).prod(-1) + 0.01)
+            return -1.0 * (((np.cos(ax * 50) + 1) * norm.pdf(x * 5)).prod(-1) + 0.01)
 
         return np.asarray([_func_cos_N(x) for x in x_list])
 

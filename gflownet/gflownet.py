@@ -333,7 +333,7 @@ class GFlowNetAgent:
         elif self.env_id == "grid":
             self.oracle = None
         else:
-            raise NotImplemented
+            raise NotImplementedError
         # Environment
         if self.env_id == "aptamers":
             self.env = AptamerSeq(
@@ -351,7 +351,7 @@ class GFlowNetAgent:
         elif self.env_id == "grid":
             self.env = Grid(oracle_func=args.gflownet.func)
         else:
-            raise NotImplemented
+            raise NotImplementedError
         self.buffer = Buffer(self.env, replay_capacity=args.gflownet.replay_capacity)
         # Comet
         if args.gflownet.comet.project and not args.gflownet.comet.skip:
@@ -1170,4 +1170,4 @@ if __name__ == "__main__":
         else:
             print(f"workdir {config.workdir} already exists! - Ending run...")
     else:
-        print(f"workdir not defined - Ending run...")
+        print("workdir not defined - Ending run...")
