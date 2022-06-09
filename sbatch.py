@@ -33,6 +33,25 @@ srun python main.py {py_args}
 """
 
 
+def discover_minydra_defaults():
+    """
+    Returns a list containing:
+    * the path to the shared configs/sbatch/defaults.yaml file
+    * the path to configs/sbatch/$USER.yaml file if it exists
+
+
+    Returns:
+        list[pathlib.Path]: Path to the shared defaults and optionnally
+            to a user-specific one if it exists
+    """    
+    root = Path(__file__).resolve().parent
+    defaults = [root / "configs" / "sbatch" / "defaults.yaml"]
+    user_config = root / "configs" / "sbatch" / f"{os.environ['USER']}.yaml"
+    if user_config.exists() and user_config.is_file():
+        defaults.append(user_config)
+    return defaults
+
+
 def resolve(path):
     """
     Resolves a path: expand user (~) and env vars ($SCRATCH) and resovles to
@@ -78,7 +97,7 @@ if __name__ == "__main__":
     root = Path(__file__).resolve().parent
     # parse and resolve args.
     # defaults are loaded and overwritten from the command-line as `arg=value`
-    args = resolved_args(defaults=root / "configs" / "sbatch" / "defaults.yaml")
+    args = resolved_args(defaults=discover_minydra_defaults())
     args.pretty_print()
 
     # set n_tasks_per node from gres if none is provided
@@ -95,7 +114,9 @@ if __name__ == "__main__":
 
     # distribute training
     if args.ntasks_per_node > 1 and "--distributed" not in args.py_args:
-        args.py_args += " --distributed"
+        args.py_args += (
+            f" --distributed --num-nodes {args.nodes} --num-gpus {args.ntasks_per_node}"
+        )
 
     # add logdir to main.py's command-line arguments
     if "--logdir" not in args.py_args and args.logdir:

@@ -45,7 +45,7 @@ class BaseTrainer(ABC):
     def __init__(
         self,
         task,
-        model,
+        model_attributes,
         dataset,
         optimizer,
         identifier,
@@ -116,12 +116,12 @@ class BaseTrainer(ABC):
             commit_hash = None
 
         # logger_name = logger if isinstance(logger, str) else logger["name"]
-        model_name = model.pop("name")
+        model_name = model_attributes.pop("name")
         self.config = {
             "task": task,
             "data_split": data_split,
             "model": model_name,
-            "model_attributes": model,
+            "model_attributes": model_attributes,
             "optim": optimizer,
             "logger": logger,
             "amp": amp,
@@ -179,9 +179,9 @@ class BaseTrainer(ABC):
 
         if self.is_hpo:
             # conditional import is necessary for checkpointing
-            from ray import tune
+            # from ray import tune
 
-            from ocpmodels.common.hpo_utils import tune_reporter
+            from ocpmodels.common.hpo_utils import tune_reporter  # noqa: F401
 
             # sets the hpo checkpoint frequency
             # default is no checkpointing
@@ -374,7 +374,9 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if distutils.initialized():
-            self.model = DistributedDataParallel(self.model, device_ids=[self.device])
+            self.model = DistributedDataParallel(
+                self.model, device_ids=[self.device], output_device=self.device
+            )
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.isfile(checkpoint_path):
@@ -537,9 +539,9 @@ class BaseTrainer(ABC):
     def save_hpo(self, epoch, step, metrics, checkpoint_every):
         # default is no checkpointing
         # checkpointing frequency can be adjusted by setting checkpoint_every in steps
-        # to checkpoint every time results are communicated to Ray Tune set
-        # checkpoint_every=1
-        from ray import tune
+        # to checkpoint every time results are communicated
+        # to Ray Tune set checkpoint_every=1
+        # from ray import tune
 
         if checkpoint_every != -1 and step % checkpoint_every == 0:
             with tune.checkpoint_dir(step=step) as checkpoint_dir:  # noqa: F821
@@ -571,6 +573,7 @@ class BaseTrainer(ABC):
     @abstractmethod
     def train(self):
         """Derived classes should implement this function."""
+        pass
 
     @torch.no_grad()
     def validate(self, split="val", disable_tqdm=False, name_split=None):
