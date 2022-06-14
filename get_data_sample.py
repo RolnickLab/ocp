@@ -62,11 +62,13 @@ if __name__ == "__main__":
         for batch in trainer.train_loader:
             b = batch[0]
             batch_size = len(b.natoms)
+
             non_sub = torch.where(b.tags != 0)[0]
             src_is_not_sub = torch.isin(b.edge_index[0], non_sub)
             target_is_not_sub = torch.isin(b.edge_index[1], non_sub)
             neither_is_sub = src_is_not_sub * target_is_not_sub
-            new_ei = b.edge_index[:, neither_is_sub]
+
+            # per-atom tensors
             new_pos = b.pos[non_sub, :]
             new_an = b.atomic_numbers[non_sub]
             new_batch = b.batch[non_sub]
@@ -75,17 +77,21 @@ if __name__ == "__main__":
                 dtype=b.natoms.dtype,
                 device=b.natoms.device,
             )
-            new_cell_offsets = b.cell_offsets[neither_is_sub, :]
             new_force = b.force[non_sub, :]
             new_fixed = b.fixed[non_sub]
             new_tags = b.tags[non_sub]
-            new_distances = b.distances[neither_is_sub]
             new_pos_relaxed = b.pos_relaxed[non_sub, :]
             new_ptr = torch.tensor(
                 [0] + [b.natoms[:i].sum() for i in range(1, batch_size + 1)],
                 dtype=b.ptr.dtype,
                 device=b.ptr.device,
             )
+
+            # per-edge tensors
+            new_ei = b.edge_index[:, neither_is_sub]
+            new_cell_offsets = b.cell_offsets[neither_is_sub, :]
+            new_distances = b.distances[neither_is_sub]
+
             TODO = "new_neighbors and adjust atom ids in edge_index"
             break
 
