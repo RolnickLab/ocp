@@ -842,5 +842,5 @@ def resolve(path):
     return Path(os.path.expandvars(os.path.expanduser(str(path)))).resolve()
 
 
-def make_super_node(edge_index, edge_attr, pos, batch):
+def make_super_node(edge_index, edge_attr, pos, batch, mode="delete-subsurface"):
     return edge_index, edge_attr

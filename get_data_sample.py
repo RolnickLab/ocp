@@ -10,7 +10,7 @@ Out[1]: ...
 In [2]: print(batch)
 
 """
-import torch # noqa: F401
+import torch  # noqa: F401
 import sys
 
 from ocpmodels.common.utils import (
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     setup_imports()
     trainer = registry.get_trainer_class(config.get("trainer", "energy"))(
         task=config["task"],
-        model=config["model"],
+        model_attributes=config["model"],
         dataset=config["dataset"],
         optimizer=config["optim"],
         identifier=config["identifier"],
@@ -58,4 +58,10 @@ if __name__ == "__main__":
     task.setup(trainer)
 
     for batch in trainer.train_loader:
+        b = batch[0]
+        sub = torch.where(b.tags == 2)[0]
+        src_is_sub = b.edge_index[0][torch.isin(b.edge_index[0], sub)]
+        target_is_sub = b.edge_index[1][torch.isin(b.edge_index[1], sub)]
+        any_is_sub = (src_is_sub + target_is_sub) > 0
+        new_ei = b.edge_index[:, any_is_sub]
         break
