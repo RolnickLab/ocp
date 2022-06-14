@@ -21,10 +21,14 @@ from ocpmodels.common.flags import flags
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import build_config, setup_imports, setup_logging
 
+from minydra import resolved_args
+
+
 if __name__ == "__main__":
 
-    sys.argv.append("--mode=train")
-    sys.argv.append("--config=configs/is2re/10k/schnet/schnet.yml")
+    opts = resolved_args()
+
+    sys.argv[1:] = ["--mode=train", "--config=configs/is2re/10k/schnet/schnet.yml"]
     setup_logging()
 
     parser = flags.get_parser()
@@ -57,8 +61,7 @@ if __name__ == "__main__":
     task = registry.get_task_class(config["mode"])(config)
     task.setup(trainer)
 
-    DELETE_TAG_0 = True
-    if DELETE_TAG_0:
+    if not opts.get("no_tag_0", False):
         for batch in trainer.train_loader:
             b = batch[0]
             batch_size = len(b.natoms)
@@ -95,8 +98,7 @@ if __name__ == "__main__":
             TODO = "new_neighbors and adjust atom ids in edge_index"
             break
 
-    PLOT_TAGS = False
-    if PLOT_TAGS:
+    if opts.get("plot_tags"):
         tags = {
             0: [],
             1: [],
