@@ -38,6 +38,7 @@ class Grid(GFlowNetEnv):
         env_id=None,
         reward_beta=1,
         reward_norm=1.0,
+        reward_func="power",
         denorm_proxy=False,
         energies_stats=None,
         proxy=None,
@@ -48,6 +49,7 @@ class Grid(GFlowNetEnv):
             env_id,
             reward_beta,
             reward_norm,
+            reward_func,
             energies_stats,
             denorm_proxy,
             proxy,
@@ -81,13 +83,6 @@ class Grid(GFlowNetEnv):
         self.denorm_proxy = denorm_proxy
         self.action_space = self.get_actions_space()
         self.eos = len(self.action_space)
-        # Aliases and compatibility
-        self.seq = self.state
-        self.seq2obs = self.state2obs
-        self.obs2seq = self.obs2state
-        self.seq2oracle = self.state2oracle
-        self.letters2seq = self.readable2state
-        self.seq2letters = self.state2readable
 
     def get_actions_space(self):
         """
@@ -101,6 +96,25 @@ class Grid(GFlowNetEnv):
             actions += actions_r
         return actions
 
+    def get_mask_invalid_actions(self, state=None, done=None):
+        """
+        Returns a vector of length the action space + 1: True if action is invalid
+        given the current state, False otherwise.
+        """
+        if state is None:
+            state = self.state.copy()
+        if done is None:
+            done = self.done
+        if done:
+            return [True for _ in range(len(self.action_space) + 1)]
+        mask = [False for _ in range(len(self.action_space) + 1)]
+        for idx, a in enumerate(self.action_space):
+            for d in a:
+                if state[d] + 1 >= self.length:
+                    mask[idx] = True
+                    break
+        return mask
+
     def true_density(self):
         # Return pre-computed true density if already stored
         if self._true_density is not None:
@@ -110,10 +124,7 @@ class Grid(GFlowNetEnv):
             list(itertools.product(*[list(range(self.length))] * self.n_dim))
         )
         state_mask = np.array(
-            [
-                len(self.parent_transitions(s, [0])[0]) > 0 or sum(s) == 0
-                for s in all_states
-            ]
+            [len(self.get_parents(s, False)[0]) > 0 or sum(s) == 0 for s in all_states]
         )
         all_oracle = self.state2oracle(all_states)
         rewards = self.oracle(all_oracle)[state_mask]
@@ -155,7 +166,7 @@ class Grid(GFlowNetEnv):
                               |     0    |      3    |      1    |
         """
         if state is None:
-            state = self.state
+            state = self.state.copy()
         obs = np.zeros(self.obs_dim, dtype=np.float32)
         obs[(np.arange(len(state)) * self.length + state)] = 1
         return obs
@@ -198,7 +209,7 @@ class Grid(GFlowNetEnv):
         self.id = env_id
         return self
 
-    def parent_transitions(self, state, action):
+    def get_parents(self, state=None, done=None):
         """
         Determines all parents and actions that lead to state.
 
@@ -219,8 +230,12 @@ class Grid(GFlowNetEnv):
         actions : list
             List of actions that lead to state for each parent in parents
         """
-        if action[0] == self.eos:
-            return [self.state2obs(state)], action
+        if state is None:
+            state = self.state.copy()
+        if done is None:
+            done = self.done
+        if done:
+            return [self.state2obs(state)], [self.eos]
         else:
             parents = []
             actions = []
