@@ -94,7 +94,15 @@ class LmdbDataset(Dataset):
             data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
             data_object.id = f"{db_idx}_{el_idx}"
         else:
-            datapoint_pickled = self.env.begin().get(self._keys[idx])
+            try:
+                datapoint_pickled = self.env.begin().get(self._keys[idx])
+            except IndexError:
+                print("idx", idx)
+                print("self.path", self.path)
+                print("self.env.stat()", self.env.stat())
+                print(locals())
+                print("\n\n Retry \n\n")
+                datapoint_pickled = self.env.begin().get(self._keys[idx])
             data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
 
         t1 = time.time_ns()

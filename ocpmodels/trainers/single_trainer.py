@@ -25,6 +25,7 @@ from ocpmodels.common.utils import OCP_TASKS, check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.trainers.base_trainer import BaseTrainer
+from ocpmodels.datasets.data_transforms import get_transforms
 
 
 @registry.register_trainer("single")
@@ -178,7 +179,11 @@ class SingleTrainer(BaseTrainer):
         return predictions
 
     def train(self, disable_eval_tqdm=False, debug_batches=-1):
-        eval_every = self.config["optim"].get("eval_every", len(self.train_loader))
+        eval_every = (
+            debug_batches
+            if debug_batches > 0
+            else self.config["optim"].get("eval_every", len(self.train_loader))
+        )
         self.config["print_every"] = eval_every  # Can comment out for better debug
         primary_metric = self.config["task"].get(
             "primary_metric", self.evaluator.task_primary_metric[self.task_name]
@@ -192,6 +197,8 @@ class SingleTrainer(BaseTrainer):
 
         if not self.silent:
             print("---Beginning of Training---")
+            if debug_batches > 0:
+                print("Debug batches:", debug_batches)
 
         for epoch_int in range(start_epoch, self.config["optim"]["max_epochs"]):
 
@@ -203,13 +210,15 @@ class SingleTrainer(BaseTrainer):
             skip_steps = self.step % len(self.train_loader)
             train_loader_iter = iter(self.train_loader)
 
+            batch_for_epoch = -1
             for i in range(skip_steps, len(self.train_loader)):
+                batch_for_epoch += 1
+                if debug_batches > 0 and batch_for_epoch == debug_batches:
+                    break
+                print("Train batch_for_epoch", batch_for_epoch)
                 self.epoch = epoch_int + (i + 1) / len(self.train_loader)
                 self.step = epoch_int * len(self.train_loader) + i + 1
                 self.model.train()
-
-                if debug_batches > 0 and i == debug_batches:
-                    break
 
                 # Get a batch.
                 batch = next(train_loader_iter)
@@ -277,11 +286,15 @@ class SingleTrainer(BaseTrainer):
                                 )
 
                         # Evaluate current model on all 4 validation splits
-                        is_final_epoch = debug_batches < 0 and (
+                        is_final_epoch = (True or debug_batches < 0) and (
                             epoch_int == self.config["optim"]["max_epochs"] - 1
                         )
                         if (epoch_int % 100 == 0 and epoch_int != 0) or is_final_epoch:
-                            self.eval_all_val_splits(is_final_epoch, epoch=epoch_int)
+                            self.eval_all_val_splits(
+                                is_final_epoch,
+                                epoch=epoch_int,
+                                debug_batches=debug_batches,
+                            )
 
                         if self.is_hpo:
                             self.hpo_update(
@@ -313,13 +326,13 @@ class SingleTrainer(BaseTrainer):
             start_time = time.time()
             if self.config["optim"]["max_epochs"] == 0:
                 batch = next(iter(self.train_loader))
-            else: 
+            else:
                 self.logger.log({"Epoch time": sum(epoch_time) / len(epoch_time)})
             self.model_forward(batch)
             self.logger.log({"Batch time": time.time() - start_time})
-            
+
         # Check respect of symmetries
-        if self.test_ri and debug_batches < 0:
+        if self.test_ri and (True or debug_batches < 0):
             symmetry = self.test_model_symmetries()
             if self.logger:
                 self.logger.log(symmetry)
@@ -577,6 +590,24 @@ class SingleTrainer(BaseTrainer):
             (tensors): metrics to measure RI difference in
             energy/force pred. or pos. between G and rotated G
         """
+
+        print("New Val Loader")
+
+        self.val_dataset = registry.get_dataset_class(self.config["task"]["dataset"])(
+            self.config["val_dataset"],
+            transform=get_transforms(self.config),
+        )
+        self.val_sampler = self.get_sampler(
+            self.val_dataset,
+            self.config["optim"].get(
+                "eval_batch_size", self.config["optim"]["batch_size"]
+            ),
+            shuffle=False,
+        )
+        self.val_loader = self.get_dataloader(
+            self.val_dataset,
+            self.val_sampler,
+        )
 
         self.model.eval()
 

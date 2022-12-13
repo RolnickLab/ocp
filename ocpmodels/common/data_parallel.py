@@ -38,11 +38,11 @@ class OCPDataParallel(torch.nn.DataParallel):
             device_ids = list(range(num_gpus))
 
         if self.cpu:
-            super(torch.nn.DataParallel, self).__init__()
+            super().__init__()
             self.module = module
 
         else:
-            super(OCPDataParallel, self).__init__(
+            super().__init__(
                 module=module,
                 device_ids=device_ids,
                 output_device=self.src_device,
@@ -198,11 +198,12 @@ class BalancedBatchSampler(Sampler):
         self.single_sampler.set_epoch(epoch)
 
     def __iter__(self):
-        for batch_idx in self.batch_sampler:
+        idx_to_return = None
+        for self.batch_idx in self.batch_sampler:
             if self.balance_batches:
                 if self.sizes is None:
                     # Unfortunately, we need to load the data to know the image sizes
-                    data_list = [self.dataset[idx] for idx in batch_idx]
+                    data_list = [self.dataset[idx] for idx in self.batch_idx]
 
                     if self.mode == "atoms":
                         sizes = [data.num_nodes for data in data_list]
@@ -213,9 +214,11 @@ class BalancedBatchSampler(Sampler):
                             f"Unknown load balancing mode: {self.mode}"
                         )
                 else:
-                    sizes = [self.sizes[idx] for idx in batch_idx]
+                    sizes = [self.sizes[idx] for idx in self.batch_idx]
 
-                idx_sizes = torch.stack([torch.tensor(batch_idx), torch.tensor(sizes)])
+                idx_sizes = torch.stack(
+                    [torch.tensor(self.batch_idx), torch.tensor(sizes)]
+                )
                 idx_sizes_all = distutils.all_gather(idx_sizes, device=self.device)
                 idx_sizes_all = torch.cat(idx_sizes_all, dim=-1).cpu()
                 idx_all = idx_sizes_all[0]
@@ -226,6 +229,27 @@ class BalancedBatchSampler(Sampler):
                 )
                 # Since DistributedSampler pads the last batch
                 # this should always have an entry for each replica.
-                yield idx_all[local_idx_balanced[self.rank]]
+                idx_to_return = idx_all[local_idx_balanced[self.rank]]
             else:
-                yield batch_idx
+                idx_to_return = self.batch_idx
+
+            if (
+                isinstance(idx_to_return, torch.Tensor) and (idx_to_return > 1e6).any()
+            ) or (
+                isinstance(idx_to_return, list) and any(i > 1e6 for i in idx_to_return)
+            ):
+                print("\n<>BATH SAMPLER<>")
+                print(locals())
+                self.show(1)
+                print("\n</>BATH SAMPLER</>")
+
+            yield idx_to_return
+
+    def show(self, newlines=1):
+        if newlines > 0:
+            print("\n" * newlines)
+        for a in dir(self):
+            if not callable(getattr(self, a)) and not a.startswith("__"):
+                print(a, getattr(self, a))
+        if newlines > 0:
+            print("\n" * newlines)

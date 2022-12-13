@@ -8,7 +8,7 @@ LICENSE file in the root directory of this source tree.
 import logging
 import os
 import subprocess
-
+from copy import deepcopy
 import torch
 import torch.distributed as dist
 
@@ -116,15 +116,51 @@ def all_reduce(data, group=dist.group.WORLD, average=False, device=None):
 def all_gather(data, group=dist.group.WORLD, device=None):
     if get_world_size() == 1:
         return data
+    world_size = get_world_size()
     tensor = data
     if not isinstance(data, torch.Tensor):
         tensor = torch.tensor(data)
     if device is not None:
         tensor = tensor.cuda(device)
-    tensor_list = [tensor.new_zeros(tensor.shape) for _ in range(get_world_size())]
+    tensor_list = [
+        tensor.new_zeros(tensor.shape)
+        for _ in range(world_size)
+    ]
     dist.all_gather(tensor_list, tensor, group=group)
+    new_tensor_list = [
+        t.to(data.dtype if isinstance(data, torch.Tensor) else torch.int64)
+        for t in tensor_list
+    ]
     if not isinstance(data, torch.Tensor):
-        result = [tensor.cpu().numpy() for tensor in tensor_list]
+        result = [tensor.cpu().numpy() for tensor in new_tensor_list]
     else:
-        result = tensor_list
+        result = new_tensor_list
+
+    PRINTS = True
+    if PRINTS:
+        print("\n<>all_gather<>")
+        print("tensor", tensor)
+        print("tensor.dtype", tensor.dtype)
+        print("tensor.float()", tensor.float())
+        print(locals())
+        print("</>all_gather</>\n")
+
+    return result
+
+    if isinstance(result, torch.Tensor):
+        if (result > 1e6).any():
+            print("<>all_gather<>")
+            print(locals())
+            print("</>all_gather</>")
+    elif isinstance(result, list):
+        if isinstance(result[0], torch.Tensor):
+            if any((x > 1e6).any() for x in result):
+                print("<>all_gather<>")
+                print(locals())
+                print("</>all_gather</>")
+        elif any(x > 1e6 for x in result):
+            print("<>all_gather<>")
+            print(locals())
+            print("</>all_gather</>")
+
     return result
