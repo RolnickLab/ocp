@@ -725,7 +725,7 @@ def build_config(args, args_override):
     # Check for overridden parameters.
     if args_override != []:
         overrides = create_dict_from_args(args_override)
-        config, _ = merge_dicts(config, overrides)
+        config = merge_dicts(config, overrides)
 
     config = merge_dicts(config, {k: v for k, v in vars(args).items() if v is not None})
     config["data_split"] = args.config.split("-")[-1]
