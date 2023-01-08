@@ -98,7 +98,7 @@ def override_narval_paths(trainer_config):
         "with",
         path_overrides[task][split],
     )
-    trainer_config["dataset"], _ = merge_dicts(
+    trainer_config["dataset"] = merge_dicts(
         trainer_config["dataset"], path_overrides[task][split]
     )
 
@@ -702,11 +702,11 @@ def load_config(config_str):
     assert "default" in task_conf
     assert split in task_conf
 
-    config, _ = merge_dicts({}, model_conf["default"])
-    config, _ = merge_dicts(config, model_conf[task].get("default", {}))
-    config, _ = merge_dicts(config, model_conf[task][split])
-    config, _ = merge_dicts(config, task_conf["default"])
-    config, _ = merge_dicts(config, task_conf[split])
+    config = merge_dicts({}, model_conf["default"])
+    config = merge_dicts(config, model_conf[task].get("default", {}))
+    config = merge_dicts(config, model_conf[task][split])
+    config = merge_dicts(config, task_conf["default"])
+    config = merge_dicts(config, task_conf[split])
     config["task"]["name"] = task
     config["task"]["split"] = split
 
@@ -727,9 +727,7 @@ def build_config(args, args_override):
         overrides = create_dict_from_args(args_override)
         config, _ = merge_dicts(config, overrides)
 
-    config, _ = merge_dicts(
-        config, {k: v for k, v in vars(args).items() if v is not None}
-    )
+    config = merge_dicts(config, {k: v for k, v in vars(args).items() if v is not None})
     config["data_split"] = args.config.split("-")[-1]
     config["run_dir"] = resolve(config["run_dir"])
     config["slurm"] = {}
@@ -1105,7 +1103,7 @@ def get_pruned_edge_idx(edge_index, num_atoms=None, max_neigh=1e9):
     return _nonmax_idx
 
 
-def merge_dicts(dict1: dict, dict2: dict):
+def merge_dicts(dict1: dict, dict2: dict) -> dict:
     """Recursively merge two dictionaries.
     Values in dict2 override values in dict1. If dict1 and dict2 contain a dictionary
     as a value, this will call itself recursively to merge these dictionaries.
@@ -1123,7 +1121,7 @@ def merge_dicts(dict1: dict, dict2: dict):
 
     Returns
     -------
-    return_dict_and_duplicates: tuple(dict, list(str))
+    return_dict: dict
         Merged dictionaries.
     """
     if not isinstance(dict1, dict):
@@ -1132,27 +1130,24 @@ def merge_dicts(dict1: dict, dict2: dict):
         raise ValueError(f"Expecting dict2 to be dict, found {type(dict2)}.")
 
     return_dict = copy.deepcopy(dict1)
-    duplicates = []
 
     for k, v in dict2.items():
         if k not in dict1:
             return_dict[k] = v
         else:
             if isinstance(v, dict) and isinstance(dict1[k], dict):
-                return_dict[k], duplicates_k = merge_dicts(dict1[k], dict2[k])
-                duplicates += [f"{k}.{dup}" for dup in duplicates_k]
+                return_dict[k] = merge_dicts(dict1[k], dict2[k])
             elif isinstance(v, list) and isinstance(dict1[k], list):
                 if len(dict1[k]) != len(dict2[k]):
                     raise ValueError(
                         f"List for key {k} has different length in dict1 and dict2."
                         + " Use an empty dict {} to pad for items in the shorter list."
                     )
-                return_dict[k] = [merge_dicts(d1, d2)[0] for d1, d2 in zip(dict1[k], v)]
+                return_dict[k] = [merge_dicts(d1, d2) for d1, d2 in zip(dict1[k], v)]
             else:
                 return_dict[k] = dict2[k]
-                duplicates.append(k)
 
-    return return_dict, duplicates
+    return return_dict
 
 
 class SeverityLevelBetween(logging.Filter):
@@ -1315,4 +1310,4 @@ def base_config(config, overrides={}):
         ],
     )
 
-    return merge_dicts(conf, overrides)[0]
+    return merge_dicts(conf, overrides)
