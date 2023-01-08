@@ -777,13 +777,9 @@ class BaseTrainer(ABC):
         # Log specific metrics
         if final and self.config["logger"] == "wandb" and distutils.is_master():
             overall_mae = cumulated_mae / len(all_splits)
+            self.objective = overall_mae
             self.logger.log({"Eval time": cumulated_time})
             self.logger.log({"Overall MAE": overall_mae})
-            if self.logger.ntfy:
-                self.logger.ntfy(
-                    message=f"{JOB_ID} - Overall MAE: {overall_mae}",
-                    click=self.logger.url,
-                )
 
         # Run on test split
         if final and "test" in self.config["dataset"] and self.eval_on_test:
@@ -928,3 +924,11 @@ class BaseTrainer(ABC):
         if signum == 15 and not self.sigterm:
             print("\nHandling SIGTERM signal received.\n")
             self.sigterm = True
+
+    def close_datasets(self):
+        try:
+            for ds in self.datasets.values():
+                if hasattr(ds, "close_db") and callable(ds.close_db):
+                    ds.close_db()
+        except Exception as e:
+            print("Error closing datasets: ", str(e))
