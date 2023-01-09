@@ -50,26 +50,33 @@ def move_lmdb_data_to_slurm_tmpdir(trainer_config):
     ):
         return trainer_config
 
+    print("\nMoving data to slurm tmpdir", flush=True)
+
     tmp_dir = Path(f"/Tmp/slurm.{JOB_ID}.0")
     for s, split in trainer_config["dataset"].items():
         if not isinstance(split, dict):
             continue
-        new_dir = tmp_dir / Path(split["src"]).name
+        original = Path(split["src"])
+        if original.is_file():
+            original = original.parent
+        new_dir = tmp_dir / original.name
         if new_dir.exists():
             print(
                 f"Data already copied to {str(new_dir)} for split",
                 f"{s} with source path {split['src']}",
+                flush=True,
             )
             trainer_config["dataset"][s]["src"] = str(new_dir)
             continue
+        print("Making new_dir: ", str(new_dir), flush=True)
         new_dir.mkdir()
-        command = ["rsync", "-av", f'{split["src"]}/', str(new_dir)]
-        print("Copying data: ", " ".join(command))
+        command = ["cp", "-r", f"{str(original)}", str(new_dir.parent)]
+        print("Copying data: ", " ".join(command), flush=True)
         subprocess.run(command)
         for f in new_dir.glob("*.lmdb-lock"):
             f.unlink()
         trainer_config["dataset"][s]["src"] = str(new_dir)
-    print("Done moving data to", str(new_dir))
+        print("Done moving data to", str(new_dir), flush=True)
     return trainer_config
 
 
@@ -758,7 +765,6 @@ def build_config(args, args_override):
     config = set_qm7x_target_stats(config)
     config = override_narval_paths(config)
     config = auto_note(config)
-    config = move_lmdb_data_to_slurm_tmpdir(config)
 
     if not config["no_cpus_to_workers"]:
         cpus = count_cpus()
