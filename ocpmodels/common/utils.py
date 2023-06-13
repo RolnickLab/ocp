@@ -1115,7 +1115,6 @@ def build_config(args, args_override, silent=False):
 
     if loaded_config:
         # update dirs
-        print("hi")
         new_dirs = [
             (k, v) for k, v in config.items() if "dir" in k and k != "cp_data_to_tmpdir"
         ]

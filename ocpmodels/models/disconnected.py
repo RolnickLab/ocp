@@ -597,30 +597,13 @@ class Disconnected(BaseModel):
     def forces_forward(self, preds):
         return self.decoder(preds["hidden_state"])
 
-    def edge_classifier(self, edge_index, tags, batch = None):
-        values = torch.ones([edge_index.shape[-1]])
-        if batch is not None:
-
-            #values = torch.transpose(edge_index, 0, 1)
-        
-            for i, (head, tail) in enumerate(zip(edge_index[0], edge_index[1])):
-                if (
-                    batch[int(head.item())] == batch[int(tail.item())]
-                    and set((tags[int(head.item())].item(), tags[int(tail.item())].item())) == set((1, 2))
-                ):
-                    values[i] = False
-
-        else:
-            for i, (head, tail) in enumerate(zip(edge_index[0], edge_index[1])):
-                if set((tags[int(head.item())].item(), tags[int(tail.item())].item())) == set((1, 2)):
-                    values[i] = False
-        
-        return values.bool()
+    def edge_classifier(self, edge_index, tags):
+        edges_with_tags = tags[edge_index.type(torch.long)]
+        values = (edges_with_tags[0] == edges_with_tags[1])
+        return values
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        import ipdb, time
-        start = time.time()
         # Rewire the graph
         z = data.atomic_numbers.long()
         pos = data.pos
@@ -657,7 +640,7 @@ class Disconnected(BaseModel):
             edge_attr = self.distance_expansion(edge_weight)
 
         # Removing unnecessary edges
-        edges_to_keep = self.edge_classifier(edge_index, data.tags, batch)
+        edges_to_keep = self.edge_classifier(edge_index, data.tags)
 
         edge_index = edge_index[:, edges_to_keep]
         edge_weight = edge_weight[edges_to_keep]
@@ -707,6 +690,4 @@ class Disconnected(BaseModel):
 
         preds = {"energy": energy, "pooling_loss": pooling_loss, "hidden_state": h}
 
-        end = time.time()
-        ipdb.set_trace()
         return preds
