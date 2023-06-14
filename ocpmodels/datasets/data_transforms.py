@@ -99,6 +99,24 @@ class GraphRewiring(Transform):
 
         return self.rewiring_func(data)
 
+class Disconnected(Transform):
+    def __init__(self, is_disconnected=False) -> None:
+        self.inactive = not is_disconnected
+
+    def edge_classifier(self, edge_index, tags):
+        edges_with_tags = tags[edge_index.type(torch.long)]
+        values = (edges_with_tags[0] == edges_with_tags[1])
+        return values
+
+    def __call__(self, data):
+        if self.inactive:
+            return data
+
+        values = self.edge_classifier(data.edge_index, data.tags)
+        data.edge_index = data.edge_index[:, values]
+
+        return data
+        
 
 class Compose:
     # https://pytorch.org/vision/stable/_modules/torchvision/transforms/transforms.html#Compose
@@ -140,5 +158,6 @@ def get_transforms(trainer_config):
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
         FrameAveraging(trainer_config["frame_averaging"], trainer_config["fa_frames"]),
+        Disconnected(trainer_config["is_disconnected"])
     ]
     return Compose(transforms)
