@@ -5,7 +5,7 @@ job:
   partition: long
 
 default:
-  config: disconnected-is2re-all
+  config: faenet-is2re-all
   test_ri: True
   mode: train
   wandb_tags: 'baseline'
