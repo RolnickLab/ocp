@@ -104,9 +104,14 @@ class Disconnected(Transform):
         self.inactive = not is_disconnected
 
     def edge_classifier(self, edge_index, tags):
-        edges_with_tags = tags[edge_index.type(torch.long)]
-        values = (edges_with_tags[0] == edges_with_tags[1])
-        return values
+        edges_with_tags = tags[edge_index.type(torch.long)] # Tensor with shape=edge_index.shape where every entry is a tag        
+        filt1 = (edges_with_tags[0] == edges_with_tags[1])
+        filt2 = (edges_with_tags[0] != 2) * (edges_with_tags[1] != 2)
+
+        # Edge is removed if tags are different (R1), and at least one end has tag 2 (R2). We want ~(R1*R2) = ~R1+~R2.
+        # filt1 = ~R1. Let L1 be that head has tag 2, and L2 is that tail has tag 2. Then R2 = L1+L2, so ~R2 = ~L1*~L2 = filt2.
+
+        return filt1 + filt2
 
     def __call__(self, data):
         if self.inactive:
