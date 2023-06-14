@@ -287,6 +287,12 @@ class Flags:
             help="Number of validation loops to run in order to collect inference"
             + " timing stats",
         )
+        self.parser.add_argument(
+            "--is_disconnected",
+            action="store_true",
+            help="Eliminates edges between catalyst and adsorbate.",
+            default=False
+        )
 
 
 flags = Flags()
