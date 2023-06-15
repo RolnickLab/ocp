@@ -118,7 +118,10 @@ class Disconnected(Transform):
             return data
 
         values = self.edge_classifier(data.edge_index, data.tags)
+        
         data.edge_index = data.edge_index[:, values]
+        data.cell_offsets = data.cell_offsets[values, :]
+        data.distances = data.distances[values]
 
         return data
         
