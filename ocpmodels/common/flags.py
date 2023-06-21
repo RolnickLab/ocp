@@ -289,9 +289,9 @@ class Flags:
         )
         self.parser.add_argument(
             "--is_disconnected",
-            action="store_true",
-            help="Eliminates edges between catalyst and adsorbate.",
+            type=bool
             default=False
+            help="Eliminates edges between catalyst and adsorbate."
         )
 
 

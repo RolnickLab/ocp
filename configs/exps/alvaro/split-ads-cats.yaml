@@ -5,7 +5,7 @@ job:
   partition: long
 
 default:
-  config: faenet-is2re-all
+  config: dimenetplus-is2re-10k
   test_ri: True
   mode: train
   wandb_tags: 'baseline'
@@ -16,7 +16,9 @@ default:
   frame_averaging: 2D
   graph_rewiring: remove-tag-0
   model:
-    pg_hidden_channels: 64
+    pg_hidden_channels: 384
+    act: swish
+    num_gaussians: 104
     phys_embeds: True
     phys_hidden_channels: 0
     tag_hidden_channels: 64
@@ -26,17 +28,15 @@ default:
 
 runs:
   # Run 1
-  - {}
+  #- {}
 
   # Run 2
-  - config: faenet-is2re-all
+  - config: faenet-is2re-10k
 
   # Run 3
-#  - optim:
-#      lr_initial: 0.0001
+  #- is_disconnected: True
 
   # Run 4
-#  - model:
-#      pg_hidden_channels: 32
-#    optim:
-#      lr_initial: 0.0001
+  #- is_disconnected: True
+    #config: faenet-is2re-10k
+  

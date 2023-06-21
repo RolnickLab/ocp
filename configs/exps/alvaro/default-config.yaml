@@ -1,0 +1,20 @@
+job:
+    mem: 32GB
+    cpus: 4
+    gres: gpu:rtx8000:1
+    partition: long
+
+default:
+    config: faenet-is2re-10k
+    wandb_name: alvaro-carbonero-math
+    wandb_project: ocp-alvaro
+    cp_data_to_tmpdir: True
+    fa_frames: se3-random
+    frame_averaging: 2D
+    graph_rewiring: remove-tag-0
+    optim:
+        max_epochs: 12
+
+runs:
+    # Run 1
+    - is_disconnected: True
