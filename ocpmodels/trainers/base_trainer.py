@@ -10,6 +10,7 @@ import logging
 import os
 import random
 import time
+import pickle
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
@@ -22,7 +23,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 from torch.nn.parallel.distributed import DistributedDataParallel
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch_geometric.data import Batch
 from tqdm import tqdm
 from uuid import uuid4
@@ -242,6 +243,13 @@ class BaseTrainer(ABC):
             self.datasets[split] = registry.get_dataset_class(
                 self.config["task"]["dataset"]
             )(ds_conf, transform=transform)
+
+            if self.config["lowest_energy_only"]:
+                with open('/network/scratch/a/alvaro.carbonero/lowest_energy.pkl', 'rb') as fp:
+                    good_indices = pickle.load(fp)
+                good_indices = list(good_indices)
+
+                self.dataset["train"] = Subset(self.dataset["train"], good_indices)
 
             shuffle = False
             if split == "train":
