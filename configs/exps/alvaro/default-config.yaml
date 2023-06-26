@@ -5,16 +5,12 @@ job:
     partition: long
 
 default:
-    config: faenet-is2re-10k
-    wandb_name: alvaro-carbonero-math
+    test_ri: True
+    mode: train
+    wandb_name: alvaro-carbonero-math # DO NOT USE THIS CONFIG FILE. IT'S BAD!
     wandb_project: ocp-alvaro
-    cp_data_to_tmpdir: True
-    fa_frames: se3-random
-    frame_averaging: 2D
-    graph_rewiring: remove-tag-0
-    optim:
-        max_epochs: 12
 
 runs:
     # Run 1
-    - is_disconnected: True
+    - config: faenet-is2re-10k
+      note: 'default-with-train-mode'
