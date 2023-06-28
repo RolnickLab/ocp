@@ -1,4 +1,4 @@
-# RIGHT NOW, THIS IS THE SAME AS BEST-CONFIGS-ALL.
+# MODIFY THIS ONE FOR RUNS
 
 job:
   mem: 32GB
@@ -20,29 +20,32 @@ default:
     batch_size: 256
     eval_batch_size: 256
   cp_data_to_tmpdir: true
+  config: faenet-is2re-all
+  note: 'best-config-all-lowest-energy' # Insert what model you're running if running one by one.
+  frame_averaging: 2D
+  fa_frames: se3-random
+  model:
+    mp_type: updownscale
+    phys_embeds: False
+    tag_hidden_channels: 32
+    pg_hidden_channels: 64
+    energy_head: weighted-av-final-embeds
+    complex_mp: False
+    graph_norm: True
+    hidden_channels: 352
+    num_filters: 448
+    num_gaussians: 99
+    num_interactions: 6
+    second_layer_MLP: True
+    skip_co: concat
+  optim:
+    lr_initial: 0.0019
+    scheduler: LinearWarmupCosineAnnealingLR
+    max_epochs: 20
+    eval_every: 0.4
 
 runs:
-  - config: faenet-is2re-all
-    note: 'best-config-all-disconected' # Insert what model you're running if running one by one.
-    is_disconnected: True
-    frame_averaging: 2D
-    fa_frames: se3-random
-    model:
-      mp_type: updownscale
-      phys_embeds: False
-      tag_hidden_channels: 32
-      pg_hidden_channels: 64
-      energy_head: weighted-av-final-embeds
-      complex_mp: False
-      graph_norm: True
-      hidden_channels: 352
-      num_filters: 448
-      num_gaussians: 99
-      num_interactions: 6
-      second_layer_MLP: True
-      skip_co: concat
-    optim:
-      lr_initial: 0.0019
-      scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 20
-      eval_every: 0.4
+  - is_disconnected: True
+    lowest_energy_only: True
+
+  - lowest_energy_only: True

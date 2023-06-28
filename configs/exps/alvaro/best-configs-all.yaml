@@ -1,3 +1,5 @@
+# DON'T MODIFY THIS
+
 job:
   mem: 32GB
   cpus: 4
@@ -18,7 +20,7 @@ default:
     batch_size: 256
     eval_batch_size: 256
   cp_data_to_tmpdir: true
-  config: faenet-is2re-10k
+  config: faenet-is2re-all
   note: 'best-config-??' # Insert what model you're running if running one by one.
   frame_averaging: 2D
   fa_frames: se3-random

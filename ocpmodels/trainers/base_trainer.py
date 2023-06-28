@@ -244,14 +244,12 @@ class BaseTrainer(ABC):
                 self.config["task"]["dataset"]
             )(ds_conf, transform=transform)
 
-            import ipdb
-            ipdb.set_trace()
-
             if self.config["lowest_energy_only"]:
                 with open('/network/scratch/a/alvaro.carbonero/lowest_energy.pkl', 'rb') as fp:
                     good_indices = pickle.load(fp)
                 good_indices = list(good_indices)
 
+                self.real_dataset = self.datasets["train"]
                 self.datasets["train"] = Subset(self.datasets["train"], good_indices)
 
             shuffle = False

@@ -297,7 +297,7 @@ class Flags:
             "--lowest_energy_only",
             type=bool,
             default=False,
-            help="Makes trainer use the lowest energy data point for every (catalyst, adsorbate, cell) tuple."
+            help="Makes trainer use the lowest energy data point for every (catalyst, adsorbate, cell) tuple. ONLY USE WITH ALL DATASET"
         )
 
 

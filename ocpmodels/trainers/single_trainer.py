@@ -468,7 +468,11 @@ class SingleTrainer(BaseTrainer):
         # Close datasets
         if debug_batches < 0:
             for ds in self.datasets.values():
-                ds.close_db()
+                try:
+                    ds.close_db()
+                except:
+                    assert self.config["lowest_energy_only"] == True
+                    self.real_dataset.close_db()
 
     def model_forward(self, batch_list, mode="train"):
         # Distinguish frame averaging from base case.
