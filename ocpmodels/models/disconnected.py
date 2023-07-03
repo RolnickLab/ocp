@@ -18,6 +18,7 @@ def graph_splitter(graph):
     cell = graph.cell
     cell_offsets = graph.cell_offsets
 
+    # Make masks to filter most data we need
     adsorbate_v_mask = (tags == 2)
     catalyst_v_mask = (tags == 1) + (tags == 0)
 
@@ -27,11 +28,26 @@ def graph_splitter(graph):
         * ((tags[edge_index][1] == 1) + (tags[edge_index][1] == 0))
     )
 
+    # Recalculate neighbors
     ads_neighbors = scatter(adsorbate_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
-    cat_neighbors = graph.neighbors - ads_neighbors
+    cat_neighbors = scatter(catalyst_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
 
+    # Reindex the edge indices.
+    device = graph.edge_index.device
+    natoms = graph.natoms.sum().item()
+
+    ads_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
+    cat_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
+
+    ads_assoc[adsorbate_v_mask] = torch.arange(adsorbate_v_mask.sum(), device = device)
+    cat_assoc[catalyst_v_mask] = torch.arange(catalyst_v_mask.sum(), device = device)
+
+    ads_edge_index = ads_assoc[edge_index[:, adsorbate_e_mask]]
+    cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
+    
+    # Create the batches
     adsorbate = Batch(
-        edge_index = edge_index[:, adsorbate_e_mask],
+        edge_index = ads_edge_index,
         pos = pos[adsorbate_v_mask, :],
         atomic_numbers = atomic_numbers[adsorbate_v_mask],
         batch = batch[adsorbate_v_mask],
@@ -42,12 +58,12 @@ def graph_splitter(graph):
         mode="adsorbate"
     )
     catalyst = Batch(
-        edge_index = edge_index[:, catalyst_e_mask],
+        edge_index = cat_edge_index,
         pos = pos[catalyst_v_mask, :],
         atomic_numbers = atomic_numbers[catalyst_v_mask],
-        batch = batch[adsorbate_v_mask],
+        batch = batch[catalyst_v_mask],
         cell = cell,
-        cell_offsets = cell_offsets[adsorbate_e_mask, :],
+        cell_offsets = cell_offsets[catalyst_e_mask, :],
         tags = tags[catalyst_v_mask],
         neighbors = cat_neighbors,
         mode="catalyst"
@@ -86,7 +102,15 @@ class discFAENet(conFAENet):
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         adsorbate, catalyst = graph_splitter(data)
-
-        test = super().energy_forward(data)
+        
         ads_pred = super().energy_forward(adsorbate)
         cat_pred = super().energy_forward(catalyst)
+
+        ads_energy = ads_pred["energy"]
+        cat_energy = cat_pred["energy"]
+
+        system_energy = torch.cat((ads_energy, cat_energy), dim = 1)
+        system_energy = self.lin1(system_energy)
+        system_energy = self.lin2(system_energy)
+
+        return system_energy

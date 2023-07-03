@@ -600,8 +600,6 @@ class FAENet(BaseModel):
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         # Rewire the graph
-        import ipdb
-        ipdb.set_trace()
         
         z = data.atomic_numbers.long()
         pos = data.pos
