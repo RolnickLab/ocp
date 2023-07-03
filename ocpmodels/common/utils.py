@@ -1248,6 +1248,9 @@ def get_pbc_distances(
     return_offsets=False,
     return_distance_vec=False,
 ):
+    import ipdb
+    ipdb.set_trace()
+    
     row, col = edge_index
 
     distance_vectors = pos[row] - pos[col]
