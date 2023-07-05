@@ -113,4 +113,6 @@ class discFAENet(conFAENet):
         system_energy = self.lin1(system_energy)
         system_energy = self.lin2(system_energy)
 
-        return system_energy
+        ads_pred["energy"] = system_energy
+
+        return ads_pred

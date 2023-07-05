@@ -15,13 +15,12 @@ default:
   graph_rewiring: remove-tag-0
   model:
     edge_embed_type: all_rij
-  wandb_tags: 'best-config'
   optim:
     batch_size: 256
     eval_batch_size: 256
   cp_data_to_tmpdir: true
-  config: faenet-is2re-all
-  note: 'best-config-all-lowest-energy' # Insert what model you're running if running one by one.
+  config: disconnected-is2re-10k
+  wandb-tags: 'best-config-??' # Insert what model you're running if running one by one.
   frame_averaging: 2D
   fa_frames: se3-random
   model:
@@ -45,7 +44,4 @@ default:
     eval_every: 0.4
 
 runs:
-  - is_disconnected: True
-    lowest_energy_only: True
-
-  - lowest_energy_only: True
+  - wandb_tags: 'best-config-disc_model-10k'

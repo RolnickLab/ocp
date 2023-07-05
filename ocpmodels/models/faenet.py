@@ -663,6 +663,7 @@ class FAENet(BaseModel):
             h = h + interaction(h, edge_index, e)
 
         # Atom skip-co
+        
         if self.skip_co == "concat_atom":
             energy_skip_co.append(h)
             h = self.act(self.mlp_skip_co(torch.cat(energy_skip_co, dim=1)))
@@ -671,6 +672,8 @@ class FAENet(BaseModel):
 
         # Skip-connection
         energy_skip_co.append(energy)
+        import ipdb
+        ipdb.set_trace()
         if self.skip_co == "concat":
             energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
         elif self.skip_co == "add":
