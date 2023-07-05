@@ -158,6 +158,11 @@ class BaseTrainer(ABC):
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
 
+        if self.config["model_name"] == "disconnected":
+            if not self.config["is_disconnected"]:
+                print("\n\nWhen using the disconnected model, the flag 'is_disconnected' should be used! The flag has been turned on.")
+                self.config["is_disconnected"] = True
+
     def load(self):
         self.load_seed_from_config()
         self.load_logger()
