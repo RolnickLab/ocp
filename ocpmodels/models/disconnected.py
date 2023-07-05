@@ -99,6 +99,14 @@ class discFAENet(conFAENet):
         self.lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
         self.lin2 = Linear(hidden_channels // 2, 1)
 
+        if self.skip_co in {"concat", "concat_atom"}:
+            assert self.skip_co == "concat" # We can implement the other one later.
+            del self.mlp_skip_co
+            self.mlp_skip_co = Linear(
+                (kwargs["hidden_channels"] // 2) * (kwargs["num_interactions"] + 1),
+                kwargs["hidden_channels"] // 2
+            )
+
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         adsorbate, catalyst = graph_splitter(data)

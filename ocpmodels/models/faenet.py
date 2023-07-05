@@ -672,8 +672,6 @@ class FAENet(BaseModel):
 
         # Skip-connection
         energy_skip_co.append(energy)
-        import ipdb
-        ipdb.set_trace()
         if self.skip_co == "concat":
             energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
         elif self.skip_co == "add":
