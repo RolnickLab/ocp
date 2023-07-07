@@ -158,8 +158,9 @@ class TrajectoryLmdbDataset(LmdbDataset):
 
 
 def data_list_collater(data_list, otf_graph=False):
-    import ipdb
-    ipdb.set_trace()
+    if data_list[0] is tuple:
+        graphs = [system[0] for system in data_list] + [system[1] for system in data_list]
+        batch = Batch.from_data_list(graphs)
     
     batch = Batch.from_data_list(data_list)
 

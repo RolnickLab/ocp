@@ -7,19 +7,27 @@ from pathlib import Path
 import lmdb
 import numpy as np
 import torch
+from torch_geometric.data import Data 
 
 from ocpmodels.datasets.lmdb_dataset import LmdbDataset
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import pyg2_data_transform
 
 def graph_splitter(graph):
-    tags = graph.tags
     edge_index = graph.edge_index
     pos = graph.pos
-    atomic_numbers = graph.atomic_numbers
-    batch = graph.batch
     cell = graph.cell
+    atomic_numbers = graph.atomic_numbers
+    natoms = graph.natoms
     cell_offsets = graph.cell_offsets
+    force = graph.force
+    distances = graph.distances
+    fixed = graph.fixed
+    tags = graph.tags
+    y_init = graph.y_init
+    y_relaxed = graph.y_relaxed
+    pos_relaxed = graph.pos_relaxed
+    id = graph.id
 
     # Make masks to filter most data we need
     adsorbate_v_mask = (tags == 2)
@@ -31,13 +39,8 @@ def graph_splitter(graph):
         * ((tags[edge_index][1] == 1) + (tags[edge_index][1] == 0))
     )
 
-    # Recalculate neighbors
-    ads_neighbors = scatter(adsorbate_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
-    cat_neighbors = scatter(catalyst_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
-
     # Reindex the edge indices.
     device = graph.edge_index.device
-    natoms = graph.natoms.sum().item()
 
     ads_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
     cat_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
@@ -49,26 +52,34 @@ def graph_splitter(graph):
     cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
     
     # Create the batches
-    adsorbate = Batch(
+    adsorbate = Data(
         edge_index = ads_edge_index,
         pos = pos[adsorbate_v_mask, :],
-        atomic_numbers = atomic_numbers[adsorbate_v_mask],
-        batch = batch[adsorbate_v_mask],
         cell = cell,
+        atomic_numbers = atomic_numbers[adsorbate_v_mask],
+        natoms = adsorbate_v_mask.sum().item(),
         cell_offsets = cell_offsets[adsorbate_e_mask, :],
+        force = force[adsorbate_v_mask, :],
         tags = tags[adsorbate_v_mask],
-        neighbors = ads_neighbors,
+        y_init = y_init,
+        y_relaxed = y_relaxed,
+        pos_relaxed = pos_relaxed[adsorbate_v_mask, :],
+        id = id,
         mode="adsorbate"
     )
-    catalyst = Batch(
+    catalyst = Data(
         edge_index = cat_edge_index,
         pos = pos[catalyst_v_mask, :],
-        atomic_numbers = atomic_numbers[catalyst_v_mask],
-        batch = batch[catalyst_v_mask],
         cell = cell,
+        atomic_numbers = atomic_numbers[catalyst_v_mask],
+        natoms = catalyst_v_mask.sum().item(),
         cell_offsets = cell_offsets[catalyst_e_mask, :],
+        force = force[catalyst_v_mask, :],
         tags = tags[catalyst_v_mask],
-        neighbors = cat_neighbors,
+        y_init = y_init,
+        y_relaxed = y_relaxed,
+        pos_relaxed = pos_relaxed[catalyst_v_mask, :],
+        id = id,
         mode="catalyst"
     )
 
@@ -99,20 +110,24 @@ class SeparateLmdbDataset(LmdbDataset):
             datapoint_pickled = self.env.begin().get(self._keys[idx])
             data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
 
-        import ipdb
-        ipdb.set_trace()
+        adsorbate, catalyst = graph_splitter(data_object)
 
         t1 = time.time_ns()
         if self.transform is not None:
-            data_object = self.transform(data_object)
+            adsorbate = self.transform(adsorbate)
+            catalyst = self.transform(catalyst)
         t2 = time.time_ns()
 
         load_time = (t1 - t0) * 1e-9  # time in s
         transform_time = (t2 - t1) * 1e-9  # time in s
         total_get_time = (t2 - t0) * 1e-9  # time in s
 
-        data_object.load_time = load_time
-        data_object.transform_time = transform_time
-        data_object.total_get_time = total_get_time
+        adsorbate.load_time = load_time
+        adsorbate.transform_time = transform_time
+        adsorbate.total_get_time = total_get_time
 
-        return data_object
+        catalyst.load_time = load_time
+        catalyst.transform_time = transform_time
+        catalyst.total_get_time = total_get_time
+
+        return (adsorbate, catalyst)
