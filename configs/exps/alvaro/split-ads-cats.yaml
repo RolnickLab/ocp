@@ -19,7 +19,7 @@ default:
     batch_size: 256
     eval_batch_size: 256
   cp_data_to_tmpdir: true
-  config: disconnected-is2re-all
+  config: faenet-is2re-all
   wandb-tags: 'best-config-??' # Insert what model you're running if running one by one.
   frame_averaging: 2D
   fa_frames: se3-random
@@ -44,6 +44,8 @@ default:
     eval_every: 0.4
 
 runs:
-  - notes: 'best-config-discmodel-all'
+  - Notes: 'best-config-discmodel-all'
+    config: disconnected-is2re-all
+    is_disconnected: True
 
   

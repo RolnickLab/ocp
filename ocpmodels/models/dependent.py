@@ -2,13 +2,14 @@ import torch
 from torch.nn import Linear
 from torch_scatter import scatter
 
-from ocpmodels.models.faenet import FAENet as conFAENet
+from ocpmodels.models.faenet import FAENet
 from ocpmodels.models.faenet import OutputBlock as conOutputBlock
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
 
 from torch_geometric.data import Batch
 
+# Graph splitter should become a transform once model 3 is done.
 def graph_splitter(graph):
     tags = graph.tags
     edge_index = graph.edge_index
@@ -77,50 +78,62 @@ class discOutputBlock(conOutputBlock):
             energy_head, hidden_channels, act
         )
 
-        assert self.energy_head == "weighted-av-final-embeds"
         del self.lin2
-
         self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
-@registry.register_model("disconnected")
-class discFAENet(conFAENet):
+        self.sys_lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
+        self.sys_lin2 = Linear(hidden_channels // 2, 1)
+
+    def tags_saver(self, tags):
+        self.current_tags = tags
+
+    def forward(self, h, edge_index, edge_weight, batch, alpha):
+        if self.energy_head == "weighted-av-final-embeds": # Right now, this is the only available option.
+            alpha = self.w_lin(h)
+
+        elif self.energy_head == "graclus":
+            h, batch = self.graclus(h, edge_index, edge_weight, batch)
+
+        elif self.energy_head in {"pooling", "random"}:
+            h, batch, pooling_loss = self.hierarchical_pooling(
+                h, edge_index, edge_weight, batch
+            )
+
+        # MLP
+        h = self.lin1(h)
+        h = self.lin2(self.act(h))
+
+        if self.energy_head in {
+            "weighted-av-initial-embeds",
+            "weighted-av-final-embeds",
+        }:
+            h = h * alpha
+
+        ads = self.current_tags == 2
+        cat = ~ads
+
+        ads_out = scatter(h, batch * ads, dim = 0, reduce = "add")
+        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add")
+        system = torch.cat([ads_out, cat_out], dim = 1)
+        
+        system = self.sys_lin1(system)
+        energy = self.sys_lin2(system)
+        
+        return energy
+
+@registry.register_model("dependent")
+class depFAENet(FAENet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        assert self.energy_head == "weighted-av-final-embeds"
         del self.output_block
-
-        hidden_channels = kwargs["hidden_channels"]
-
         self.output_block = discOutputBlock(
-            self.energy_head, hidden_channels, self.act
+            self.energy_head, kwargs["hidden_channels"], self.act
         )
-
-        self.lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
-        self.lin2 = Linear(hidden_channels // 2, 1)
-
-        if self.skip_co in {"concat", "concat_atom"}:
-            assert self.skip_co == "concat" # We can implement the other one later.
-            del self.mlp_skip_co
-            self.mlp_skip_co = Linear(
-                (kwargs["hidden_channels"] // 2) * (kwargs["num_interactions"] + 1),
-                kwargs["hidden_channels"] // 2
-            )
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        adsorbate, catalyst = graph_splitter(data)
-        
-        ads_pred = super().energy_forward(adsorbate)
-        cat_pred = super().energy_forward(catalyst)
+        self.output_block.tags_saver(data.tags)
+        pred = super().energy_forward(data)
 
-        ads_energy = ads_pred["energy"]
-        cat_energy = cat_pred["energy"]
-
-        system_energy = torch.cat((ads_energy, cat_energy), dim = 1)
-        system_energy = self.lin1(system_energy)
-        system_energy = self.lin2(system_energy)
-
-        ads_pred["energy"] = system_energy
-
-        return ads_pred
+        return pred
