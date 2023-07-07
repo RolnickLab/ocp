@@ -9,69 +9,6 @@ from ocpmodels.common.utils import conditional_grad
 
 from torch_geometric.data import Batch
 
-# Graph splitter should become a transform once model 3 is done.
-def graph_splitter(graph):
-    tags = graph.tags
-    edge_index = graph.edge_index
-    pos = graph.pos
-    atomic_numbers = graph.atomic_numbers
-    batch = graph.batch
-    cell = graph.cell
-    cell_offsets = graph.cell_offsets
-
-    # Make masks to filter most data we need
-    adsorbate_v_mask = (tags == 2)
-    catalyst_v_mask = (tags == 1) + (tags == 0)
-
-    adsorbate_e_mask = (tags[edge_index][0] == 2) * (tags[edge_index][1] == 2)
-    catalyst_e_mask = (
-        ((tags[edge_index][0] == 1) + (tags[edge_index][0] == 0)) 
-        * ((tags[edge_index][1] == 1) + (tags[edge_index][1] == 0))
-    )
-
-    # Recalculate neighbors
-    ads_neighbors = scatter(adsorbate_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
-    cat_neighbors = scatter(catalyst_e_mask.long(), batch[edge_index[0]], dim = 0, reduce = "add")
-
-    # Reindex the edge indices.
-    device = graph.edge_index.device
-    natoms = graph.natoms.sum().item()
-
-    ads_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
-    cat_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
-
-    ads_assoc[adsorbate_v_mask] = torch.arange(adsorbate_v_mask.sum(), device = device)
-    cat_assoc[catalyst_v_mask] = torch.arange(catalyst_v_mask.sum(), device = device)
-
-    ads_edge_index = ads_assoc[edge_index[:, adsorbate_e_mask]]
-    cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
-    
-    # Create the batches
-    adsorbate = Batch(
-        edge_index = ads_edge_index,
-        pos = pos[adsorbate_v_mask, :],
-        atomic_numbers = atomic_numbers[adsorbate_v_mask],
-        batch = batch[adsorbate_v_mask],
-        cell = cell,
-        cell_offsets = cell_offsets[adsorbate_e_mask, :],
-        tags = tags[adsorbate_v_mask],
-        neighbors = ads_neighbors,
-        mode="adsorbate"
-    )
-    catalyst = Batch(
-        edge_index = cat_edge_index,
-        pos = pos[catalyst_v_mask, :],
-        atomic_numbers = atomic_numbers[catalyst_v_mask],
-        batch = batch[catalyst_v_mask],
-        cell = cell,
-        cell_offsets = cell_offsets[catalyst_e_mask, :],
-        tags = tags[catalyst_v_mask],
-        neighbors = cat_neighbors,
-        mode="catalyst"
-    )
-
-    return adsorbate, catalyst
-
 class discOutputBlock(conOutputBlock):
     def __init__(self, energy_head, hidden_channels, act):
         super(discOutputBlock, self).__init__(

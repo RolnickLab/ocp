@@ -156,7 +156,11 @@ class TrajectoryLmdbDataset(LmdbDataset):
             stacklevel=3,
         )
 
+
 def data_list_collater(data_list, otf_graph=False):
+    import ipdb
+    ipdb.set_trace()
+    
     batch = Batch.from_data_list(data_list)
 
     if (

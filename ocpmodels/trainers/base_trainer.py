@@ -245,9 +245,17 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            self.datasets[split] = registry.get_dataset_class(
-                self.config["task"]["dataset"]
-            )(ds_conf, transform=transform)
+            import ipdb
+            ipdb.set_trace()
+            
+            if self.config["model_name"] in ["dependent", "independent"]: # DEPENDENT SHOULDN'T BE ON THIS LIST. IT'S FOR DEBUGGIN.
+                self.datasets[split] = registry.get_dataset_class(
+                    "separate"
+                )(ds_conf, transform=transform)
+            else:
+                self.datasets[split] = registry.get_dataset_class(
+                    self.config["task"]["dataset"]
+                )(ds_conf, transform=transform)
 
             if self.config["lowest_energy_only"]:
                 with open('/network/scratch/a/alvaro.carbonero/lowest_energy.pkl', 'rb') as fp:
