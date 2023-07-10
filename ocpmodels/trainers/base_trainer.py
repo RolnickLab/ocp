@@ -245,7 +245,7 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            if self.config["model_name"] in ["dependent", "independent"]: # DEPENDENT SHOULDN'T BE ON THIS LIST. IT'S FOR DEBUGGIN.
+            if self.config["model_name"] in ["independent"]: # DEPENDENT SHOULDN'T BE ON THIS LIST. IT'S FOR DEBUGGIN.
                 self.datasets[split] = registry.get_dataset_class(
                     "separate"
                 )(ds_conf, transform=transform)

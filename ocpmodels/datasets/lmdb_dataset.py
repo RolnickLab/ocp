@@ -158,11 +158,11 @@ class TrajectoryLmdbDataset(LmdbDataset):
 
 
 def data_list_collater(data_list, otf_graph=False):
-    if data_list[0] is tuple:
+    if type(data_list[0]) is tuple:
         graphs = [system[0] for system in data_list] + [system[1] for system in data_list]
         batch = Batch.from_data_list(graphs)
-    
-    batch = Batch.from_data_list(data_list)
+    else:
+        batch = Batch.from_data_list(data_list)
 
     if (
         not otf_graph
