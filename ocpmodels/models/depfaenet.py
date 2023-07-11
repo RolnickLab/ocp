@@ -15,7 +15,7 @@ class discOutputBlock(conOutputBlock):
             energy_head, hidden_channels, act
         )
 
-        del self.lin2
+        del self.lin2 # This is probably not necessary. Check out if you can delete it. 
         self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         self.sys_lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
@@ -50,20 +50,20 @@ class discOutputBlock(conOutputBlock):
         cat = ~ads
 
         ads_out = scatter(h, batch * ads, dim = 0, reduce = "add")
-        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add")
-        system = torch.cat([ads_out, cat_out], dim = 1)
+        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add") # Try to make an MLP differnt for each of the adsorbates and catalyst.
+        system = torch.cat([ads_out, cat_out], dim = 1) # To implement the comment above, you can implement another flag to be used for this model.
         
         system = self.sys_lin1(system)
         energy = self.sys_lin2(system)
         
         return energy
 
-@registry.register_model("dependent")
+@registry.register_model("depfaenet")
 class depFAENet(FAENet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        del self.output_block
+        del self.output_block # Probably you don't have to delete it, just redefine it. But double check.
         self.output_block = discOutputBlock(
             self.energy_head, kwargs["hidden_channels"], self.act
         )

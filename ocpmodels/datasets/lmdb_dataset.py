@@ -157,10 +157,17 @@ class TrajectoryLmdbDataset(LmdbDataset):
         )
 
 
-def data_list_collater(data_list, otf_graph=False):
+def data_list_collater(data_list, otf_graph=False): # Check if len(batch) is ever used
     if type(data_list[0]) is tuple:
         graphs = [system[0] for system in data_list] + [system[1] for system in data_list]
         batch = Batch.from_data_list(graphs)
+        for i in range(len(batch)):
+            if batch[i].neighbors.shape[0] == 0:
+                batch[i].neighbors = torch.tensor(
+                    [0],
+                    device = batch[i].neighbors.device,
+                    dtype = torch.int64
+                )
     else:
         batch = Batch.from_data_list(data_list)
 

@@ -19,13 +19,12 @@ default:
     batch_size: 256
     eval_batch_size: 256
   cp_data_to_tmpdir: true
-  config: faenet-is2re-all
   wandb-tags: 'best-config-??' # Insert what model you're running if running one by one.
   frame_averaging: 2D
   fa_frames: se3-random
   model:
     mp_type: updownscale
-    phys_embeds: False
+    phys_embeds: True # I CHANGED THIS! 
     tag_hidden_channels: 32
     pg_hidden_channels: 64
     energy_head: weighted-av-final-embeds
@@ -44,8 +43,8 @@ default:
     eval_every: 0.4
 
 runs:
-  - Notes: 'best-config-discmodel-all'
-    config: disconnected-is2re-all
-    is_disconnected: True
+  - config: depfaenet-is2re-10k
+
+  - config: depfaenet-is2re-all
 
   

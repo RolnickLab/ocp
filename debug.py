@@ -89,7 +89,20 @@ if __name__ == "__main__":
         args.logdir = resolve(args.logdir)
 
     # -- Build config
-    
+
+    args.wandb_name = "alvaro-carbonero-math"
+    args.wandb_project = "ocp-alvaro"
+
+    args.test_ri = True
+    args.mode = "train"
+    args.graph_rewiring = "remove-tag-0"
+    args.cp_data_to_tmpdir = True
+    args.config = "indfaenet-is2re-10k"
+    args.frame_averaging = "2D"
+    args.fa_frames = "se3-random"
+
+    args.config = "indfaenet-is2re-10k"
+
     trainer_config = build_config(args, override_args)
 
     if dist_utils.is_master():
@@ -99,6 +112,28 @@ if __name__ == "__main__":
     trainer_config["dataset"] = dist_utils.broadcast_from_master(
         trainer_config["dataset"]
     )
+
+    trainer_config["model"]["edge_embed_type"] = "all_rij"
+    trainer_config["model"]["mp_type"] = "updownscale"
+    trainer_config["model"]["phys_Embeds"] = False
+    trainer_config["model"]["tag_hidden_channels"] = 32
+    trainer_config["model"]["pg_hidden_channels"] = 64
+    trainer_config["model"]["energy_head"] = "weighted-av-final-embeds"
+    trainer_config["model"]["complex_mp"] = False
+    trainer_config["model"]["graph_norm"] = True
+    trainer_config["model"]['hidden_channels'] = 352
+    trainer_config["model"]["num_filters"] = 448
+    trainer_config["model"]["num_gaussians"] = 99
+    trainer_config["model"]["num_interactions"] = 6
+    trainer_config["model"]["second_layer_MLP"] = True
+    trainer_config["model"]["skip_co"] = "concat"
+
+    trainer_config["optim"]["batch_sizes"] = 256
+    trainer_config["optim"]["eval_batch_sizes"] = 256
+    trainer_config["optim"]["lr_initial"] = 0.0019
+    trainer_config["optim"]["scheduler"] = "LinearWarmupCosineAnnealingLR"
+    trainer_config["optim"]["max_epochs"] = 20
+    trainer_config["optim"]["eval_every"] = 0.4
 
     # -- Initial setup
 

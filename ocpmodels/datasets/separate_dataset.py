@@ -51,7 +51,7 @@ def graph_splitter(graph):
     ads_edge_index = ads_assoc[edge_index[:, adsorbate_e_mask]]
     cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
     
-    # Create the batches
+    # Create the graphs
     adsorbate = Data(
         edge_index = ads_edge_index,
         pos = pos[adsorbate_v_mask, :],
@@ -86,7 +86,7 @@ def graph_splitter(graph):
     return adsorbate, catalyst
 
 @registry.register_dataset("separate")
-class SeparateLmdbDataset(LmdbDataset):
+class SeparateLmdbDataset(LmdbDataset): # Check that the dataset works as intended, with an specific example.
     def __getitem__(self, idx):
         t0 = time.time_ns()
         if not self.path.is_file():
