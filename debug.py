@@ -92,16 +92,13 @@ if __name__ == "__main__":
 
     args.wandb_name = "alvaro-carbonero-math"
     args.wandb_project = "ocp-alvaro"
-
     args.test_ri = True
     args.mode = "train"
     args.graph_rewiring = "remove-tag-0"
     args.cp_data_to_tmpdir = True
-    args.config = "indfaenet-is2re-10k"
+    args.config = "depfaenet-is2re-10k"
     args.frame_averaging = "2D"
     args.fa_frames = "se3-random"
-
-    args.config = "indfaenet-is2re-10k"
 
     trainer_config = build_config(args, override_args)
 
@@ -115,7 +112,7 @@ if __name__ == "__main__":
 
     trainer_config["model"]["edge_embed_type"] = "all_rij"
     trainer_config["model"]["mp_type"] = "updownscale"
-    trainer_config["model"]["phys_Embeds"] = False
+    trainer_config["model"]["phys_embeds"] = True
     trainer_config["model"]["tag_hidden_channels"] = 32
     trainer_config["model"]["pg_hidden_channels"] = 64
     trainer_config["model"]["energy_head"] = "weighted-av-final-embeds"
