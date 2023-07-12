@@ -1254,7 +1254,12 @@ def get_pbc_distances(
 
     # correct for pbc
     neighbors = neighbors.to(cell.device)
-    cell = torch.repeat_interleave(cell, neighbors, dim=0)
+    try:
+        cell = torch.repeat_interleave(cell, neighbors, dim=0)
+    except:
+        print("cell", cell.shape)
+        print("neighbors", neighbors.shape)
+        cell = torch.repeat_interleave(cell, neighbors, dim=0)
     offsets = cell_offsets.float().view(-1, 1, 3).bmm(cell.float()).view(-1, 3)
     distance_vectors += offsets
 
