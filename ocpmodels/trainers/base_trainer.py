@@ -158,10 +158,23 @@ class BaseTrainer(ABC):
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
 
-        if self.config["model_name"] == "disconnected":
+        # Here's the models whose edges are removed as a transform
+        transform_models = ["depfaenet"]
+        if self.config["is_disconnected"]:
+            print("\n\nHeads up: cat-ads edges being removed!")
+
+        if self.config["model_name"] in edge_transform_models:
             if not self.config["is_disconnected"]:
-                print("\n\nWhen using the disconnected model, the flag 'is_disconnected' should be used! The flag has been turned on.")
+                print(f"\n\nWhen using {self.config['model_name']},",
+                    "the flag 'is_disconnected' should be used! The flag has been turned on.\n")
                 self.config["is_disconnected"] = True
+
+        # Here's the models whose graphs are disconnected in the dataset
+        dataset_models = ["indfaenet"]
+        self.separate_dataset = False
+        if self.config["model_name"] in dataset_models:
+            self.separate_dataset = True
+            print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
 
     def load(self):
         self.load_seed_from_config()
@@ -226,6 +239,7 @@ class BaseTrainer(ABC):
             pin_memory=True,
             batch_sampler=sampler,
         )
+
         return loader
 
     def load_datasets(self):
@@ -245,7 +259,7 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            if self.config["model_name"] in ["indfaenet"]: # DEPENDENT SHOULDN'T BE ON THIS LIST. IT'S FOR DEBUGGIN.
+            if self.config["model_name"] in ["indfaenet"]:
                 self.datasets[split] = registry.get_dataset_class(
                     "separate"
                 )(ds_conf, transform=transform)

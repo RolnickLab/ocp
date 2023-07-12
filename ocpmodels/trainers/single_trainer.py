@@ -196,7 +196,7 @@ class SingleTrainer(BaseTrainer):
         return predictions
 
     def train(self, disable_eval_tqdm=True, debug_batches=-1):
-        n_train = len(self.loaders["train"])
+        n_train = self.config["optim"]["batch_size"]
         epoch_int = 0
         eval_every = self.config["optim"].get("eval_every", n_train) or n_train
         if eval_every < 1:
@@ -449,8 +449,9 @@ class SingleTrainer(BaseTrainer):
             batch = next(iter(self.loaders[self.config["dataset"]["default_val"]]))
             self.model_forward(batch)
             self.logger.log({"Batch time": time.time() - start_time})
+            
             self.logger.log(
-                {"Model run time": model_run_time / len(self.loaders["train"])}
+                {"Model run time": model_run_time / self.config["optim"]["batch_size"]}
             )
             if log_epoch_times:
                 self.logger.log({"Epoch time": np.mean(epoch_times)})
@@ -550,15 +551,18 @@ class SingleTrainer(BaseTrainer):
         loss = {"total_loss": []}
 
         # Energy loss
-        energy_target = torch.cat(
-            [
-                batch.y_relaxed.to(self.device)
-                if self.task_name == "is2re"
-                else batch.y.to(self.device)
-                for batch in batch_list
-            ],
-            dim=0,
-        )
+        if not self.separate_dataset:
+            energy_target = torch.cat(
+                [
+                    batch.y_relaxed.to(self.device)
+                    if self.task_name == "is2re"
+                    else batch.y.to(self.device)
+                    for batch in batch_list
+                ],
+                dim=0,
+            )
+        else:
+            energy_target = batch_list[0].y_relaxed[:preds["energy"].shape[0]].to(self.device)
 
         if self.normalizer.get("normalize_labels", False):
             hofs = None
@@ -658,18 +662,24 @@ class SingleTrainer(BaseTrainer):
             [batch.natoms.to(self.device) for batch in batch_list], dim=0
         )
 
-        target = {
-            "energy": torch.cat(
-                [
-                    batch.y_relaxed.to(self.device)
-                    if self.task_name == "is2re"
-                    else batch.y.to(self.device)
-                    for batch in batch_list
-                ],
-                dim=0,
-            ),
-            "natoms": natoms,
-        }
+        if not self.separate_dataset:
+            target = {
+                "energy": torch.cat(
+                    [
+                        batch.y_relaxed.to(self.device)
+                        if self.task_name == "is2re"
+                        else batch.y.to(self.device)
+                        for batch in batch_list
+                    ],
+                    dim=0,
+                ),
+                "natoms": natoms,
+            }
+        else:
+            target = {
+                "energy": batch_list[0].y_relaxed[:preds["energy"].shape[0]].to(self.device),
+                "natoms": natoms,
+            }
 
         if self.config["model"].get("regress_forces", False):
             target["forces"] = torch.cat(
