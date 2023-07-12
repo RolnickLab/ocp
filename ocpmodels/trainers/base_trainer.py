@@ -163,7 +163,7 @@ class BaseTrainer(ABC):
         if self.config["is_disconnected"]:
             print("\n\nHeads up: cat-ads edges being removed!")
 
-        if self.config["model_name"] in edge_transform_models:
+        if self.config["model_name"] in transform_models:
             if not self.config["is_disconnected"]:
                 print(f"\n\nWhen using {self.config['model_name']},",
                     "the flag 'is_disconnected' should be used! The flag has been turned on.\n")
