@@ -7,6 +7,8 @@ from ocpmodels.common.registry import registry
 
 from torch_geometric.data import Batch
 
+
+
 @registry.register_model("indfaenet")
 class indFAENet(BaseModel): # Change to make it inherit from base model.
     def __init__(self, **kwargs):
@@ -28,7 +30,11 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
         # Fixing neighbor's dimensions. This error happens when an adsorbate has 0 edges.
         num_adsorbates = len(adsorbates)
         # Find indices of adsorbates without edges:
-        edgeless_ads = [i for i in range(num_adsorbates) if adsorbates[i].neighbors.shape[0] == 0]
+        edgeless_ads = [
+            i for i 
+            in range(num_adsorbates) 
+            if adsorbates[i].neighbors.shape[0] == 0
+        ]
         if len(edgeless_ads) > 0:
             # Since most adsorbates have an edge, we pop those values specifically from range(num_adsorbates)
             mask = list(range(num_adsorbates))
