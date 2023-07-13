@@ -125,8 +125,8 @@ if __name__ == "__main__":
     trainer_config["model"]["second_layer_MLP"] = True
     trainer_config["model"]["skip_co"] = "concat"
 
-    trainer_config["optim"]["batch_sizes"] = 256
-    trainer_config["optim"]["eval_batch_sizes"] = 256
+    #trainer_config["optim"]["batch_sizes"] = 256
+    #trainer_config["optim"]["eval_batch_sizes"] = 256
     trainer_config["optim"]["lr_initial"] = 0.0019
     trainer_config["optim"]["scheduler"] = "LinearWarmupCosineAnnealingLR"
     trainer_config["optim"]["max_epochs"] = 20

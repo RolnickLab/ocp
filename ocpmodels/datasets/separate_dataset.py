@@ -31,13 +31,10 @@ def graph_splitter(graph):
 
     # Make masks to filter most data we need
     adsorbate_v_mask = (tags == 2)
-    catalyst_v_mask = (tags == 1) + (tags == 0)
+    catalyst_v_mask = ~adsorbate_v_mask
 
     adsorbate_e_mask = (tags[edge_index][0] == 2) * (tags[edge_index][1] == 2)
-    catalyst_e_mask = (
-        ((tags[edge_index][0] == 1) + (tags[edge_index][0] == 0)) 
-        * ((tags[edge_index][1] == 1) + (tags[edge_index][1] == 0))
-    )
+    catalyst_e_mask = (tags[edge_index][0] != 2) * (tags[edge_index][1] != 2)
 
     # Reindex the edge indices.
     device = graph.edge_index.device

@@ -26,19 +26,16 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
         catalysts = Batch.from_data_list(data[batch_size:])
 
         # Fixing neighbor's dimensions. This error happens when an adsorbate has 0 edges.
-        # We do so only on adsorbates, because it is reasonable to assume catalysts have at least one edge.
         num_adsorbates = len(adsorbates)
         # Find indices of adsorbates without edges:
-        edgeless = [i for i in range(num_adsorbates) if adsorbates[i].neighbors.shape[0] == 0]
-        if len(edgeless) > 0:
+        edgeless_ads = [i for i in range(num_adsorbates) if adsorbates[i].neighbors.shape[0] == 0]
+        if len(edgeless_ads) > 0:
             # Since most adsorbates have an edge, we pop those values specifically from range(num_adsorbates)
             mask = list(range(num_adsorbates))
             num_popped = 0 # We can do this since edgeless is already sorted
-            for unwanted in edgeless:
+            for unwanted in edgeless_ads:
                 mask.pop(unwanted-num_popped)
                 num_popped += 1
-
-            # Now, we create the new neighbors. 
             new_nbrs = torch.zeros(
                 num_adsorbates,
                 dtype = torch.int64,
@@ -46,6 +43,25 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             )
             new_nbrs[mask] = adsorbates.neighbors
             adsorbates.neighbors = new_nbrs
+
+        # Now for catalysts
+        num_catalysts = len(catalysts)
+        edgeless_cats = [i for i in range(num_catalysts) if catalysts[i].neighbors.shape[0] == 0]
+        if len(edgeless_cats) > 0:
+            mask = list(range(num_catalysts))
+            num_popped = 0
+            for unwanted in edgeless_cats:
+                mask.pop(unwanted-num_popped)
+                num_popped += 1
+
+            # Now, we create the new neighbors. 
+            new_nbrs = torch.zeros(
+                num_catalysts,
+                dtype = torch.int64,
+                device = catalysts.neighbors.device,
+            )
+            new_nbrs[mask] = catalysts.neighbors
+            catalysts.neighbors = new_nbrs
 
         # We make predictions for each
         pred_ads = self.ads_model(adsorbates, mode)

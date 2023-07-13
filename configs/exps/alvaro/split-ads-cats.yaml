@@ -32,7 +32,7 @@ default:
     num_interactions: 6
     second_layer_MLP: True
     skip_co: concat
-    edge_embed_type: rij
+    edge_embed_type: all_rij
   optim:
     lr_initial: 0.0019
     scheduler: LinearWarmupCosineAnnealingLR
@@ -43,3 +43,5 @@ default:
 
 runs:
   - config: indfaenet-is2re-10k
+
+  - config: indfaenet-is2re-all
