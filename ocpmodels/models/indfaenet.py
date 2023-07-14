@@ -1,13 +1,14 @@
 import torch
 from torch import nn
+from torch.nn import Linear
 
 from ocpmodels.models.faenet import FAENet
+from ocpmodels.models.faenet import OutputBlock
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.common.registry import registry
+from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
-
-
 
 @registry.register_model("indfaenet")
 class indFAENet(BaseModel): # Change to make it inherit from base model.
@@ -18,6 +19,13 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
 
         self.ads_model = FAENet(**kwargs)
         self.cat_model = FAENet(**kwargs)
+
+        self.act = (
+            getattr(nn.functional, kwargs["act"]) if kwargs["act"] != "swish" else swish
+        )
+
+        self.lin1 = Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2)
+        self.lin2 = Linear(kwargs["hidden_channels"] // 2, 1)
         # To do this, you can create a new input to FAENet so that
         # it makes it predict a vector, where the default is normal FAENet.
 
@@ -73,9 +81,17 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
         pred_ads = self.ads_model(adsorbates, mode)
         pred_cat = self.cat_model(catalysts, mode)
 
+        ads_energy = pred_ads["energy"]
+        cat_energy = pred_cat["energy"]
+
+        system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
+        system_energy = self.lin1(system_energy)
+        system_energy = self.act(system_energy)
+        system_energy = self.lin2(system_energy)
+
         # We combine predictions and return them
         pred_system = {
-            "energy" : (pred_ads["energy"] + pred_cat["energy"]) / 2,
+            "energy" : system_energy,
             "pooling_loss" : pred_ads["pooling_loss"] if pred_ads["pooling_loss"] is None
                 else pred_ads["pooling_loss"] + pred_cat["pooling_loss"],
             "hidden_state" : torch.cat([pred_ads["hidden_state"], pred_cat["hidden_state"]], dim = 0)

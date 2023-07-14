@@ -151,18 +151,11 @@ class BaseTrainer(ABC):
                 "to stop the training after the next validation\n",
             )
             (run_dir / f"config-{JOB_ID}.yaml").write_text(yaml.dump(self.config))
-        self.load()
-
-        self.evaluator = Evaluator(
-            task=self.task_name,
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
 
         # Here's the models whose edges are removed as a transform
         transform_models = ["depfaenet"]
         if self.config["is_disconnected"]:
             print("\n\nHeads up: cat-ads edges being removed!")
-
         if self.config["model_name"] in transform_models:
             if not self.config["is_disconnected"]:
                 print(f"\n\nWhen using {self.config['model_name']},",
@@ -175,6 +168,13 @@ class BaseTrainer(ABC):
         if self.config["model_name"] in dataset_models:
             self.separate_dataset = True
             print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
+
+        self.load()
+
+        self.evaluator = Evaluator(
+            task = self.task_name,
+            model_regresses_forces = self.config["model"].get("regress_forces", ""),
+        )
 
     def load(self):
         self.load_seed_from_config()
@@ -397,6 +397,7 @@ class BaseTrainer(ABC):
                 "task_name": self.task_name,
             },
             **self.config["model"],
+            "model_name": self.config["model_name"],            
         }
 
         self.model = registry.get_model_class(self.config["model_name"])(

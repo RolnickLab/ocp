@@ -457,14 +457,15 @@ class SingleTrainer(BaseTrainer):
                 self.logger.log({"Epoch time": np.mean(epoch_times)})
 
         # Check respect of symmetries
-        if self.test_ri and not is_test_env:
-            symmetry = self.test_model_symmetries(debug_batches=debug_batches)
-            if symmetry == "SIGTERM":
-                return "SIGTERM"
-            if self.logger:
-                self.logger.log(symmetry)
-            if not self.silent:
-                print(symmetry)
+        if not self.separate_dataset:
+            if self.test_ri and not is_test_env:
+                symmetry = self.test_model_symmetries(debug_batches=debug_batches)
+                if symmetry == "SIGTERM":
+                    return "SIGTERM"
+                if self.logger:
+                    self.logger.log(symmetry)
+                if not self.silent:
+                    print(symmetry)
 
         # Close datasets
         if debug_batches < 0:

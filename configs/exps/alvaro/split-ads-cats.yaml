@@ -44,4 +44,4 @@ default:
 runs:
   - config: indfaenet-is2re-10k
 
-  - config: indfaenet-is2re-all
+#  - config: indfaenet-is2re-all

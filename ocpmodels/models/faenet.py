@@ -397,13 +397,18 @@ class InteractionBlock(MessagePassing):
 
 
 class OutputBlock(nn.Module):
-    def __init__(self, energy_head, hidden_channels, act):
+    def __init__(
+        self, energy_head, hidden_channels, act, model_name = "faenet"
+    ):
         super().__init__()
         self.energy_head = energy_head
         self.act = act
 
         self.lin1 = Linear(hidden_channels, hidden_channels // 2)
-        self.lin2 = Linear(hidden_channels // 2, 1)
+        if model_name == "faenet":
+            self.lin2 = Linear(hidden_channels // 2, 1)
+        elif model_name == "indfaenet":
+            self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         # weighted average & pooling
         if self.energy_head in {"pooling", "random"}:
@@ -527,6 +532,7 @@ class FAENet(BaseModel):
             "one-supernode-per-atom-type",
             "one-supernode-per-atom-type-dist",
         }
+        
         # Gaussian Basis
         self.distance_expansion = GaussianSmearing(
             0.0, self.cutoff, kwargs["num_gaussians"]
@@ -565,7 +571,7 @@ class FAENet(BaseModel):
 
         # Output block
         self.output_block = OutputBlock(
-            self.energy_head, kwargs["hidden_channels"], self.act
+            self.energy_head, kwargs["hidden_channels"], self.act, kwargs["model_name"]
         )
 
         # Energy head
@@ -586,7 +592,13 @@ class FAENet(BaseModel):
 
         # Skip co
         if self.skip_co == "concat": # for the implementation of independent faenet, make sure the input is large enough
-            self.mlp_skip_co = Linear((kwargs["num_interactions"] + 1), 1)
+            if kwargs["model_name"] == "faenet":
+                self.mlp_skip_co = Linear((kwargs["num_interactions"] + 1), 1)
+            elif kwargs["model_name"] == "indfaenet":
+                self.mlp_skip_co = Linear(
+                    (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
+                    kwargs["hidden_channels"] // 2
+                )
         elif self.skip_co == "concat_atom":
             self.mlp_skip_co = Linear(
                 ((kwargs["num_interactions"] + 1) * kwargs["hidden_channels"]),
@@ -663,7 +675,6 @@ class FAENet(BaseModel):
             h = h + interaction(h, edge_index, e)
 
         # Atom skip-co
-        
         if self.skip_co == "concat_atom":
             energy_skip_co.append(h)
             h = self.act(self.mlp_skip_co(torch.cat(energy_skip_co, dim=1)))
