@@ -42,6 +42,12 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: indfaenet-is2re-10k
+  - config: depfaenet-is2re-all
+    is_disconnected: True
+    disconnected_mlp: True
 
-#  - config: indfaenet-is2re-all
+  - config: indfaenet-is2re-10k
+    disconnected_mlp: False
+
+  - config: indfaenet-is2re-all
+    disconnected_mlp: False

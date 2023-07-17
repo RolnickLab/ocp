@@ -26,6 +26,11 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
 
         self.lin1 = Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2)
         self.lin2 = Linear(kwargs["hidden_channels"] // 2, 1)
+
+        self.disconnected_mlp = kwarsg["disconnected_mlp"] if "disconnected_mlp" in kwargs else False
+        if self.disconnected_mlp:
+            self.ads_lin = Linear(kwargs["hidden_channels"] // 2, kwargs["hidden_channels"] // 2)
+            self.cat_lin = Linear(kwargs["hidden_channels"] // 2, kwargs["hidden_channels"] // 2)
         # To do this, you can create a new input to FAENet so that
         # it makes it predict a vector, where the default is normal FAENet.
 
@@ -44,7 +49,8 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             if adsorbates[i].neighbors.shape[0] == 0
         ]
         if len(edgeless_ads) > 0:
-            # Since most adsorbates have an edge, we pop those values specifically from range(num_adsorbates)
+            # Since most adsorbates have an edge,
+            # we pop those values specifically from range(num_adsorbates)
             mask = list(range(num_adsorbates))
             num_popped = 0 # We can do this since edgeless is already sorted
             for unwanted in edgeless_ads:
@@ -83,6 +89,9 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
 
         ads_energy = pred_ads["energy"]
         cat_energy = pred_cat["energy"]
+        if self.disconnected_mlp:
+            ads_energy = self.ads_lin(ads_energy)
+            cat_energy = self.cat_lin(cat_energy)
 
         system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
         system_energy = self.lin1(system_energy)

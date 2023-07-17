@@ -10,12 +10,17 @@ from ocpmodels.common.utils import conditional_grad
 from torch_geometric.data import Batch
 
 class discOutputBlock(conOutputBlock):
-    def __init__(self, energy_head, hidden_channels, act):
+    def __init__(self, energy_head, hidden_channels, act, disconnected_mlp = False):
         super(discOutputBlock, self).__init__(
             energy_head, hidden_channels, act
         )
 
         self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
+
+        self.disconnected_mlp = disconnected_mlp
+        if self.disconnected_mlp:
+            self.ads_lin = Linear(hidden_channels // 2, hidden_channels // 2)
+            self.cat_lin = Linear(hidden_channels // 2, hidden_channels // 2)
 
         self.sys_lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
         self.sys_lin2 = Linear(hidden_channels // 2, 1)
@@ -49,12 +54,17 @@ class discOutputBlock(conOutputBlock):
         cat = ~ads
 
         ads_out = scatter(h, batch * ads, dim = 0, reduce = "add")
-        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add") # Try to make an MLP different for each of the adsorbates and catalyst.
-        system = torch.cat([ads_out, cat_out], dim = 1) # To implement the comment above, you can implement another flag to be used for this model.
-        
+        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add")
+
+        if self.disconnected_mlp:
+            ads_out = self.ads_lin(ads_out)
+            cat_out = self.cat_lin(cat_out)
+
+        system = torch.cat([ads_out, cat_out], dim = 1)
+
         system = self.sys_lin1(system)
         energy = self.sys_lin2(system)
-        
+
         return energy
 
 @registry.register_model("depfaenet")
@@ -62,8 +72,11 @@ class depFAENet(FAENet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        if "disconnected_mlp" not in kwargs:
+            kwargs["disconnected_mlp"] = False
+
         self.output_block = discOutputBlock(
-            self.energy_head, kwargs["hidden_channels"], self.act
+            self.energy_head, kwargs["hidden_channels"], self.act, kwargs["disconnected_mlp"]
         )
 
     @conditional_grad(torch.enable_grad())
