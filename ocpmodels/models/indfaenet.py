@@ -27,8 +27,6 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
         self.lin1 = Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2)
         self.lin2 = Linear(kwargs["hidden_channels"] // 2, 1)
 
-        import ipdb
-        ipdb.set_trace()
         self.disconnected_mlp = kwargs.get("disconnected_mlp", False)
         if self.disconnected_mlp:
             self.ads_lin = Linear(kwargs["hidden_channels"] // 2, kwargs["hidden_channels"] // 2)
