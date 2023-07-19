@@ -34,7 +34,7 @@ default:
     skip_co: concat
     edge_embed_type: all_rij
   optim:
-    lr_initial: 0.0019
+    #lr_initial: 0.0019
     scheduler: LinearWarmupCosineAnnealingLR
     max_epochs: 20
     eval_every: 0.4
@@ -42,15 +42,14 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: indfaenet-is2re-10k
-    model:
-      disconnected_mlp: True
+  - config: indfaenet-is2re-all
+    optim:
+      lr_initial: 0.0019
 
   - config: indfaenet-is2re-all
-    model:
-      disconnected_mlp: True
+    optim:
+      lr_initial: 0.001
 
-  - config: depfaenet-is2re-all
-    is_disconnected: True
-    model:
-      disconnected_mlp: True
+  - config: indfaenet-is2re-all
+    optim:
+      lr_initial: 0.0005

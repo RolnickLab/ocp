@@ -72,11 +72,9 @@ class depFAENet(FAENet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if "disconnected_mlp" not in kwargs:
-            kwargs["disconnected_mlp"] = False
-
+        self.disconnected_mlp = kwargs.get("disconnected_mlp", False)
         self.output_block = discOutputBlock(
-            self.energy_head, kwargs["hidden_channels"], self.act, kwargs["disconnected_mlp"]
+            self.energy_head, kwargs["hidden_channels"], self.act, self.disconnected_mlp
         )
 
     @conditional_grad(torch.enable_grad())
