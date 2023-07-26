@@ -32,15 +32,15 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
         self.transformer_out = kwargs.get("transformer_out", False)
         if self.transformer_out:
             self.combination = Transformer(
-                d_model = kwargs["hidden_channels"],
+                d_model = kwargs["hidden_channels"] // 2,
                 nhead = 2,
                 num_encoder_layers = 2,
                 num_decoder_layers = 2,
                 dim_feedforward = kwargs["hidden_channels"],
                 batch_first = True
             )
-            self.query_pos = nn.Parameter(torch.rand(kwargs["hidden_channels"]))
-            self.transformer_lin = Linear(kwargs["hidden_channels"], 1)
+            self.query_pos = nn.Parameter(torch.rand(kwargs["hidden_channels"] // 2))
+            self.transformer_lin = Linear(kwargs["hidden_channels"] // 2, 1)
         else:
             self.combination = nn.Sequential(
                 Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
@@ -107,16 +107,22 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             ads_energy = self.ads_lin(ads_energy)
             cat_energy = self.cat_lin(cat_energy)
 
-        system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
         if self.transformer_out:
-            batch_size = system_energy.shape[0]
+            batch_size = ads_energy.shape[0]
             
-            fake_target_sequence = self.query_pos.unsqueeze(0).expand(batch_size, -1).squeeze(1)
-            system_energy = system_energy.squeeze(1)
-        
+            fake_target_sequence = self.query_pos.unsqueeze(0).expand(batch_size, -1).unsqueeze(1)
+            system_energy = torch.cat(
+                [
+                    ads_energy.unsqueeze(1),
+                    cat_energy.unsqueeze(1)
+                ],
+                dim = 1
+            )
+            
             system_energy = self.combination(system_energy, fake_target_sequence).squeeze(1)
             system_energy = self.transformer_lin(system_energy)
         else:
+            system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
             system_energy = self.combination(system_energy)
 
         # We combine predictions and return them

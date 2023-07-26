@@ -124,7 +124,7 @@ if __name__ == "__main__":
     trainer_config["model"]["num_interactions"] = 6
     trainer_config["model"]["second_layer_MLP"] = True
     trainer_config["model"]["skip_co"] = "concat"
-    trainer_config["model"]["transformer_out"] = False
+    trainer_config["model"]["transformer_out"] = True
     #trainer_config["model"]["disconnected_mlp"] = True
 
     #trainer_config["optim"]["batch_sizes"] = 256
