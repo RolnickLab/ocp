@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import Linear
+from torch.nn import Linear, Transformer
 
 from ocpmodels.models.faenet import FAENet
 from ocpmodels.models.faenet import OutputBlock
@@ -24,15 +24,29 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             getattr(nn.functional, kwargs["act"]) if kwargs["act"] != "swish" else swish
         )
 
-        self.lin1 = Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2)
-        self.lin2 = Linear(kwargs["hidden_channels"] // 2, 1)
-
         self.disconnected_mlp = kwargs.get("disconnected_mlp", False)
         if self.disconnected_mlp:
             self.ads_lin = Linear(kwargs["hidden_channels"] // 2, kwargs["hidden_channels"] // 2)
             self.cat_lin = Linear(kwargs["hidden_channels"] // 2, kwargs["hidden_channels"] // 2)
-        # To do this, you can create a new input to FAENet so that
-        # it makes it predict a vector, where the default is normal FAENet.
+
+        self.transformer_out = kwargs.get("transformer_out", False)
+        if self.transformer_out:
+            self.combination = Transformer(
+                d_model = kwargs["hidden_channels"],
+                nhead = 2,
+                num_encoder_layers = 2,
+                num_decoder_layers = 2,
+                dim_feedforward = kwargs["hidden_channels"],
+                batch_first = True
+            )
+            self.query_pos = nn.Parameter(torch.rand(kwargs["hidden_channels"]))
+            self.transformer_lin = Linear(kwargs["hidden_channels"], 1)
+        else:
+            self.combination = nn.Sequential(
+                Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
+                self.act,
+                Linear(kwargs["hidden_channels"] // 2, 1)
+            )
 
     def energy_forward(self, data, mode = "train"): # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
         batch_size = len(data) // 2
@@ -94,9 +108,16 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             cat_energy = self.cat_lin(cat_energy)
 
         system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
-        system_energy = self.lin1(system_energy)
-        system_energy = self.act(system_energy)
-        system_energy = self.lin2(system_energy)
+        if self.transformer_out:
+            batch_size = system_energy.shape[0]
+            
+            fake_target_sequence = self.query_pos.unsqueeze(0).expand(batch_size, -1).squeeze(1)
+            system_energy = system_energy.squeeze(1)
+        
+            system_energy = self.combination(system_energy, fake_target_sequence).squeeze(1)
+            system_energy = self.transformer_lin(system_energy)
+        else:
+            system_energy = self.combination(system_energy)
 
         # We combine predictions and return them
         pred_system = {

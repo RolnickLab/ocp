@@ -1,4 +1,4 @@
-# MODIFY THIS ONE FOR RUNS
+\# MODIFY THIS ONE FOR RUNS
 
 job:
   mem: 32GB
@@ -44,13 +44,4 @@ default:
 runs:
   - config: indfaenet-is2re-10k
     model:
-      disconnected_mlp: True
-
-  - config: indfaenet-is2re-all
-    model:
-      disconnected_mlp: True
-
-  - config: depfaenet-is2re-all
-    is_disconnected: True
-    model:
-      disconnected_mlp: True
+      transformer_out: True
