@@ -1,4 +1,4 @@
-import torch
+import torch, math
 from torch import nn
 from torch.nn import Linear, Transformer
 
@@ -9,6 +9,27 @@ from ocpmodels.common.registry import registry
 from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
+
+# Implementation of positional encoding obtained from Harvard's annotated transformer's guide
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout = 0.1, max_len = 5):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p = dropout)
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
+        return self.dropout(x)
 
 @registry.register_model("indfaenet")
 class indFAENet(BaseModel): # Change to make it inherit from base model.
@@ -38,6 +59,11 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
                 num_decoder_layers = 2,
                 dim_feedforward = kwargs["hidden_channels"],
                 batch_first = True
+            )
+            self.positional_encoding = PositionalEncoding(
+                kwargs["hidden_channels"] // 2,
+                dropout = 0.1,
+                max_len = 5,
             )
             self.query_pos = nn.Parameter(torch.rand(kwargs["hidden_channels"] // 2))
             self.transformer_lin = Linear(kwargs["hidden_channels"] // 2, 1)
@@ -118,6 +144,8 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
                 ],
                 dim = 1
             )
+
+            system_energy = self.positional_encoding(system_energy)
             
             system_energy = self.combination(system_energy, fake_target_sequence).squeeze(1)
             system_energy = self.transformer_lin(system_energy)
