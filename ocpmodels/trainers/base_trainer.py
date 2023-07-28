@@ -163,9 +163,9 @@ class BaseTrainer(ABC):
                 self.config["is_disconnected"] = True
 
         # Here's the models whose graphs are disconnected in the dataset
-        dataset_models = ["indfaenet"]
+        self.dataset_models = ["indfaenet", "tifaenet"]
         self.separate_dataset = False
-        if self.config["model_name"] in dataset_models:
+        if self.config["model_name"] in self.dataset_models:
             self.separate_dataset = True
             print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
 
@@ -259,7 +259,7 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            if self.config["model_name"] in ["indfaenet"]:
+            if self.config["model_name"] in self.dataset_models:
                 self.datasets[split] = registry.get_dataset_class(
                     "separate"
                 )(ds_conf, transform=transform)
