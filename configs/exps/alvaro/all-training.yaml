@@ -42,6 +42,12 @@ default:
     eval_batch_size: 256
 
 runs:
+  - config: tifaenet-is2re-all
+
+  - config: tifaenet-is2re-all
+    model:
+      transformer_out: True
+
   - config: indfaenet-is2re-all
     model:
       transformer_out: True

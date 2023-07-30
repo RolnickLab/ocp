@@ -1,5 +1,10 @@
 import torch
+import math
 from torch import nn
+from torch.nn import Linear, Transformer, Softmax
+
+from torch_geometric.data import Batch
+from torch_geometric.nn import radius_graph
 
 from ocpmodels.models.faenet import (
     GaussianSmearing,
@@ -7,18 +12,52 @@ from ocpmodels.models.faenet import (
     InteractionBlock,
     OutputBlock
 )
+from ocpmodels.models.indfaenet import PositionalEncoding
 from ocpmodels.common.registry import registry
 from ocpmodels.models.base_model import BaseModel
+from ocpmodels.common.utils import conditional_grad, get_pbc_distances
+from ocpmodels.models.utils.activations import swish
 
 class TransformerInteraction(nn.Module):
-    def __init__(self, placeholder):
-        pass
+    def __init__(self, d_model):
+        super(TransformerInteraction, self).__init__()
 
-    def forward(self, inputs):
-        pass
+        self.queries_ads = Linear(d_model, d_model)
+        self.keys_ads = Linear(d_model, d_model)
+        self.values_ads = Linear(d_model, d_model)
+
+        self.queries_cat = Linear(d_model, d_model)
+        self.keys_cat = Linear(d_model, d_model)
+        self.values_cat = Linear(d_model, d_model)
+
+        self.softmax = Softmax(dim = 1)
+
+    def forward(self, h_ads, h_cat):
+        queries_ads = self.queries_ads(h_ads)
+        keys_ads = self.keys_ads(h_ads)
+        values_ads = self.values_ads(h_ads)
+
+        queries_cat = self.queries_cat(h_cat)
+        keys_cat = self.keys_cat(h_cat)
+        values_cat = self.values_cat(h_cat)
+
+        d_model = queries_ads.shape[1]
+
+        scalars_ads = self.softmax(
+            torch.matmul(queries_ads, torch.transpose(keys_cat, 0, 1)) / math.sqrt(d_model)
+        )
+        scalars_cat = self.softmax(
+            torch.matmul(queries_cat, torch.transpose(keys_ads, 0, 1)) / math.sqrt(d_model)
+        )
+
+        h_ads = h_ads + torch.matmul(scalars_ads, values_cat)
+        h_cat = h_cat + torch.matmul(scalars_cat, values_ads)
+
+        return h_ads, h_cat
+        
 
 @registry.register_model("tifaenet")
-class TIFaenet(BaseModel)
+class TIFaenet(BaseModel):
     def __init__(self, **kwargs):
         super(TIFaenet, self).__init__()
 
@@ -111,8 +150,9 @@ class TIFaenet(BaseModel)
         self.transformer_interactions = nn.ModuleList(
             [
                 TransformerInteraction(
-                    placeholder = 3.14159265
+                    d_model = kwargs["hidden_channels"],
                 )
+                for _ in range(kwargs["num_interactions"])
             ]
         )
 
@@ -140,7 +180,7 @@ class TIFaenet(BaseModel)
                     kwargs["num_interactions"] + 1,
                     1
                 )
-            elif kwargs["model_name"] == "indfaenet":
+            elif kwargs["model_name"] in {"indfaenet", "tifaenet"}:
                 self.mlp_skip_co_ads = Linear(
                     (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
                     kwargs["hidden_channels"] // 2
@@ -160,9 +200,9 @@ class TIFaenet(BaseModel)
         if self.transformer_out:
             self.combination = Transformer(
                 d_model = kwargs["hidden_channels"] // 2,
-                nhead = 2,
-                num_encoder_layers = 2,
-                num_decoder_layers = 2,
+                nhead = 1,
+                num_encoder_layers = 1,
+                num_decoder_layers = 1,
                 dim_feedforward = kwargs["hidden_channels"],
                 batch_first = True
             )
@@ -195,18 +235,28 @@ class TIFaenet(BaseModel)
         catalysts = self.neighbor_fixer(catalysts)
 
         # Graph rewiring
-        ads_rewiring = graph_rewiring(adsorbates)
+        ads_rewiring = self.graph_rewiring(adsorbates)
         edge_index_ads, edge_weight_ads, rel_pos_ads, edge_attr_ads = ads_rewiring
 
-        cat_rewiring = graph_rewiring(catalysts)
+        cat_rewiring = self.graph_rewiring(catalysts)
         edge_index_cat, edge_weight_cat, rel_pos_cat, edge_attr_cat = cat_rewiring
 
         # Embedding
-        h_ads, e_ads = embedding(
-            edge_weight_ads, rel_pos_ads, edge_attr_ads, adsorbates.tags
+        h_ads, e_ads = self.embedding(
+            adsorbates.atomic_numbers.long(),
+            edge_weight_ads, 
+            rel_pos_ads,
+            edge_attr_ads,
+            adsorbates.tags,
+            self.embed_block_ads
         )
-        h_cat, e_cat = embedding(
-            edge_weight_cat, rel_pos_cat, edge_attr_cat, catalysts.tags
+        h_cat, e_cat = self.embedding(
+            catalysts.atomic_numbers.long(),
+            edge_weight_cat,
+            rel_pos_cat,
+            edge_attr_cat,
+            catalysts.tags,
+            self.embed_block_cat
         )
 
         # Compute atom weights for late energy head
@@ -227,20 +277,20 @@ class TIFaenet(BaseModel)
         ) in zip(
             self.interaction_blocks_ads,
             self.interaction_blocks_cat,
-            self.transformer_blocks
+            self.transformer_interactions,
         ):
             if self.skip_co == "concat_atom":
                 energy_skip_co_ads.append(h_ads)
                 energy_skip_co_cat.append(h_cat)
             elif self.skip_co:
                 energy_skip_co_ads.append(
-                    self.ouput_block_ads(
+                    self.output_block_ads(
                         h_ads, edge_index_ads, edge_weight_ads, batch_ads, alpha_ads
                     )
                 )
                 energy_skip_co_cat.append(
                     self.output_block_cat(
-                        h_cat, edge_index_cat, edge_weight_cat, batch_ads, alpha_cat
+                        h_cat, edge_index_cat, edge_weight_cat, batch_cat, alpha_cat
                     )
                 )
             intra_ads = interaction_ads(h_ads, edge_index_ads, e_ads)
@@ -268,7 +318,7 @@ class TIFaenet(BaseModel)
         # Skip-connection
         energy_skip_co_ads.append(energy_ads)
         energy_skip_co_cat.append(energy_cat)
-        if self.skip_co == "concat"
+        if self.skip_co == "concat":
             energy_ads = self.mlp_skip_co_ads(torch.cat(energy_skip_co_ads, dim = 1))
             energy_cat = self.mlp_skip_co_cat(torch.cat(energy_skip_co_cat, dim = 1))
         elif self.skip_co == "add":
@@ -293,20 +343,20 @@ class TIFaenet(BaseModel)
             system_energy = self.combination(system_energy, fake_target_sequence).squeeze(1)
             system_energy = self.transformer_lin(system_energy)
         else:
-            system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
+            system_energy = torch.cat([energy_ads, energy_cat], dim = 1)
             system_energy = self.combination(system_energy)
 
         # We combine predictions and return them
         pred_system = {
             "energy" : system_energy,
             "pooling_loss" : None, # This might break something.
-            "hidden_state" : torch.cat(energy_ads, energy_cat, dim = 0)
+            "hidden_state" : torch.cat([energy_ads, energy_cat], dim = 1)
         }
 
         return pred_system
 
     @conditional_grad(torch.enable_grad())
-    def embedding(self, edge_weight, rel_pos, edge_attr, tags):
+    def embedding(self, z, edge_weight, rel_pos, edge_attr, tags, embed_func):
         # Normalize and squash to [0,1] for gaussian basis
         rel_pos_normalized = None
         if self.edge_embed_type in {"sh", "all_rij", "all"}:
@@ -315,16 +365,21 @@ class TIFaenet(BaseModel)
         pooling_loss = None  # deal with pooling loss
 
         # Embedding block
-        h, e = self.embed_block(z, rel_pos, edge_attr, tags, rel_pos_normalized)
+        h, e = embed_func(z, rel_pos, edge_attr, tags, rel_pos_normalized)
 
         return h, e
 
     @conditional_grad(torch.enable_grad())
-    def graph_rewiring(self, data)
+    def graph_rewiring(self, data):
         z = data.atomic_numbers.long()
         pos = data.pos
         batch = data.batch
 
+        mode = data.mode[0]
+        if mode == "adsorbate":
+            distance_expansion = self.distance_expansion_ads
+        else:
+            distance_expansion = self.distance_expansion_cat
         # Use periodic boundary conditions
         if self.use_pbc:
             assert z.dim() == 1 and z.dtype == torch.long
@@ -341,7 +396,7 @@ class TIFaenet(BaseModel)
             edge_index = out["edge_index"]
             edge_weight = out["distances"]
             rel_pos = out["distance_vec"]
-            edge_attr = self.distance_expansion(edge_weight)
+            edge_attr = distance_expansion(edge_weight)
         else:
             edge_index = radius_graph(
                 pos,
@@ -353,7 +408,7 @@ class TIFaenet(BaseModel)
             row, col = edge_index
             rel_pos = pos[row] - pos[col]
             edge_weight = rel_pos.norm(dim=-1)
-            edge_attr = self.distance_expansion(edge_weight)
+            edge_attr = distance_expansion(edge_weight)
 
         return (edge_index, edge_weight, rel_pos, edge_attr)
 
