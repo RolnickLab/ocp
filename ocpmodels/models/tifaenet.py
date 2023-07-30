@@ -53,6 +53,8 @@ class TransformerInteraction(nn.Module):
         h_ads = h_ads + torch.matmul(scalars_ads, values_cat)
         h_cat = h_cat + torch.matmul(scalars_cat, values_ads)
 
+        # WHAT ABOUT NORMALIZING!!
+
         return h_ads, h_cat
         
 

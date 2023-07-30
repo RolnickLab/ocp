@@ -34,7 +34,7 @@ default:
     skip_co: concat
     edge_embed_type: all_rij
   optim:
-    lr_initial: 0.001
+    lr_initial: 0.00075
     scheduler: LinearWarmupCosineAnnealingLR
     max_epochs: 20
     eval_every: 0.4
@@ -45,9 +45,5 @@ runs:
   - config: tifaenet-is2re-all
 
   - config: tifaenet-is2re-all
-    model:
-      transformer_out: True
-
-  - config: indfaenet-is2re-all
     model:
       transformer_out: True
