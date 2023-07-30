@@ -202,9 +202,9 @@ class TIFaenet(BaseModel):
         if self.transformer_out:
             self.combination = Transformer(
                 d_model = kwargs["hidden_channels"] // 2,
-                nhead = 1,
-                num_encoder_layers = 1,
-                num_decoder_layers = 1,
+                nhead = 2,
+                num_encoder_layers = 2,
+                num_decoder_layers = 2,
                 dim_feedforward = kwargs["hidden_channels"],
                 batch_first = True
             )
