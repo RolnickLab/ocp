@@ -19,8 +19,38 @@ from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.utils.activations import swish
 
 class TransformerInteraction(nn.Module):
-    def __init__(self, d_model):
+    def __init__(self, d_model, nhead = 2, num_encoder_layers = 2, num_decoder_layers = 2):
         super(TransformerInteraction, self).__init__()
+
+        self.transformer_ads = Transformer(
+            d_model = d_model,
+            nhead = nhead,
+            num_encoder_layers = num_encoder_layers,
+            num_decoder_layers = num_decoder_layers,
+            dim_feedforward = d_model,
+            batch_first = True
+        )
+
+        self.transformer_ads = Transformer(
+            d_model = d_model,
+            nhead = nhead,
+            num_encoder_layers = num_encoder_layers,
+            num_decoder_layers = num_decoder_layers,
+            dim_feedforward = d_model,
+            batch_first = True
+        )
+
+    def forward(self, h_ads, h_cat):
+        import ipdb
+        ipdb.set_trace()
+
+
+        return h_ads, h_cat
+        
+
+class AttentionInteraction(nn.Module):
+    def __init__(self, d_model):
+        super(AttentionInteraction, self).__init__()
 
         self.queries_ads = Linear(d_model, d_model)
         self.keys_ads = Linear(d_model, d_model)
@@ -53,7 +83,8 @@ class TransformerInteraction(nn.Module):
         h_ads = h_ads + torch.matmul(scalars_ads, values_cat)
         h_cat = h_cat + torch.matmul(scalars_cat, values_ads)
 
-        # WHAT ABOUT NORMALIZING!!
+        h_ads = nn.functional.normalize(h_ads)
+        h_cat = nn.functional.normalize(h_cat)
 
         return h_ads, h_cat
         
@@ -149,9 +180,18 @@ class TIFaenet(BaseModel):
         )
 
         # Transformer Interaction
-        self.transformer_interactions = nn.ModuleList(
+        inter_interaction_type = kwargs.get("tifaenet_mode", None)
+        assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer"
+        assert inter_interaction_type in {"attention", "transformer"}, "Using an invalid tifaenet_mode. Options: attention, transformer"
+        if inter_interaction_type == "transformer":
+            inter_interaction_type = TransformerInteraction
+            
+        elif: inter_interaction_type == "attention":
+            inter_interaction_type = AttentionInteraction
+
+        self.inter_interactions = nn.ModuleList(
             [
-                TransformerInteraction(
+                inter_interaction_type(
                     d_model = kwargs["hidden_channels"],
                 )
                 for _ in range(kwargs["num_interactions"])
@@ -275,7 +315,7 @@ class TIFaenet(BaseModel):
         for (
             interaction_ads,
             interaction_cat,
-            transformer_interaction
+            inter_interaction
         ) in zip(
             self.interaction_blocks_ads,
             self.interaction_blocks_cat,
