@@ -42,11 +42,17 @@ def graph_splitter(graph):
     ads_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
     cat_assoc = torch.full((natoms,), -1, dtype = torch.long, device = device)
 
-    ads_assoc[adsorbate_v_mask] = torch.arange(adsorbate_v_mask.sum(), device = device)
-    cat_assoc[catalyst_v_mask] = torch.arange(catalyst_v_mask.sum(), device = device)
+    ads_natoms = adsorbate_v_mask.sum()
+    cat_natoms = catalyst_v_mask.sum()
+
+    ads_assoc[adsorbate_v_mask] = torch.arange(ads_natoms, device = device)
+    cat_assoc[catalyst_v_mask] = torch.arange(cat_natoms, device = device)
 
     ads_edge_index = ads_assoc[edge_index[:, adsorbate_e_mask]]
     cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
+
+    # This is for attention related stuff.
+    dummy = torch.zeros(ads_natoms, 1)
     
     # Create the graphs
     adsorbate = Data(
@@ -62,8 +68,14 @@ def graph_splitter(graph):
         y_relaxed = y_relaxed,
         pos_relaxed = pos_relaxed[adsorbate_v_mask, :],
         id = id,
+        h = dummy,
+        query = dummy,
+        key = dummy,
+        value = dummy,
         mode="adsorbate"
     )
+
+    dummy = torch.zeros(cat_natoms, 1)
     catalyst = Data(
         edge_index = cat_edge_index,
         pos = pos[catalyst_v_mask, :],
@@ -77,6 +89,10 @@ def graph_splitter(graph):
         y_relaxed = y_relaxed,
         pos_relaxed = pos_relaxed[catalyst_v_mask, :],
         id = id,
+        h = dummy,
+        query = dummy,
+        key = dummy,
+        value = dummy,
         mode="catalyst"
     )
 

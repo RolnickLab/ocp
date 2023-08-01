@@ -62,31 +62,46 @@ class AttentionInteraction(nn.Module):
 
         self.softmax = Softmax(dim = 1)
 
-    def forward(self, h_ads, h_cat):
-        queries_ads = self.queries_ads(h_ads)
-        keys_ads = self.keys_ads(h_ads)
-        values_ads = self.values_ads(h_ads)
+    def forward(self, adsorbates, catalysts):
+        d_model = adsorbates.h.shape[1]
+        batch_size = max(adsorbates.batch).item() + 1
 
-        queries_cat = self.queries_cat(h_cat)
-        keys_cat = self.keys_cat(h_cat)
-        values_cat = self.values_cat(h_cat)
+        h_ads = adsorbates.h
+        adsorbates.query = self.queries_ads(h_ads)
+        adsorbates.key = self.keys_ads(h_ads)
+        adsorbates.value = self.values_ads(h_ads)
 
-        d_model = queries_ads.shape[1]
+        h_cat = catalysts.h
+        catalysts.query = self.queries_cat(h_cat)
+        catalysts.key = self.keys_cat(h_cat)
+        catalysts.value = self.values_cat(h_cat)
 
-        scalars_ads = self.softmax(
-            torch.matmul(queries_ads, torch.transpose(keys_cat, 0, 1)) / math.sqrt(d_model)
-        )
-        scalars_cat = self.softmax(
-            torch.matmul(queries_cat, torch.transpose(keys_ads, 0, 1)) / math.sqrt(d_model)
-        )
+        new_h_ads = []
+        new_h_cat = []
+        for i in range(batch_size): # How can I avoid a for loop?
+            scalars_ads = self.softmax(
+                torch.matmul(adsorbates[i].query, catalysts[i].key.T) / math.sqrt(d_model)
+            )
+            scalars_cat = self.softmax(
+                torch.matmul(catalysts[i].query, adsorbates[i].key.T) / math.sqrt(d_model)
+            )
 
-        h_ads = h_ads + torch.matmul(scalars_ads, values_cat)
-        h_cat = h_cat + torch.matmul(scalars_cat, values_ads)
+            new_h_ads.append(torch.matmul(scalars_ads, catalysts[i].value))
+            new_h_cat.append(torch.matmul(scalars_cat, adsorbates[i].value))
 
-        h_ads = nn.functional.normalize(h_ads)
-        h_cat = nn.functional.normalize(h_cat)
+        _, idx = adsorbates.batch.sort(stable=True)
+        new_h_ads = torch.concat(new_h_ads, dim = 0)[torch.argsort(idx)] # Inverse of permutation
 
-        return h_ads, h_cat
+        _, idx = catalysts.batch.sort(stable=True)
+        new_h_cat = torch.concat(new_h_cat, dim = 0)[torch.argsort(idx)]
+
+        new_h_ads = h_ads + new_h_ads
+        new_h_cat = h_cat + new_h_cat
+
+        new_h_ads = nn.functional.normalize(new_h_ads)
+        new_h_cat = nn.functional.normalize(new_h_cat)
+
+        return new_h_ads, new_h_cat
         
 
 @registry.register_model("tifaenet")
@@ -186,7 +201,7 @@ class TIFaenet(BaseModel):
         if inter_interaction_type == "transformer":
             inter_interaction_type = TransformerInteraction
             
-        elif: inter_interaction_type == "attention":
+        elif inter_interaction_type == "attention":
             inter_interaction_type = AttentionInteraction
 
         self.inter_interactions = nn.ModuleList(
@@ -319,7 +334,7 @@ class TIFaenet(BaseModel):
         ) in zip(
             self.interaction_blocks_ads,
             self.interaction_blocks_cat,
-            self.transformer_interactions,
+            self.inter_interactions,
         ):
             if self.skip_co == "concat_atom":
                 energy_skip_co_ads.append(h_ads)
@@ -338,9 +353,10 @@ class TIFaenet(BaseModel):
             intra_ads = interaction_ads(h_ads, edge_index_ads, e_ads)
             intra_cat = interaction_cat(h_cat, edge_index_cat, e_cat)
 
-            inter_ads, inter_cat = transformer_interaction(intra_ads, intra_cat)
-            h_ads = h_ads + inter_ads
-            h_cat = h_cat + inter_cat
+            adsorbates.h = intra_ads
+            catalysts.h = intra_cat
+
+            h_ads, h_cat = inter_interaction(adsorbates, catalysts)
 
         # Atom skip-co
         if self.skip_co == "concat_atom":
