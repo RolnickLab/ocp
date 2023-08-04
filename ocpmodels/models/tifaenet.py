@@ -6,6 +6,10 @@ from torch.nn import Linear, Transformer, Softmax
 from torch_geometric.data import Batch
 from torch_geometric.nn import radius_graph
 
+from torch_sparse import SparseTensor, spspmm
+from torch_sparse import transpose as transpose_sparse
+from scipy import sparse
+
 from ocpmodels.models.faenet import (
     GaussianSmearing,
     EmbeddingBlock,
@@ -62,38 +66,50 @@ class AttentionInteraction(nn.Module):
 
         self.softmax = Softmax(dim = 1)
 
-    def forward(self, adsorbates, catalysts):
-        d_model = adsorbates.h.shape[1]
-        batch_size = max(adsorbates.batch).item() + 1
+    def forward(self, 
+        h_ads, h_cat,
+        index_ads, index_cat,
+        batch_size
+    ):
+        d_model = h_ads.shape[1]
+        natoms_ads = h_ads.shape[0]
+        natoms_cat = h_cat.shape[0]
 
-        h_ads = adsorbates.h
-        adsorbates.query = self.queries_ads(h_ads)
-        adsorbates.key = self.keys_ads(h_ads)
-        adsorbates.value = self.values_ads(h_ads)
+        # Create matrices with values
+        query_ads = self.queries_ads(h_ads)
+        key_ads = self.keys_ads(h_ads)
+        value_ads = self.values_ads(h_ads)
 
-        h_cat = catalysts.h
-        catalysts.query = self.queries_cat(h_cat)
-        catalysts.key = self.keys_cat(h_cat)
-        catalysts.value = self.values_cat(h_cat)
+        query_cat = self.queries_cat(h_cat)
+        key_cat = self.keys_cat(h_cat)
+        value_cat = self.values_cat(h_cat)
 
-        new_h_ads = []
-        new_h_cat = []
-        for i in range(batch_size): # How can I avoid a for loop?
-            scalars_ads = self.softmax(
-                torch.matmul(adsorbates[i].query, catalysts[i].key.T) / math.sqrt(d_model)
-            )
-            scalars_cat = self.softmax(
-                torch.matmul(catalysts[i].query, adsorbates[i].key.T) / math.sqrt(d_model)
-            )
+        key_cat_T_index, key_cat_T_val = transpose_sparse(
+            index_cat, key_cat.view(-1),
+            natoms_cat, d_model * batch_size
+        )
+        key_ads_T_index, key_ads_T_val = transpose_sparse(
+            index_ads, key_ads.view(-1),
+            natoms_ads, d_model * batch_size
+        )
 
-            new_h_ads.append(torch.matmul(scalars_ads, catalysts[i].value))
-            new_h_cat.append(torch.matmul(scalars_cat, adsorbates[i].value))
+        index_att_ads, attention_ads = spspmm(
+            index_ads, query_ads.view(-1),
+            key_cat_T_index, key_cat_T_val,
+            natoms_ads, d_model * batch_size, natoms_cat
+        )
+        attention_ads = SparseTensor(row=index_att_ads[0], col=index_att_ads[1], value=attention_ads).to_dense()
+        attention_ads = self.softmax(attention_ads / math.sqrt(d_model))
+        new_h_ads = torch.matmul(attention_ads, value_cat)
 
-        _, idx = adsorbates.batch.sort(stable=True)
-        new_h_ads = torch.concat(new_h_ads, dim = 0)[torch.argsort(idx)] # Inverse of permutation
-
-        _, idx = catalysts.batch.sort(stable=True)
-        new_h_cat = torch.concat(new_h_cat, dim = 0)[torch.argsort(idx)]
+        index_att_cat, attention_cat = spspmm(
+            index_cat, query_cat.view(-1),
+            key_ads_T_index, key_ads_T_val,
+            natoms_cat, d_model * batch_size, natoms_ads
+        )
+        attention_cat = SparseTensor(row=index_att_cat[0], col=index_att_cat[1], value=attention_cat).to_dense()
+        attention_cat = self.softmax(attention_cat / math.sqrt(d_model))
+        new_h_cat = torch.matmul(attention_cat, value_ads)
 
         new_h_ads = h_ads + new_h_ads
         new_h_cat = h_cat + new_h_cat
@@ -118,6 +134,7 @@ class TIFaenet(BaseModel):
         self.skip_co = kwargs["skip_co"]
         if kwargs["mp_type"] == "sfarinet":
             kwargs["num_filters"] = kwargs["hidden_channels"]
+        self.hidden_channels = kwargs["hidden_channels"]
 
         self.act = (
             getattr(nn.functional, kwargs["act"]) if kwargs["act"] != "swish" else swish
@@ -325,6 +342,54 @@ class TIFaenet(BaseModel):
             alpha_cat = None
 
         # Interaction and transformer blocks
+        
+        # Start by setting up the sparse matrices in scipy
+        natoms_ads = h_ads.shape[0]
+        natoms_cat = h_cat.shape[0]
+
+        dummy_ads = torch.arange(natoms_ads * self.hidden_channels).numpy()
+        dummy_cat = torch.ones(natoms_cat * self.hidden_channels).numpy()
+
+        crowd_indices_ads = torch.arange(
+            start = 0, end = (natoms_ads + 1)*self.hidden_channels, step = self.hidden_channels,
+        ).numpy()
+        crowd_indices_cat = torch.arange(
+            start = 0, end = (natoms_cat + 1)*self.hidden_channels, step = self.hidden_channels,
+        ).numpy()
+
+        raw_col_indices = [
+            [torch.arange(self.hidden_channels) + (10*j)] * i
+            for i, j
+            in zip(adsorbates.natoms, range(batch_size))
+        ]
+        col_indices = []
+        for graph in raw_col_indices:
+            col_indices += graph
+        col_indices_ads = torch.concat(col_indices).numpy()
+
+        raw_col_indices = [
+            [torch.arange(self.hidden_channels) + (10*j)] * i
+            for i, j
+            in zip(catalysts.natoms, range(batch_size))
+        ]
+        col_indices = []
+        for graph in raw_col_indices:
+            col_indices += graph
+        col_indices_cat = torch.concat(col_indices).numpy()
+
+        sparse_ads = sparse.csr_array(
+            (dummy_ads, col_indices_ads, crowd_indices_ads), shape=(natoms_ads, dummy_ads.shape[0])
+        ).tocoo()
+        row_ads, col_ads = torch.from_numpy(sparse_ads.row), torch.from_numpy(sparse_ads.col)
+        index_ads = torch.concat([row_ads.view(1, -1), col_ads.view(1, -1)], dim=0).long().to(h_ads.device)
+
+        sparse_cat = sparse.csr_array(
+            (dummy_cat, col_indices_cat, crowd_indices_cat), shape=(natoms_cat, dummy_cat.shape[0])
+        ).tocoo()
+        row_cat, col_cat = torch.from_numpy(sparse_cat.row), torch.from_numpy(sparse_cat.col)
+        index_cat = torch.concat([row_cat.view(1, -1), col_cat.view(1, -1)], dim=0).long().to(h_ads.device)
+
+        # Now we do interactions.
         energy_skip_co_ads = []
         energy_skip_co_cat = []
         for (
@@ -353,10 +418,11 @@ class TIFaenet(BaseModel):
             intra_ads = interaction_ads(h_ads, edge_index_ads, e_ads)
             intra_cat = interaction_cat(h_cat, edge_index_cat, e_cat)
 
-            adsorbates.h = intra_ads
-            catalysts.h = intra_cat
-
-            h_ads, h_cat = inter_interaction(adsorbates, catalysts)
+            h_ads, h_cat = inter_interaction(
+                intra_ads, intra_cat, 
+                index_ads, index_cat,
+                batch_size
+            )
 
         # Atom skip-co
         if self.skip_co == "concat_atom":
