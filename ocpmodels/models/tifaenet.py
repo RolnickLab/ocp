@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import Linear, Transformer, Softmax
 
 from torch_geometric.data import Batch
-from torch_geometric.nn import radius_graph
+from torch_geometric.nn import radius_graph, GATConv
 
 from torch_sparse import SparseTensor, spspmm
 from torch_sparse import transpose as transpose_sparse
@@ -21,6 +21,16 @@ from ocpmodels.common.registry import registry
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.utils.activations import swish
+
+class GATInteraction(nn.Module):
+    def __init__(self, d_model, dropout=0.1):
+        super(GATInteraction, self).__init__()
+
+        self.interaction = GATConv(
+            in_channels = d_model,
+            out_channels = d_model,
+        )
+    def forward(self, )
 
 class TransformerInteraction(nn.Module):
     def __init__(self, d_model, nhead = 2, num_encoder_layers = 2, num_decoder_layers = 2):
@@ -213,13 +223,17 @@ class TIFaenet(BaseModel):
 
         # Transformer Interaction
         inter_interaction_type = kwargs.get("tifaenet_mode", None)
+        self.inter_interaction_type = inter_interaction_type
         assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer"
-        assert inter_interaction_type in {"attention", "transformer"}, "Using an invalid tifaenet_mode. Options: attention, transformer"
+        assert inter_interaction_type in {"attention", "transformer", "gat"}, "Using an invalid tifaenet_mode. Options: attention, transformer, gat"
         if inter_interaction_type == "transformer":
             inter_interaction_type = TransformerInteraction
             
         elif inter_interaction_type == "attention":
             inter_interaction_type = AttentionInteraction
+
+        elif inter_interaction_type == "gat":
+            inter_interaction_type = GATInteraction
 
         self.inter_interactions = nn.ModuleList(
             [
@@ -342,52 +356,59 @@ class TIFaenet(BaseModel):
             alpha_cat = None
 
         # Interaction and transformer blocks
-        
-        # Start by setting up the sparse matrices in scipy
-        natoms_ads = h_ads.shape[0]
-        natoms_cat = h_cat.shape[0]
 
-        dummy_ads = torch.arange(natoms_ads * self.hidden_channels).numpy()
-        dummy_cat = torch.ones(natoms_cat * self.hidden_channels).numpy()
+        if self.inter_interaction_type == "attention":    
+            # Start by setting up the sparse matrices in scipy
+            natoms_ads = h_ads.shape[0]
+            natoms_cat = h_cat.shape[0]
 
-        crowd_indices_ads = torch.arange(
-            start = 0, end = (natoms_ads + 1)*self.hidden_channels, step = self.hidden_channels,
-        ).numpy()
-        crowd_indices_cat = torch.arange(
-            start = 0, end = (natoms_cat + 1)*self.hidden_channels, step = self.hidden_channels,
-        ).numpy()
+            dummy_ads = torch.arange(natoms_ads * self.hidden_channels).numpy()
+            dummy_cat = torch.ones(natoms_cat * self.hidden_channels).numpy()
 
-        raw_col_indices = [
-            [torch.arange(self.hidden_channels) + (10*j)] * i
-            for i, j
-            in zip(adsorbates.natoms, range(batch_size))
-        ]
-        col_indices = []
-        for graph in raw_col_indices:
-            col_indices += graph
-        col_indices_ads = torch.concat(col_indices).numpy()
+            crowd_indices_ads = torch.arange(
+                start = 0, end = (natoms_ads + 1)*self.hidden_channels, step = self.hidden_channels,
+            ).numpy()
+            crowd_indices_cat = torch.arange(
+                start = 0, end = (natoms_cat + 1)*self.hidden_channels, step = self.hidden_channels,
+            ).numpy()
 
-        raw_col_indices = [
-            [torch.arange(self.hidden_channels) + (10*j)] * i
-            for i, j
-            in zip(catalysts.natoms, range(batch_size))
-        ]
-        col_indices = []
-        for graph in raw_col_indices:
-            col_indices += graph
-        col_indices_cat = torch.concat(col_indices).numpy()
+            raw_col_indices = [
+                [torch.arange(self.hidden_channels) + (10*j)] * i
+                for i, j
+                in zip(adsorbates.natoms, range(batch_size))
+            ]
+            col_indices = []
+            for graph in raw_col_indices:
+                col_indices += graph
+            col_indices_ads = torch.concat(col_indices).numpy()
 
-        sparse_ads = sparse.csr_array(
-            (dummy_ads, col_indices_ads, crowd_indices_ads), shape=(natoms_ads, dummy_ads.shape[0])
-        ).tocoo()
-        row_ads, col_ads = torch.from_numpy(sparse_ads.row), torch.from_numpy(sparse_ads.col)
-        index_ads = torch.concat([row_ads.view(1, -1), col_ads.view(1, -1)], dim=0).long().to(h_ads.device)
+            raw_col_indices = [
+                [torch.arange(self.hidden_channels) + (10*j)] * i
+                for i, j
+                in zip(catalysts.natoms, range(batch_size))
+            ]
+            col_indices = []
+            for graph in raw_col_indices:
+                col_indices += graph
+            col_indices_cat = torch.concat(col_indices).numpy()
 
-        sparse_cat = sparse.csr_array(
-            (dummy_cat, col_indices_cat, crowd_indices_cat), shape=(natoms_cat, dummy_cat.shape[0])
-        ).tocoo()
-        row_cat, col_cat = torch.from_numpy(sparse_cat.row), torch.from_numpy(sparse_cat.col)
-        index_cat = torch.concat([row_cat.view(1, -1), col_cat.view(1, -1)], dim=0).long().to(h_ads.device)
+            sparse_ads = sparse.csr_array(
+                (dummy_ads, col_indices_ads, crowd_indices_ads), shape=(natoms_ads, dummy_ads.shape[0])
+            ).tocoo()
+            row_ads, col_ads = torch.from_numpy(sparse_ads.row), torch.from_numpy(sparse_ads.col)
+            index_ads = torch.concat([row_ads.view(1, -1), col_ads.view(1, -1)], dim=0).long().to(h_ads.device)
+
+            sparse_cat = sparse.csr_array(
+                (dummy_cat, col_indices_cat, crowd_indices_cat), shape=(natoms_cat, dummy_cat.shape[0])
+            ).tocoo()
+            row_cat, col_cat = torch.from_numpy(sparse_cat.row), torch.from_numpy(sparse_cat.col)
+            index_cat = torch.concat([row_cat.view(1, -1), col_cat.view(1, -1)], dim=0).long().to(h_ads.device)
+
+            extra_parameters = [index_ads, index_cat, batch_size]
+        elif self.inter_interaction_type == "gat":
+            import ipdb
+            ipdb.set_trace()
+            inter_edge_weight = []
 
         # Now we do interactions.
         energy_skip_co_ads = []
@@ -420,8 +441,7 @@ class TIFaenet(BaseModel):
 
             h_ads, h_cat = inter_interaction(
                 intra_ads, intra_cat, 
-                index_ads, index_cat,
-                batch_size
+                *extra_parameters
             )
 
         # Atom skip-co

@@ -51,16 +51,13 @@ def graph_splitter(graph):
     ads_edge_index = ads_assoc[edge_index[:, adsorbate_e_mask]]
     cat_edge_index = cat_assoc[edge_index[:, catalyst_e_mask]]
 
-    # This is for attention related stuff.
-    dummy = torch.zeros(ads_natoms, 1)
-    
     # Create the graphs
     adsorbate = Data(
         edge_index = ads_edge_index,
         pos = pos[adsorbate_v_mask, :],
         cell = cell,
         atomic_numbers = atomic_numbers[adsorbate_v_mask],
-        natoms = adsorbate_v_mask.sum().item(),
+        natoms = ads_natoms,
         cell_offsets = cell_offsets[adsorbate_e_mask, :],
         force = force[adsorbate_v_mask, :],
         tags = tags[adsorbate_v_mask],
@@ -68,20 +65,15 @@ def graph_splitter(graph):
         y_relaxed = y_relaxed,
         pos_relaxed = pos_relaxed[adsorbate_v_mask, :],
         id = id,
-        h = dummy,
-        query = dummy,
-        key = dummy,
-        value = dummy,
         mode="adsorbate"
     )
 
-    dummy = torch.zeros(cat_natoms, 1)
     catalyst = Data(
         edge_index = cat_edge_index,
         pos = pos[catalyst_v_mask, :],
         cell = cell,
         atomic_numbers = atomic_numbers[catalyst_v_mask],
-        natoms = catalyst_v_mask.sum().item(),
+        natoms = cat_natoms,
         cell_offsets = cell_offsets[catalyst_e_mask, :],
         force = force[catalyst_v_mask, :],
         tags = tags[catalyst_v_mask],
@@ -89,10 +81,6 @@ def graph_splitter(graph):
         y_relaxed = y_relaxed,
         pos_relaxed = pos_relaxed[catalyst_v_mask, :],
         id = id,
-        h = dummy,
-        query = dummy,
-        key = dummy,
-        value = dummy,
         mode="catalyst"
     )
 

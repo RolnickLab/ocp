@@ -457,7 +457,7 @@ class SingleTrainer(BaseTrainer):
                 self.logger.log({"Epoch time": np.mean(epoch_times)})
 
         # Check respect of symmetries
-        if not self.separate_dataset:
+        if self.data_mode == "normal":
             if self.test_ri and not is_test_env:
                 symmetry = self.test_model_symmetries(debug_batches=debug_batches)
                 if symmetry == "SIGTERM":
@@ -552,7 +552,7 @@ class SingleTrainer(BaseTrainer):
         loss = {"total_loss": []}
 
         # Energy loss
-        if not self.separate_dataset:
+        if self.data_mode != "normal":
             energy_target = torch.cat(
                 [
                     batch.y_relaxed.to(self.device)
@@ -663,7 +663,7 @@ class SingleTrainer(BaseTrainer):
             [batch.natoms.to(self.device) for batch in batch_list], dim=0
         )
 
-        if not self.separate_dataset:
+        if self.data_mode != "normal":
             target = {
                 "energy": torch.cat(
                     [

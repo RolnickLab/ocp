@@ -163,14 +163,20 @@ class BaseTrainer(ABC):
                 self.config["is_disconnected"] = True
 
         # Here's the models whose graphs are disconnected in the dataset
-        self.dataset_models = ["indfaenet", "tifaenet"]
+        self.separate_models = ["indfaenet"]
+        self.heterogeneous_models = ["tifaenet"]
+        self.data_mode = "normal"
         self.separate_dataset = False
+
         if self.config["model_name"] in self.dataset_models:
-            self.separate_dataset = True
+            self.data_mode = "separate"
             print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
 
-        self.load()
+        elif self.config["model_name"] in self.heterogeneous_models:
+            self.data_mode = "heterogeneous"
+            print("\n\nHeads up: using heterogeneous dataset, so ads/cats are stored separately in a het graph.\n")
 
+        self.load()
         self.evaluator = Evaluator(
             task = self.task_name,
             model_regresses_forces = self.config["model"].get("regress_forces", ""),
@@ -259,10 +265,16 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            if self.config["model_name"] in self.dataset_models:
+            if self.data_mode == "separate":
                 self.datasets[split] = registry.get_dataset_class(
                     "separate"
                 )(ds_conf, transform=transform)
+
+            elif: self.data_mode == "heterogeneous":
+                self.datasets[split] = registry.get_dataset_class(
+                    "heterogeneous"
+                )(ds_conf, transform=transform)
+
             else:
                 self.datasets[split] = registry.get_dataset_class(
                     self.config["task"]["dataset"]
