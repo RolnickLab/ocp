@@ -23,8 +23,15 @@ from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.utils.activations import swish
 
 class GATInteraction(nn.Module):
-    def __init__(self, d_model, dropout=0.1):
+    def __init__(self, d_model, version, dropout=0.1):
         super(GATInteraction, self).__init__()
+
+        if version == "v1":
+            version = False
+        elif version == "v2":
+            version = True
+        else:
+            raise ValueError(f"Invalid GAT version. Received {version}, available: v1, v2.")
 
         self.interaction = GATConv(
             in_channels = d_model,
@@ -242,15 +249,19 @@ class TIFaenet(BaseModel):
             
         elif inter_interaction_type == "attention":
             inter_interaction_type = AttentionInteraction
+            inter_interaction_parameters = [kwargs["hidden_channels"]]
 
         elif inter_interaction_type == "gat":
+            assert hasattr(kwargs, "gat_mode"), "When using GAT mode, a version needs to be specified. Options: v1, v2".
             inter_interaction_type = GATInteraction
+            inter_interaction_parameters = [
+                kwargs["hidden_channels"],
+                kwargs["gat_mode"]
+            ]
 
         self.inter_interactions = nn.ModuleList(
             [
-                inter_interaction_type(
-                    d_model = kwargs["hidden_channels"],
-                )
+                inter_interaction_type(*inter_interaction_parameters)
                 for _ in range(kwargs["num_interactions"])
             ]
         )

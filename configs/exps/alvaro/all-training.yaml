@@ -45,8 +45,8 @@ runs:
   - config: tifaenet-is2re-all
     model:
       tifaenet_mode: "attention"
+      tifaenet_gat_mode: "v1"
 
   - config: tifaenet-is2re-all
     model:
-      tifaenet_mode: "attention"
-      transformer_out: True
+      tifaenet_gat_mode: "v2"
