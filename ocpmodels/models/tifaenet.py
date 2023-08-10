@@ -241,9 +241,6 @@ class TIFaenet(BaseModel):
 
         # Transformer Interaction
 
-        import ipdb
-        ipdb.set_trace()
-        
         inter_interaction_type = kwargs.get("tifaenet_mode", None)
         self.inter_interaction_type = inter_interaction_type
         assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer"
