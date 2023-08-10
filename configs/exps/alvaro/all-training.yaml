@@ -44,9 +44,10 @@ default:
 runs:
   - config: tifaenet-is2re-all
     model:
-      tifaenet_mode: "attention"
+      tifaenet_mode: "gat"
       tifaenet_gat_mode: "v1"
 
   - config: tifaenet-is2re-all
     model:
+      tifaenet_mode: "gat"
       tifaenet_gat_mode: "v2"

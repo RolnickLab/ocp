@@ -240,6 +240,10 @@ class TIFaenet(BaseModel):
         )
 
         # Transformer Interaction
+
+        import ipdb
+        ipdb.set_trace()
+        
         inter_interaction_type = kwargs.get("tifaenet_mode", None)
         self.inter_interaction_type = inter_interaction_type
         assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer"
@@ -252,11 +256,11 @@ class TIFaenet(BaseModel):
             inter_interaction_parameters = [kwargs["hidden_channels"]]
 
         elif inter_interaction_type == "gat":
-            assert hasattr(kwargs, "gat_mode"), "When using GAT mode, a version needs to be specified. Options: v1, v2."
+            assert "tifaenet_gat_mode" in kwargs, "When using GAT mode, a version needs to be specified. Options: v1, v2."
             inter_interaction_type = GATInteraction
             inter_interaction_parameters = [
                 kwargs["hidden_channels"],
-                kwargs["gat_mode"]
+                kwargs["tifaenet_gat_mode"]
             ]
 
         self.inter_interactions = nn.ModuleList(

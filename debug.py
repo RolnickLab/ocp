@@ -126,6 +126,7 @@ if __name__ == "__main__":
     trainer_config["model"]["skip_co"] = "concat"
     trainer_config["model"]["transformer_out"] = False
     trainer_config["model"]["tifaenet_mode"] = "gat"
+    trainer_config["model"]["tifaenet_gat_mode"] = "v1"
     #trainer_config["model"]["disconnected_mlp"] = True
 
     #trainer_config["optim"]["batch_sizes"] = 256
