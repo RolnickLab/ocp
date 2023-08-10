@@ -168,7 +168,7 @@ class BaseTrainer(ABC):
         self.data_mode = "normal"
         self.separate_dataset = False
 
-        if self.config["model_name"] in self.dataset_models:
+        if self.config["model_name"] in self.separate_models:
             self.data_mode = "separate"
             print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
 
@@ -270,7 +270,7 @@ class BaseTrainer(ABC):
                     "separate"
                 )(ds_conf, transform=transform)
 
-            elif: self.data_mode == "heterogeneous":
+            elif self.data_mode == "heterogeneous":
                 self.datasets[split] = registry.get_dataset_class(
                     "heterogeneous"
                 )(ds_conf, transform=transform)
@@ -1101,6 +1101,7 @@ class BaseTrainer(ABC):
                         # time forward pass
                         with timer.next("forward"):
                             _ = self.model_forward(b, mode="inference")
+
 
         # divide times by batch size
         mean, std = timer.prepare_for_logging(

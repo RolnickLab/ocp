@@ -44,9 +44,4 @@ default:
 runs:
   - config: tifaenet-is2re-10k
     model:
-      tifaenet_mode: "attention"
-
-  - config: tifaenet-is2re-10k
-    model:
-      tifaenet_mode: "attention"
-      transformer_out: True
+      tifaenet_mode: "gat"

@@ -44,7 +44,11 @@ class BaseModel(nn.Module):
 
         # energy gradient w.r.t. positions will be computed
         if mode == "train" or self.regress_forces == "from_energy":
-            data.pos.requires_grad_(True)
+            try:
+                data.pos.requires_grad_(True)
+            except:
+                data["adsorbate"].pos.requires_grad_(True)
+                data["catalyst"].pos.requires_grad_(True)
 
         # predict energy
         preds = self.energy_forward(data)
@@ -63,7 +67,10 @@ class BaseModel(nn.Module):
                     grad_forces = forces
                 else:
                     # compute forces from energy gradient
-                    grad_forces = self.forces_as_energy_grad(data.pos, preds["energy"])
+                    try:
+                        grad_forces = self.forces_as_energy_grad(data.pos, preds["energy"])
+                    except:
+                        grad_forces = self.forces_as_energy_grad(data["adsorbate"].pos)
 
             if self.regress_forces == "from_energy":
                 # predicted forces are the energy gradient

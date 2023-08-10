@@ -29,8 +29,15 @@ class GATInteraction(nn.Module):
         self.interaction = GATConv(
             in_channels = d_model,
             out_channels = d_model,
+            num_layers = 1,
+            dropout = dropout
         )
-    def forward(self, )
+    def forward(self, h_ads, h_cat, bipartite_edges):
+        separation_point = h_ads.shape[0]
+        combined = torch.concat([h_ads, h_cat], dim = 0)
+        combined = self.interaction(combined, bipartite_edges)
+
+        return combined[:separation_point], combined[separation_point:]
 
 class TransformerInteraction(nn.Module):
     def __init__(self, d_model, nhead = 2, num_encoder_layers = 2, num_decoder_layers = 2):
@@ -54,7 +61,7 @@ class TransformerInteraction(nn.Module):
             batch_first = True
         )
 
-    def forward(self, h_ads, h_cat):
+    def forward(self, h_ads, h_cat, ads_to_cat, cat_to_ads):
         import ipdb
         ipdb.set_trace()
 
@@ -108,7 +115,9 @@ class AttentionInteraction(nn.Module):
             key_cat_T_index, key_cat_T_val,
             natoms_ads, d_model * batch_size, natoms_cat
         )
-        attention_ads = SparseTensor(row=index_att_ads[0], col=index_att_ads[1], value=attention_ads).to_dense()
+        attention_ads = SparseTensor(
+            row=index_att_ads[0], col=index_att_ads[1], value=attention_ads
+        ).to_dense()
         attention_ads = self.softmax(attention_ads / math.sqrt(d_model))
         new_h_ads = torch.matmul(attention_ads, value_cat)
 
@@ -117,7 +126,9 @@ class AttentionInteraction(nn.Module):
             key_ads_T_index, key_ads_T_val,
             natoms_cat, d_model * batch_size, natoms_ads
         )
-        attention_cat = SparseTensor(row=index_att_cat[0], col=index_att_cat[1], value=attention_cat).to_dense()
+        attention_cat = SparseTensor(
+            row=index_att_cat[0], col=index_att_cat[1], value=attention_cat
+        ).to_dense()
         attention_cat = self.softmax(attention_cat / math.sqrt(d_model))
         new_h_cat = torch.matmul(attention_cat, value_ads)
 
@@ -310,40 +321,31 @@ class TIFaenet(BaseModel):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        batch_size = len(data) // 2
+        batch_size = len(data)
 
-        adsorbates = Batch.from_data_list(data[:batch_size])
-        catalysts = Batch.from_data_list(data[batch_size:])
-
-        batch_ads = adsorbates.batch
-        batch_cat = catalysts.batch
-
-        # Fixing neighbor's dimensions. This error happens when an adsorbate has 0 edges.
-        adsorbates = self.neighbor_fixer(adsorbates)
-        catalysts = self.neighbor_fixer(catalysts)
+        batch_ads = data["adsorbate"]["batch"]
+        batch_cat = data["catalyst"]["batch"]
 
         # Graph rewiring
-        ads_rewiring = self.graph_rewiring(adsorbates)
+        ads_rewiring, cat_rewiring = self.graph_rewiring(data, batch_ads, batch_cat)
         edge_index_ads, edge_weight_ads, rel_pos_ads, edge_attr_ads = ads_rewiring
-
-        cat_rewiring = self.graph_rewiring(catalysts)
         edge_index_cat, edge_weight_cat, rel_pos_cat, edge_attr_cat = cat_rewiring
 
         # Embedding
         h_ads, e_ads = self.embedding(
-            adsorbates.atomic_numbers.long(),
+            data["adsorbate"].atomic_numbers.long(),
             edge_weight_ads, 
             rel_pos_ads,
             edge_attr_ads,
-            adsorbates.tags,
+            data["adsorbate"].tags,
             self.embed_block_ads
         )
         h_cat, e_cat = self.embedding(
-            catalysts.atomic_numbers.long(),
+            data["catalyst"].atomic_numbers.long(),
             edge_weight_cat,
             rel_pos_cat,
             edge_attr_cat,
-            catalysts.tags,
+            data["catalyst"].tags,
             self.embed_block_cat
         )
 
@@ -406,9 +408,8 @@ class TIFaenet(BaseModel):
 
             extra_parameters = [index_ads, index_cat, batch_size]
         elif self.inter_interaction_type == "gat":
-            import ipdb
-            ipdb.set_trace()
-            inter_edge_weight = []
+            extra_parameters = [data["is_disc"].edge_index]
+            # Fix edges between graphs
 
         # Now we do interactions.
         energy_skip_co_ads = []
@@ -514,73 +515,53 @@ class TIFaenet(BaseModel):
         return h, e
 
     @conditional_grad(torch.enable_grad())
-    def graph_rewiring(self, data):
-        z = data.atomic_numbers.long()
-        pos = data.pos
-        batch = data.batch
+    def graph_rewiring(self, data, batch_ads, batch_cat):
+        z = data["adsorbate"].atomic_numbers.long()
 
-        mode = data.mode[0]
-        if mode == "adsorbate":
-            distance_expansion = self.distance_expansion_ads
-        else:
-            distance_expansion = self.distance_expansion_cat
         # Use periodic boundary conditions
+        results = []
         if self.use_pbc:
             assert z.dim() == 1 and z.dtype == torch.long
 
-            out = get_pbc_distances(
-                pos,
-                data.edge_index,
-                data.cell,
-                data.cell_offsets,
-                data.neighbors,
-                return_distance_vec=True,
-            )
+            for mode in ["adsorbate", "catalyst"]:
+                out = get_pbc_distances(
+                    data[mode].pos,
+                    data[mode, "is_close", mode].edge_index,
+                    data[mode].cell,
+                    data[mode].cell_offsets,
+                    data[mode].neighbors,
+                    return_distance_vec=True,
+                )
 
-            edge_index = out["edge_index"]
-            edge_weight = out["distances"]
-            rel_pos = out["distance_vec"]
-            edge_attr = distance_expansion(edge_weight)
+                edge_index = out["edge_index"]
+                edge_weight = out["distances"]
+                rel_pos = out["distance_vec"]
+                if mode == "adsorbate":
+                    distance_expansion = self.distance_expansion_ads
+                else:
+                    distance_expansion = self.distance_expansion_cat 
+                edge_attr = distance_expansion(edge_weight)
+                results.append([edge_index, edge_weight, rel_pos, edge_attr])
         else:
-            edge_index = radius_graph(
-                pos,
-                r=self.cutoff,
-                batch=batch,
-                max_num_neighbors=self.max_num_neighbors,
-            )
-            # edge_index = data.edge_index
-            row, col = edge_index
-            rel_pos = pos[row] - pos[col]
-            edge_weight = rel_pos.norm(dim=-1)
-            edge_attr = distance_expansion(edge_weight)
+            for mode in ["adsorbate", "catalyst"]:
+                edge_index = radius_graph(
+                    data[mode].pos,
+                    r=self.cutoff,
+                    batch=batch_ads if mode == "adsorbate" else batch_cat,
+                    max_num_neighbors=self.max_num_neighbors,
+                )
+                # edge_index = data.edge_index
+                row, col = edge_index
+                rel_pos = data[mode].pos[row] - data[mode].pos[col]
+                edge_weight = rel_pos.norm(dim=-1)
+                if mode == "adsorbate":
+                    distance_expansion = self.distance_expansion_ads
+                else:
+                    distance_expansion = self.distance_expansion_cat
+                edge_attr = distance_expansion(edge_weight)
+                results.append([edge_index, edge_weight, rel_pos, edge_attr])
 
-        return (edge_index, edge_weight, rel_pos, edge_attr)
-
-    def neighbor_fixer(self, data):
-        num_graphs = len(data)
-        # Find indices of adsorbates without edges:
-        edgeless = [
-            i for i 
-            in range(num_graphs) 
-            if data[i].neighbors.shape[0] == 0
-        ]
-        if len(edgeless) > 0:
-            # Since most adsorbates have an edge,
-            # we pop those values specifically from range(num_adsorbates)
-            mask = list(range(num_graphs))
-            num_popped = 0 # We can do this since edgeless is already sorted
-            for unwanted in edgeless:
-                mask.pop(unwanted-num_popped)
-                num_popped += 1
-            new_nbrs = torch.zeros(
-                num_graphs,
-                dtype = torch.int64,
-                device = data.neighbors.device,
-            )
-            new_nbrs[mask] = data.neighbors
-            data.neighbors = new_nbrs
-
-        return data
+        return results
 
     @conditional_grad(torch.enable_grad())
     def forces_forward(self, preds):

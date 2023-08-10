@@ -479,16 +479,34 @@ class SingleTrainer(BaseTrainer):
     def model_forward(self, batch_list, mode="train"):
         # Distinguish frame averaging from base case.
         if self.config["frame_averaging"] and self.config["frame_averaging"] != "DA":
-            original_pos = batch_list[0].pos
-            if self.task_name in OCP_TASKS:
-                original_cell = batch_list[0].cell
+            if self.data_mode == "heterogeneous":
+                original_pos_ads = batch_list[0]["adsorbate"].pos
+                original_pos_cat = batch_list[0]["catalyst"].pos
+                if self.task_name in OCP_TASKS:
+                    original_cell = batch_list[0]["catalyst"].cell
+            else:
+                original_pos = batch_list[0].pos
+                if self.task_name in OCP_TASKS:
+                    original_cell = batch_list[0].cell
             e_all, p_all, f_all, gt_all = [], [], [], []
 
             # Compute model prediction for each frame
-            for i in range(len(batch_list[0].fa_pos)):
-                batch_list[0].pos = batch_list[0].fa_pos[i]
-                if self.task_name in OCP_TASKS:
-                    batch_list[0].cell = batch_list[0].fa_cell[i]
+            if self.data_mode == "heterogeneous":
+                fa_pos_length = len(batch_list[0]["adsorbate"].fa_pos)
+            else:
+                fa_pos_length = len(batch_list[0].fa_pos)
+
+            for i in range(fa_pos_length):
+                if self.data_mode == "heterogeneous":
+                    batch_list[0]["adsorbate"].pos = batch_list[0]["adsorbate"].fa_pos[i]
+                    batch_list[0]["catalyst"].pos = batch_list[0]["catalyst"].fa_pos[i]
+                    if self.task_name in OCP_TASKS:
+                        batch_list[0]["adsorbate"].cell = batch_list[0]["adsorbate"].fa_cell[i]
+                        batch_list[0]["catalyst"].cell = batch_list[0]["catalyst"].fa_cell[i]
+                else:
+                    batch_list[0].pos = batch_list[0].fa_pos[i]
+                    if self.task_name in OCP_TASKS:
+                        batch_list[0].cell = batch_list[0].fa_cell[i]
 
                 # forward pass
                 preds = self.model(deepcopy(batch_list), mode=mode)
@@ -528,9 +546,16 @@ class SingleTrainer(BaseTrainer):
                     )
                     gt_all.append(g_grad_target)
 
-            batch_list[0].pos = original_pos
-            if self.task_name in OCP_TASKS:
-                batch_list[0].cell = original_cell
+            if self.data_mode == "heterogeneous":
+                batch_list[0]["adsorbate"].pos = original_pos_ads
+                batch_list[0]["catalyst"].pos = original_pos_cat
+                if self.task_name in OCP_TASKS:
+                    batch_list[0]["adsorbate"].cell = original_cell
+                    batch_list[0]["catalyst"].cell = original_cell
+            else:
+                batch_list[0].pos = original_pos
+                if self.task_name in OCP_TASKS:
+                    batch_list[0].cell = original_cell
 
             # Average predictions over frames
             preds["energy"] = sum(e_all) / len(e_all)
@@ -552,7 +577,18 @@ class SingleTrainer(BaseTrainer):
         loss = {"total_loss": []}
 
         # Energy loss
-        if self.data_mode != "normal":
+        if self.data_mode == "heterogeneous":
+            energy_target = torch.cat(
+                [
+                    batch["adsorbate"].y_relaxed.to(self.device)
+                    if self.task_name == "is2re"
+                    else batch["adsorbate"].y.to(self.device)
+                    for batch in batch_list
+                ],
+                dim=0
+            )
+        
+        elif self.data_mode != "normal":
             energy_target = torch.cat(
                 [
                     batch.y_relaxed.to(self.device)
@@ -659,11 +695,20 @@ class SingleTrainer(BaseTrainer):
     def compute_metrics(
         self, preds: Dict, batch_list: List[Data], evaluator: Evaluator, metrics={}
     ):
-        natoms = torch.cat(
-            [batch.natoms.to(self.device) for batch in batch_list], dim=0
-        )
+        if self.data_mode == "heterogeneous":
+            natoms = (batch_list[0]["adsorbate"].natoms.to(self.device) 
+                        + batch_list[0]["catalyst"].natoms.to(self.device))
+        else:
+            natoms = torch.cat(
+                [batch.natoms.to(self.device) for batch in batch_list], dim=0
+            )
 
-        if self.data_mode != "normal":
+        if self.data_mode == "heterogeneous":
+            target = {
+                "energy": batch_list[0]["adsorbate"].y_relaxed.to(self.device),
+                "natoms": natoms,
+            }
+        elif self.data_mode != "normal":
             target = {
                 "energy": torch.cat(
                     [

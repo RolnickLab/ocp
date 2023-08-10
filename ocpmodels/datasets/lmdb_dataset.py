@@ -16,7 +16,7 @@ import lmdb
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torch_geometric.data import Batch
+from torch_geometric.data import Batch, HeteroData
 
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import pyg2_data_transform
@@ -186,5 +186,26 @@ def data_list_collater(data_list, otf_graph=False): # Check if len(batch) is eve
             logging.warning(
                 "LMDB does not contain edge index information, set otf_graph=True"
             )
+
+    elif (
+        not otf_graph
+        and hasattr(data_list[0]["adsorbate", "is_close", "adsorbate"], "edge_index")
+    ):
+        # First, fix the neighborhood dimension.
+        n_neighbors_ads = []
+        n_neighbors_cat = []
+        for i, data in enumerate(data_list):
+            n_index_ads = data["adsorbate", "is_close", "adsorbate"].edge_index
+            n_index_cat = data["catalyst", "is_close", "catalyst"].edge_index
+            n_neighbors_ads.append(n_index_ads[1, :].shape[0])
+            n_neighbors_cat.append(n_index_cat[1, :].shape[0])
+        batch["adsorbate"].neighbors = torch.tensor(n_neighbors_ads)
+        batch["catalyst"].neighbors = torch.tensor(n_neighbors_cat)
+
+        # Then, fix the edge index between ads and cats.
+        sender, receiver = batch["is_disc"].edge_index
+        ads_to_cat = torch.stack([sender, receiver + batch["adsorbate"].num_nodes])
+        cat_to_ads = torch.stack([ads_to_cat[1], ads_to_cat[0]])
+        batch["is_disc"].edge_index = torch.concat([ads_to_cat, cat_to_ads], dim = 1)
 
     return batch
