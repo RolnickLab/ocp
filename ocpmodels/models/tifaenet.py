@@ -252,7 +252,7 @@ class TIFaenet(BaseModel):
             inter_interaction_parameters = [kwargs["hidden_channels"]]
 
         elif inter_interaction_type == "gat":
-            assert hasattr(kwargs, "gat_mode"), "When using GAT mode, a version needs to be specified. Options: v1, v2".
+            assert hasattr(kwargs, "gat_mode"), "When using GAT mode, a version needs to be specified. Options: v1, v2."
             inter_interaction_type = GATInteraction
             inter_interaction_parameters = [
                 kwargs["hidden_channels"],
