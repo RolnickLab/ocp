@@ -46,8 +46,6 @@ class GATInteraction(nn.Module):
                 dropout = dropout
             )
     def forward(self, h_ads, h_cat, bipartite_edges):
-        import ipdb
-        ipdb.set_trace()
         separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
         combined = self.interaction(combined, bipartite_edges)
