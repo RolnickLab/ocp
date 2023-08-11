@@ -40,7 +40,7 @@ class GATInteraction(nn.Module):
             self.interaction = GATv2Conv(
                 in_channels = d_model,
                 out_channels = d_model,
-                head = 3
+                head = 3,
                 dropout = dropout
             )
     def forward(self, h_ads, h_cat, bipartite_edges):
