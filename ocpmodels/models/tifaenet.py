@@ -33,7 +33,7 @@ class GATInteraction(nn.Module):
             self.interaction = GATConv(
                 in_channels = d_model,
                 out_channels = d_model,
-                heads = 3
+                heads = 3,
                 dropout = dropout
             )
         else:
