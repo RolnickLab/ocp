@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import Linear, Transformer, Softmax
 
 from torch_geometric.data import Batch
-from torch_geometric.nn import radius_graph, GATConv
+from torch_geometric.nn import radius_graph, GATConv, GATv2Conv
 
 from torch_sparse import SparseTensor, spspmm
 from torch_sparse import transpose as transpose_sparse
@@ -26,25 +26,33 @@ class GATInteraction(nn.Module):
     def __init__(self, d_model, version, dropout=0.1):
         super(GATInteraction, self).__init__()
 
-        if version == "v1":
-            version = False
-        elif version == "v2":
-            version = True
-        else:
+        if version not in {"v1", "v2"}:
             raise ValueError(f"Invalid GAT version. Received {version}, available: v1, v2.")
 
-        self.interaction = GATConv(
-            in_channels = d_model,
-            out_channels = d_model,
-            num_layers = 1,
-            dropout = dropout
-        )
+        if version == "v1":
+            self.interaction = GATConv(
+                in_channels = d_model,
+                out_channels = d_model,
+                heads = 3
+                dropout = dropout
+            )
+        else:
+            self.interaction = GATv2Conv(
+                in_channels = d_model,
+                out_channels = d_model,
+                head = 3
+                dropout = dropout
+            )
     def forward(self, h_ads, h_cat, bipartite_edges):
-        separation_point = h_ads.shape[0]
+        separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
         combined = self.interaction(combined, bipartite_edges)
 
-        return combined[:separation_point], combined[separation_point:]
+        ads, cat = combined[:separation_pt], combined[separation_pt:]
+        ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
+        ads, cat = ads + h_ads, cat + h_cat
+
+        return ads, cat
 
 class TransformerInteraction(nn.Module):
     def __init__(self, d_model, nhead = 2, num_encoder_layers = 2, num_decoder_layers = 2):
