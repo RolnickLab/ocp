@@ -48,6 +48,6 @@ runs:
       tifaenet_gat_mode: "v2"
 
   - config: tifaenet-is2re-all
-    mode:
+    model:
       tifaenet_mode: "gat"
       tifaenet_gat_mode: "v1"

@@ -35,6 +35,7 @@ class GATInteraction(nn.Module):
                 out_channels = d_model,
                 heads = 3,
                 concat = False,
+                edge_dim = 1,
                 dropout = dropout
             )
         else:
@@ -43,12 +44,17 @@ class GATInteraction(nn.Module):
                 out_channels = d_model,
                 head = 3,
                 concat = False,
+                edge_dim = 1,
                 dropout = dropout
             )
-    def forward(self, h_ads, h_cat, bipartite_edges):
+    def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
+
+        import ipdb
+        ipdb.set_trace()
+
         separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
-        combined = self.interaction(combined, bipartite_edges)
+        combined = self.interaction(combined, bipartite_dges, bipartite_weights)
 
         ads, cat = combined[:separation_pt], combined[separation_pt:]
         ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
@@ -253,7 +259,7 @@ class TIFaenet(BaseModel):
 
         inter_interaction_type = kwargs.get("tifaenet_mode", None)
         self.inter_interaction_type = inter_interaction_type
-        assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer"
+        assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer, gat"
         assert inter_interaction_type in {"attention", "transformer", "gat"}, "Using an invalid tifaenet_mode. Options: attention, transformer, gat"
         if inter_interaction_type == "transformer":
             inter_interaction_type = TransformerInteraction
@@ -430,7 +436,7 @@ class TIFaenet(BaseModel):
 
             extra_parameters = [index_ads, index_cat, batch_size]
         elif self.inter_interaction_type == "gat":
-            extra_parameters = [data["is_disc"].edge_index]
+            extra_parameters = [data["is_disc"].edge_index, data["is_disc"].edge_weight]
             # Fix edges between graphs
 
         # Now we do interactions.

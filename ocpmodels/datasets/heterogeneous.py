@@ -20,8 +20,12 @@ class HeterogeneousDataset(SeparateLmdbDataset):
 
             reaction[mode, "is_close", mode].edge_index = graph.edge_index
 
-        sender = torch.repeat_interleave(torch.arange(adsorbate.natoms.item()), catalyst.natoms.item())
-        receiver = torch.arange(0, catalyst.natoms.item()).repeat(adsorbate.natoms.item())
-        reaction["adsorbate", "is_disc", "catalyst"].edge_index = torch.stack([sender, receiver])
+        sender = torch.repeat_interleave(torch.arange(catalyst.natoms.item()), adsorbate.natoms.item())
+        receiver = torch.arange(0, adsorbate.natoms.item()).repeat(catalyst.natoms.item())
+        reaction["catalyst", "is_disc", "adsorbate"].edge_index = torch.stack([sender, receiver])
+        reaction["catalyst", "is_disc", "adsorbate"].edge_weight = torch.repeat_interleave(
+            reaction["catalyst"].pos[:, 2],
+            adsorbate.natoms.item(),
+        )
 
         return reaction

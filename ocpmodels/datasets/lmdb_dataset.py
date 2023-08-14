@@ -208,4 +208,9 @@ def data_list_collater(data_list, otf_graph=False): # Check if len(batch) is eve
         cat_to_ads = torch.stack([ads_to_cat[1], ads_to_cat[0]])
         batch["is_disc"].edge_index = torch.concat([ads_to_cat, cat_to_ads], dim = 1)
 
+        batch["is_disc"].edge_weight = torch.concat(
+            [batch["is_disc"].edge_weight, -batch["is_disc"].edge_weight],
+            dim = 0
+        )
+
     return batch
