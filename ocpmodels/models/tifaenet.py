@@ -23,7 +23,7 @@ from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.utils.activations import swish
 
 class GATInteraction(nn.Module):
-    def __init__(self, d_model, version, dropout=0.1):
+    def __init__(self, d_model, version, edge_dim, dropout=0.1):
         super(GATInteraction, self).__init__()
 
         if version not in {"v1", "v2"}:
@@ -35,7 +35,7 @@ class GATInteraction(nn.Module):
                 out_channels = d_model,
                 heads = 3,
                 concat = False,
-                edge_dim = 1,
+                edge_dim = edge_dim,
                 dropout = dropout
             )
         else:
@@ -44,7 +44,7 @@ class GATInteraction(nn.Module):
                 out_channels = d_model,
                 head = 3,
                 concat = False,
-                edge_dim = 1,
+                edge_dim = edge_dim,
                 dropout = dropout
             )
     def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
@@ -192,6 +192,9 @@ class TIFaenet(BaseModel):
         self.distance_expansion_cat = GaussianSmearing(
             0.0, self.cutoff, kwargs["num_gaussians"]
         )
+        self.distance_expansion_disc = GaussianSmearing(
+            0.0, 25.0, kwargs["num_gaussians"]
+        )
 
         # Embedding block
         self.embed_block_ads = EmbeddingBlock(
@@ -220,6 +223,7 @@ class TIFaenet(BaseModel):
             kwargs["second_layer_MLP"],
             kwargs["edge_embed_type"],
         )
+        self.disc_edge_embed = Linear(kwargs["num_gaussians"], kwargs["num_filters"] // 2)
 
         # Interaction block
         self.interaction_blocks_ads = nn.ModuleList(
@@ -269,7 +273,8 @@ class TIFaenet(BaseModel):
             inter_interaction_type = GATInteraction
             inter_interaction_parameters = [
                 kwargs["hidden_channels"],
-                kwargs["tifaenet_gat_mode"]
+                kwargs["tifaenet_gat_mode"],
+                kwargs["num_filters"] // 2
             ]
 
         self.inter_interactions = nn.ModuleList(
@@ -432,7 +437,12 @@ class TIFaenet(BaseModel):
 
             extra_parameters = [index_ads, index_cat, batch_size]
         elif self.inter_interaction_type == "gat":
-            extra_parameters = [data["is_disc"].edge_index, data["is_disc"].edge_weight]
+            edge_weights = self.distance_expansion_disc(data["is_disc"].edge_weight)
+            edge_weights = self.disc_edge_embed(edge_weights)
+            extra_parameters = [
+                data["is_disc"].edge_index,
+                edge_weights,
+            ]
             # Fix edges between graphs
 
         # Now we do interactions.

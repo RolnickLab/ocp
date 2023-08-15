@@ -153,7 +153,6 @@ class EmbeddingBlock(nn.Module):
         self, z, rel_pos, edge_attr, tag=None, normalised_rel_pos=None, subnodes=None
     ):
         # --- Edge embedding --
-
         if self.edge_embed_type == "rij":
             e = self.lin_e1(rel_pos)
         elif self.edge_embed_type == "all_rij":
