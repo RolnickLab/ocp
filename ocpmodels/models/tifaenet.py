@@ -50,7 +50,7 @@ class GATInteraction(nn.Module):
     def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
         separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
-        combined = self.interaction(combined, bipartite_dges, bipartite_weights)
+        combined = self.interaction(combined, bipartite_edges, bipartite_weights)
 
         ads, cat = combined[:separation_pt], combined[separation_pt:]
         ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
