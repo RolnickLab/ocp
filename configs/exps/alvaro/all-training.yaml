@@ -42,12 +42,10 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: tifaenet-is2re-all
+  - config: afaenet-is2re-all
     model:
-      tifaenet_mode: "gat"
-      tifaenet_gat_mode: "v2"
+      afaenet_gat_mode: "v1"
 
-  - config: tifaenet-is2re-all
+  - config: afaenet-is2re-all
     model:
-      tifaenet_mode: "gat"
-      tifaenet_gat_mode: "v1"
+      afaenet_gat_mode: "v2"

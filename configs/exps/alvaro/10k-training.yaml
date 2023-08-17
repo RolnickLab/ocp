@@ -34,7 +34,7 @@ default:
     skip_co: concat
     edge_embed_type: all_rij
   optim:
-    lr_initial: 0.0005
+    lr_initial: 0.001
     scheduler: LinearWarmupCosineAnnealingLR
     max_epochs: 20
     eval_every: 0.4
@@ -42,12 +42,10 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: tifaenet-is2re-10k
+  - config: afaenet-is2re-10k
     model:
-      tifaenet_mode: "gat"
-      tifaenet_gat_mode: "v2"
+      afaenet_gat_mode: "v1"
 
-  - config: tifaenet-is2re-10k
+  - config: afaenet-is2re-10k
     model:
-      tifaenet_mode: "gat"
-      tifaenet_gat_mode: "v1"
+      afaenet_gat_mode: "v2"

@@ -62,7 +62,7 @@ class GATInteraction(nn.Module):
 @registry.register_model("afaenet")
 class AFaenet(BaseModel):
     def __init__(self, **kwargs):
-        super(TIFaenet, self).__init__()
+        super(AFaenet, self).__init__()
 
         self.cutoff = kwargs["cutoff"]
         self.energy_head = kwargs["energy_head"]
@@ -155,12 +155,13 @@ class AFaenet(BaseModel):
             ]
         )
 
+        assert "afaenet_gat_mode" in kwargs, "Faenet version needs to be specified. Options: v1, v2"
         # Inter Interaction
         self.inter_interactions = nn.ModuleList(
             [
                 GATInteraction(
                     kwargs["hidden_channels"],
-                    kwargs["tifaenet_gat_mode"],
+                    kwargs["afaenet_gat_mode"],
                     kwargs["num_filters"] // 2,
                 )
                 for _ in range(kwargs["num_interactions"])
