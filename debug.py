@@ -96,7 +96,7 @@ if __name__ == "__main__":
     args.mode = "train"
     args.graph_rewiring = "remove-tag-0"
     args.cp_data_to_tmpdir = True
-    args.config = "tifaenet-is2re-10k"
+    args.config = "afaenet-is2re-10k"
     args.frame_averaging = "2D"
     args.fa_frames = "se3-random"
 
@@ -125,8 +125,7 @@ if __name__ == "__main__":
     trainer_config["model"]["second_layer_MLP"] = True
     trainer_config["model"]["skip_co"] = "concat"
     trainer_config["model"]["transformer_out"] = False
-    trainer_config["model"]["tifaenet_mode"] = "gat"
-    trainer_config["model"]["tifaenet_gat_mode"] = "v2"
+    trainer_config["model"]["afaenet_gat_mode"] = "v1"
     #trainer_config["model"]["disconnected_mlp"] = True
 
     #trainer_config["optim"]["batch_sizes"] = 256
@@ -161,7 +160,6 @@ if __name__ == "__main__":
             trainer_config = merge_dicts(trainer_config, hparams)
 
         # -- Setup trainer
-
         trainer_config = continue_orion_exp(trainer_config)
         trainer_config = auto_note(trainer_config)
         trainer_config = set_min_hidden_channels(trainer_config)

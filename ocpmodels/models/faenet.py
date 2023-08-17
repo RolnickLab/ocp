@@ -406,7 +406,7 @@ class OutputBlock(nn.Module):
         self.lin1 = Linear(hidden_channels, hidden_channels // 2)
         if model_name == "faenet":
             self.lin2 = Linear(hidden_channels // 2, 1)
-        elif model_name in {"indfaenet", "tifaenet"}:
+        elif model_name in {"indfaenet", "afaenet"}: # These are models that output more than one scalar.
             self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         # weighted average & pooling
