@@ -47,6 +47,7 @@ class GATInteraction(nn.Module):
                 edge_dim = edge_dim,
                 dropout = dropout
             )
+
     def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
         separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
