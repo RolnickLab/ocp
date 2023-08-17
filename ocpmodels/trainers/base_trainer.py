@@ -164,7 +164,7 @@ class BaseTrainer(ABC):
 
         # Here's the models whose graphs are disconnected in the dataset
         self.separate_models = ["indfaenet"]
-        self.heterogeneous_models = ["tifaenet"]
+        self.heterogeneous_models = ["afaenet"]
         self.data_mode = "normal"
         self.separate_dataset = False
 

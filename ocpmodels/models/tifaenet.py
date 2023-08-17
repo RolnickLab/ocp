@@ -59,8 +59,8 @@ class GATInteraction(nn.Module):
 
         return ads, cat
 
-@registry.register_model("tifaenet")
-class TIFaenet(BaseModel):
+@registry.register_model("afaenet")
+class AFaenet(BaseModel):
     def __init__(self, **kwargs):
         super(TIFaenet, self).__init__()
 
@@ -92,8 +92,9 @@ class TIFaenet(BaseModel):
             0.0, self.cutoff, kwargs["num_gaussians"]
         )
         self.distance_expansion_disc = GaussianSmearing(
-            0.0, 25.0, kwargs["num_gaussians"]
+            0.0, 20.0, kwargs["num_gaussians"] 
         )
+        # Set the second parameter as the highest possible z-axis value
 
         # Embedding block
         self.embed_block_ads = EmbeddingBlock(
@@ -154,31 +155,14 @@ class TIFaenet(BaseModel):
             ]
         )
 
-        # Transformer Interaction
-
-        inter_interaction_type = kwargs.get("tifaenet_mode", None)
-        self.inter_interaction_type = inter_interaction_type
-        assert inter_interaction_type is not None, "When using TIFaenet, tifaenet_mode is needed. Options: attention, transformer, gat"
-        assert inter_interaction_type in {"attention", "transformer", "gat"}, "Using an invalid tifaenet_mode. Options: attention, transformer, gat"
-        if inter_interaction_type == "transformer":
-            inter_interaction_type = TransformerInteraction
-            
-        elif inter_interaction_type == "attention":
-            inter_interaction_type = AttentionInteraction
-            inter_interaction_parameters = [kwargs["hidden_channels"]]
-
-        elif inter_interaction_type == "gat":
-            assert "tifaenet_gat_mode" in kwargs, "When using GAT mode, a version needs to be specified. Options: v1, v2."
-            inter_interaction_type = GATInteraction
-            inter_interaction_parameters = [
-                kwargs["hidden_channels"],
-                kwargs["tifaenet_gat_mode"],
-                kwargs["num_filters"] // 2
-            ]
-
+        # Inter Interaction
         self.inter_interactions = nn.ModuleList(
             [
-                inter_interaction_type(*inter_interaction_parameters)
+                GATInteraction(
+                    kwargs["hidden_channels"],
+                    kwargs["tifaenet_gat_mode"],
+                    kwargs["num_filters"] // 2,
+                )
                 for _ in range(kwargs["num_interactions"])
             ]
         )
@@ -285,64 +269,9 @@ class TIFaenet(BaseModel):
             alpha_ads = None
             alpha_cat = None
 
-        # Interaction and transformer blocks
-
-        if self.inter_interaction_type == "attention":    
-            # Start by setting up the sparse matrices in scipy
-            natoms_ads = h_ads.shape[0]
-            natoms_cat = h_cat.shape[0]
-
-            dummy_ads = torch.arange(natoms_ads * self.hidden_channels).numpy()
-            dummy_cat = torch.ones(natoms_cat * self.hidden_channels).numpy()
-
-            crowd_indices_ads = torch.arange(
-                start = 0, end = (natoms_ads + 1)*self.hidden_channels, step = self.hidden_channels,
-            ).numpy()
-            crowd_indices_cat = torch.arange(
-                start = 0, end = (natoms_cat + 1)*self.hidden_channels, step = self.hidden_channels,
-            ).numpy()
-
-            raw_col_indices = [
-                [torch.arange(self.hidden_channels) + (10*j)] * i
-                for i, j
-                in zip(adsorbates.natoms, range(batch_size))
-            ]
-            col_indices = []
-            for graph in raw_col_indices:
-                col_indices += graph
-            col_indices_ads = torch.concat(col_indices).numpy()
-
-            raw_col_indices = [
-                [torch.arange(self.hidden_channels) + (10*j)] * i
-                for i, j
-                in zip(catalysts.natoms, range(batch_size))
-            ]
-            col_indices = []
-            for graph in raw_col_indices:
-                col_indices += graph
-            col_indices_cat = torch.concat(col_indices).numpy()
-
-            sparse_ads = sparse.csr_array(
-                (dummy_ads, col_indices_ads, crowd_indices_ads), shape=(natoms_ads, dummy_ads.shape[0])
-            ).tocoo()
-            row_ads, col_ads = torch.from_numpy(sparse_ads.row), torch.from_numpy(sparse_ads.col)
-            index_ads = torch.concat([row_ads.view(1, -1), col_ads.view(1, -1)], dim=0).long().to(h_ads.device)
-
-            sparse_cat = sparse.csr_array(
-                (dummy_cat, col_indices_cat, crowd_indices_cat), shape=(natoms_cat, dummy_cat.shape[0])
-            ).tocoo()
-            row_cat, col_cat = torch.from_numpy(sparse_cat.row), torch.from_numpy(sparse_cat.col)
-            index_cat = torch.concat([row_cat.view(1, -1), col_cat.view(1, -1)], dim=0).long().to(h_ads.device)
-
-            extra_parameters = [index_ads, index_cat, batch_size]
-        elif self.inter_interaction_type == "gat":
-            edge_weights = self.distance_expansion_disc(data["is_disc"].edge_weight)
-            edge_weights = self.disc_edge_embed(edge_weights)
-            extra_parameters = [
-                data["is_disc"].edge_index,
-                edge_weights,
-            ]
-            # Fix edges between graphs
+        # Edge embeddings of the complete bipartite graph.
+        edge_weights = self.distance_expansion_disc(data["is_disc"].edge_weight)
+        edge_weights = self.disc_edge_embed(edge_weights)
 
         # Now we do interactions.
         energy_skip_co_ads = []
@@ -374,8 +303,10 @@ class TIFaenet(BaseModel):
             intra_cat = interaction_cat(h_cat, edge_index_cat, e_cat)
 
             h_ads, h_cat = inter_interaction(
-                intra_ads, intra_cat, 
-                *extra_parameters
+                intra_ads,
+                intra_cat,
+                data["is_disc"].edge_index,
+                edge_weights,
             )
 
         # Atom skip-co
