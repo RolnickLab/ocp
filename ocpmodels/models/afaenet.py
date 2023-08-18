@@ -183,24 +183,14 @@ class AFaenet(BaseModel):
 
         # Skip co
         if self.skip_co == "concat": # for the implementation of independent faenet, make sure the input is large enough
-            if kwargs["model_name"] in {"faenet", "depfaenet"}:
-                self.mlp_skip_co_ads = Linear(
-                    kwargs["num_interactions"] + 1,
-                    1
-                )
-                self.mlp_skip_co_cat = Linear(
-                    kwargs["num_interactions"] + 1,
-                    1
-                )
-            elif kwargs["model_name"] in {"indfaenet", "afaenet"}:
-                self.mlp_skip_co_ads = Linear(
-                    (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
-                    kwargs["hidden_channels"] // 2
-                )
-                self.mlp_skip_co_cat = Linear(
-                    (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
-                    kwargs["hidden_channels"] // 2
-                )
+            self.mlp_skip_co_ads = Linear(
+                (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
+                kwargs["hidden_channels"] // 2
+            )
+            self.mlp_skip_co_cat = Linear(
+                (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
+                kwargs["hidden_channels"] // 2
+            )
 
         elif self.skip_co == "concat_atom":
             self.mlp_skip_co = Linear(

@@ -590,7 +590,7 @@ class FAENet(BaseModel):
         )
 
         # Skip co
-        if self.skip_co == "concat": # for the implementation of independent faenet, make sure the input is large enough
+        if self.skip_co == "concat":
             if kwargs["model_name"] in ["faenet", "depfaenet"]:
                 self.mlp_skip_co = Linear((kwargs["num_interactions"] + 1), 1)
             elif kwargs["model_name"] == "indfaenet":

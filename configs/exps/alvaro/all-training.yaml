@@ -34,7 +34,7 @@ default:
     skip_co: concat
     edge_embed_type: all_rij
   optim:
-    lr_initial: 0.0005
+    lr_initial: 0.001
     scheduler: LinearWarmupCosineAnnealingLR
     max_epochs: 20
     eval_every: 0.4
@@ -46,6 +46,12 @@ runs:
     model:
       afaenet_gat_mode: "v1"
 
-  - config: afaenet-is2re-all
+  - config: depfaenet-is2re-all
+
+  - config: indfaenet-is2re-all
+
+  - config: faenet-is2re-all
+
+  - config: faenet-is2re-all
     model:
-      afaenet_gat_mode: "v2"
+      is_disconnected: True
