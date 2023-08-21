@@ -75,8 +75,6 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             )
 
     def energy_forward(self, data, mode = "train"): # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
-        import ipdb
-        ipdb.set_trace()
         adsorbates = data[0]
         catalysts = data[1]
 
