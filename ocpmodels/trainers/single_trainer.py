@@ -608,19 +608,19 @@ class SingleTrainer(BaseTrainer):
                 ],
                 dim=0
             )
-        
-        elif self.data_mode != "normal":
+
+        elif self.data_mode == "separate":
+            energy_target = batch_list[0][0].y_relaxed.to(self.device)
+        else:
             energy_target = torch.cat(
                 [
-                    batch.y_relaxed.to(self.device)
+                    batch[0][0].y_relaxed.to(self.device)
                     if self.task_name == "is2re"
                     else batch.y.to(self.device)
                     for batch in batch_list
                 ],
                 dim=0,
             )
-        else:
-            energy_target = batch_list[0].y_relaxed[:preds["energy"].shape[0]].to(self.device)
 
         if self.normalizer.get("normalize_labels", False):
             hofs = None
@@ -719,17 +719,22 @@ class SingleTrainer(BaseTrainer):
         if self.data_mode == "heterogeneous":
             natoms = (batch_list[0]["adsorbate"].natoms.to(self.device) 
                         + batch_list[0]["catalyst"].natoms.to(self.device))
-        else:
-            natoms = torch.cat(
-                [batch.natoms.to(self.device) for batch in batch_list], dim=0
-            )
-
-        if self.data_mode == "heterogeneous":
             target = {
                 "energy": batch_list[0]["adsorbate"].y_relaxed.to(self.device),
                 "natoms": natoms,
             }
-        elif self.data_mode != "normal":
+
+        elif self.data_mode == "separate":
+            natoms = batch_list[0][0].natoms.to(self.device) + batch_list[0][1].natoms.to(self.device)
+            target = {
+                "energy": batch_list[0][0].y_relaxed.to(self.device),
+                "natoms": natoms,
+            }
+
+        else:
+            natoms = torch.cat(
+                [batch.natoms.to(self.device) for batch in batch_list], dim=0
+            )
             target = {
                 "energy": torch.cat(
                     [
@@ -738,15 +743,11 @@ class SingleTrainer(BaseTrainer):
                         else batch.y.to(self.device)
                         for batch in batch_list
                     ],
-                    dim=0,
+                    dim = 0,
                 ),
                 "natoms": natoms,
             }
-        else:
-            target = {
-                "energy": batch_list[0].y_relaxed[:preds["energy"].shape[0]].to(self.device),
-                "natoms": natoms,
-            }
+
 
         if self.config["model"].get("regress_forces", False):
             target["forces"] = torch.cat(
