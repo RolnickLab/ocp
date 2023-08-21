@@ -47,3 +47,7 @@ runs:
       afaenet_gat_mode: "v1"
 
   - config: indfaenet-is2re-10k
+
+  - config: depfaenet-is2re-10k
+
+  - config: faenet-is2re-10k
