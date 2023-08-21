@@ -46,6 +46,4 @@ runs:
     model:
       afaenet_gat_mode: "v1"
 
-  - config: afaenet-is2re-10k
-    model:
-      afaenet_gat_mode: "v2"
+  - config: indfaenet-is2re-10k

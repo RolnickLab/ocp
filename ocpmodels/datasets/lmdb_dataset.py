@@ -16,7 +16,7 @@ import lmdb
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torch_geometric.data import Batch, HeteroData
+from torch_geometric.data import Batch, HeteroData, Data
 
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import pyg2_data_transform
@@ -157,19 +157,26 @@ class TrajectoryLmdbDataset(LmdbDataset):
         )
 
 
+# In this function, we combine a list of samples into a batch. Notice that we first create the batch, then we fix
+# the neighbor problem: that some elements in the batch don't have edges, which pytorch geometric doesn't handle well
+# and which leads to errors in the forward step.
 def data_list_collater(data_list, otf_graph=False): # Check if len(batch) is ever used
-    if type(data_list[0]) is tuple:
-        graphs = [system[0] for system in data_list] + [system[1] for system in data_list]
-        batch = Batch.from_data_list(graphs)
-        for i in range(len(batch)):
-            if batch[i].neighbors.shape[0] == 0:
-                batch[i].neighbors = torch.tensor(
-                    [0],
-                    device = batch[i].neighbors.device,
-                    dtype = torch.int64
-                )
+    # FIRST, MAKE BATCH
+
+    if ( # This is for indfaenet
+        type(data_list[0]) is tuple
+        and type(data_list[0][0]) is Data
+    ):
+        adsorbates = [system[0] for system in data_list]
+        catalysts = [system[1] for system in data_list]
+
+        ads_batch = Batch.from_data_list(adsorbates)
+        cat_batch = Batch.from_data_list(catalysts)
     else:
         batch = Batch.from_data_list(data_list)
+
+
+    # THEN, FIX NEIGHBOR PROBLEM
 
     if (
         not otf_graph
@@ -187,9 +194,26 @@ def data_list_collater(data_list, otf_graph=False): # Check if len(batch) is eve
                 "LMDB does not contain edge index information, set otf_graph=True"
             )
 
-    elif (
+    elif ( # This is for indfaenet
         not otf_graph
-        and hasattr(data_list[0]["adsorbate", "is_close", "adsorbate"], "edge_index")
+        and type(data_list[0]) is tuple
+        and type(data_list[0][0]) is Data
+    ):  
+        batches = [ads_batch, cat_batch]
+        lists = [adsorbates, catalysts]
+        for batch, list_type in zip(batches, lists):
+            n_neighbors = []
+            for i, data in enumerate(list_type):
+                n_index = data.edge_index[1, :]
+                n_neighbors.append(n_index.shape[0])
+            batch.neighbors = torch.tensor(n_neighbors)
+
+        return batches
+        
+        
+    elif ( # This is for afaenet
+        not otf_graph
+        and type(data_list[0]) is HeteroData
     ):
         # First, fix the neighborhood dimension.
         n_neighbors_ads = []

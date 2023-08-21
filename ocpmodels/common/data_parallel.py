@@ -13,6 +13,7 @@ import numba
 import numpy as np
 import torch
 from torch.utils.data import BatchSampler, DistributedSampler, Sampler
+from torch_geometric.data import Data
 
 from ocpmodels.common import dist_utils
 from ocpmodels.datasets import data_list_collater
@@ -53,6 +54,11 @@ class OCPDataParallel(torch.nn.DataParallel):
             return self.module(batch_list[0], **kwargs)
 
         if len(self.device_ids) == 1:
+            if type(batch_list[0]) is list:
+                return self.module([
+                    batch_list[0][0].to(f"cuda:{self.device_ids[0]}"),
+                    batch_list[0][1].to(f"cuda:{self.device_ids[0]}")
+                ], **kwargs)
             return self.module(batch_list[0].to(f"cuda:{self.device_ids[0]}"), **kwargs)
 
         for t in chain(self.module.parameters(), self.module.buffers()):

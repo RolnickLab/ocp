@@ -482,20 +482,29 @@ class SingleTrainer(BaseTrainer):
             if self.data_mode == "heterogeneous":
                 original_pos_ads = batch_list[0]["adsorbate"].pos
                 original_pos_cat = batch_list[0]["catalyst"].pos
+
                 if self.task_name in OCP_TASKS:
                     original_cell = batch_list[0]["catalyst"].cell
+
+                fa_pos_length = len(batch_list[0]["adsorbate"].fa_pos)
+            elif self.data_mode == "separate":
+                original_pos_ads = batch_list[0][0].pos
+                original_pos_cat = batch_list[0][1].pos
+
+                if self.task_name in OCP_TASKS:
+                    original_cell = batch_list[0][1].cell
+
+                fa_pos_length = len(batch_list[0][0].fa_pos)
             else:
                 original_pos = batch_list[0].pos
+
                 if self.task_name in OCP_TASKS:
                     original_cell = batch_list[0].cell
+
+                fa_pos_length = len(batch_list[0].fa_pos)
             e_all, p_all, f_all, gt_all = [], [], [], []
 
             # Compute model prediction for each frame
-            if self.data_mode == "heterogeneous":
-                fa_pos_length = len(batch_list[0]["adsorbate"].fa_pos)
-            else:
-                fa_pos_length = len(batch_list[0].fa_pos)
-
             for i in range(fa_pos_length):
                 if self.data_mode == "heterogeneous":
                     batch_list[0]["adsorbate"].pos = batch_list[0]["adsorbate"].fa_pos[i]
@@ -503,6 +512,12 @@ class SingleTrainer(BaseTrainer):
                     if self.task_name in OCP_TASKS:
                         batch_list[0]["adsorbate"].cell = batch_list[0]["adsorbate"].fa_cell[i]
                         batch_list[0]["catalyst"].cell = batch_list[0]["catalyst"].fa_cell[i]
+                elif self.data_mode == "separate":
+                    batch_list[0][0].pos = batch_list[0][0].fa_pos[i]
+                    batch_list[0][1].pos = batch_list[0][1].fa_pos[i]
+                    if self.task_name in OCP_TASKS:
+                        batch_list[0][0].cell = batch_list[0][0].fa_cell[i]
+                        batch_list[0][1].cell = batch_list[0][1].fa_cell[i]
                 else:
                     batch_list[0].pos = batch_list[0].fa_pos[i]
                     if self.task_name in OCP_TASKS:
@@ -552,6 +567,12 @@ class SingleTrainer(BaseTrainer):
                 if self.task_name in OCP_TASKS:
                     batch_list[0]["adsorbate"].cell = original_cell
                     batch_list[0]["catalyst"].cell = original_cell
+            elif self.data_mode == "separate":
+                batch_list[0][0].pos = original_pos_ads
+                batch_list[0][1].pos = original_pos_cat
+                if self.task_name in OCP_TASKS:
+                    batch_list[0][0].cell = original_cell
+                    batch_list[0][1].cell = original_cell
             else:
                 batch_list[0].pos = original_pos
                 if self.task_name in OCP_TASKS:

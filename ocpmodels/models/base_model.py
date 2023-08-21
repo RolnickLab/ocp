@@ -9,6 +9,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch_geometric.nn import radius_graph
+from torch_geometric.data import HeteroData
 
 from ocpmodels.common.utils import (
     compute_neighbors,
@@ -44,11 +45,14 @@ class BaseModel(nn.Module):
 
         # energy gradient w.r.t. positions will be computed
         if mode == "train" or self.regress_forces == "from_energy":
-            try:
-                data.pos.requires_grad_(True)
-            except:
+            if type(data) is list:
+                data[0].pos.requires_grad_(True)
+                data[1].pos.requires_grad_(True)
+            elif type(data[0]) is HeteroData:
                 data["adsorbate"].pos.requires_grad_(True)
                 data["catalyst"].pos.requires_grad_(True)
+            else: 
+                data.pos.requires_grad_(True)
 
         # predict energy
         preds = self.energy_forward(data)
