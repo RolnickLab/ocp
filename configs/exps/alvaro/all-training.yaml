@@ -42,13 +42,7 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: afaenet-is2re-all
-    model:
-      afaenet_gat_mode: "v1"
-
   - config: depfaenet-is2re-all
-
-  - config: indfaenet-is2re-all
 
   - config: faenet-is2re-all
 

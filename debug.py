@@ -96,7 +96,7 @@ if __name__ == "__main__":
     args.mode = "train"
     args.graph_rewiring = "remove-tag-0"
     args.cp_data_to_tmpdir = True
-    args.config = "afaenet-is2re-10k"
+    args.config = "faenet-is2re-10k"
     args.frame_averaging = "2D"
     args.fa_frames = "se3-random"
 

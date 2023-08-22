@@ -614,7 +614,7 @@ class SingleTrainer(BaseTrainer):
         else:
             energy_target = torch.cat(
                 [
-                    batch[0][0].y_relaxed.to(self.device)
+                    batch.y_relaxed.to(self.device)
                     if self.task_name == "is2re"
                     else batch.y.to(self.device)
                     for batch in batch_list
