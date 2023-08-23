@@ -47,5 +47,4 @@ runs:
   - config: faenet-is2re-all
 
   - config: faenet-is2re-all
-    model:
-      is_disconnected: True
+    is_disconnected: True
