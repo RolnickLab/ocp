@@ -42,4 +42,6 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: gemnet-is2re-all
+  - config: gemnet_oc-is2re-all
+
+  - config: schnet-is2re-all
