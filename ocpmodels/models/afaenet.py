@@ -29,6 +29,7 @@ class GATInteraction(nn.Module):
         if version not in {"v1", "v2"}:
             raise ValueError(f"Invalid GAT version. Received {version}, available: v1, v2.")
 
+        # Not quite sure what is the impact of increasing or decreasing the number of heads
         if version == "v1":
             self.interaction = GATConv(
                 in_channels = d_model,
@@ -49,13 +50,16 @@ class GATInteraction(nn.Module):
             )
 
     def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
+        # We first do the message passing
         separation_pt = h_ads.shape[0]
         combined = torch.concat([h_ads, h_cat], dim = 0)
         combined = self.interaction(combined, bipartite_edges, bipartite_weights)
 
+        # Then we normalize and add residual connections
         ads, cat = combined[:separation_pt], combined[separation_pt:]
         ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
         ads, cat = ads + h_ads, cat + h_cat
+        # QUESTION: Should normalization happen before separating them?
 
         return ads, cat
 
@@ -155,7 +159,7 @@ class AFaenet(BaseModel):
             ]
         )
 
-        assert "afaenet_gat_mode" in kwargs, "Faenet version needs to be specified. Options: v1, v2"
+        assert "afaenet_gat_mode" in kwargs, "GAT version needs to be specified. Options: v1, v2"
         # Inter Interaction
         self.inter_interactions = nn.ModuleList(
             [
@@ -225,7 +229,6 @@ class AFaenet(BaseModel):
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         batch_size = len(data)
-
         batch_ads = data["adsorbate"]["batch"]
         batch_cat = data["catalyst"]["batch"]
 
@@ -290,15 +293,18 @@ class AFaenet(BaseModel):
                         h_cat, edge_index_cat, edge_weight_cat, batch_cat, alpha_cat
                     )
                 )
+            # First we do intra interaction
             intra_ads = interaction_ads(h_ads, edge_index_ads, e_ads)
             intra_cat = interaction_cat(h_cat, edge_index_cat, e_cat)
 
+            # Then we do inter interaction
             h_ads, h_cat = inter_interaction(
                 intra_ads,
                 intra_cat,
                 data["is_disc"].edge_index,
                 edge_weights,
             )
+            # QUESTION: Can we do both simultaneously?
 
         # Atom skip-co
         if self.skip_co == "concat_atom":

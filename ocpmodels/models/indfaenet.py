@@ -88,6 +88,7 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             ads_energy = self.ads_lin(ads_energy)
             cat_energy = self.cat_lin(cat_energy)
 
+        # We combine predictions
         if self.transformer_out:
             batch_size = ads_energy.shape[0]
             
@@ -108,7 +109,7 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
             system_energy = self.combination(system_energy)
 
-        # We combine predictions and return them
+        # We return them
         pred_system = {
             "energy" : system_energy,
             "pooling_loss" : pred_ads["pooling_loss"] if pred_ads["pooling_loss"] is None

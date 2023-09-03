@@ -15,6 +15,7 @@ class discOutputBlock(conOutputBlock):
             energy_head, hidden_channels, act
         )
 
+        # We modify the last output linear function to make the output a vector
         self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         self.disconnected_mlp = disconnected_mlp
@@ -22,6 +23,7 @@ class discOutputBlock(conOutputBlock):
             self.ads_lin = Linear(hidden_channels // 2, hidden_channels // 2)
             self.cat_lin = Linear(hidden_channels // 2, hidden_channels // 2)
 
+        # Combines the hidden representation of each to a scalar.
         self.sys_lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
         self.sys_lin2 = Linear(hidden_channels // 2, 1)
 
@@ -50,6 +52,7 @@ class discOutputBlock(conOutputBlock):
         }:
             h = h * alpha
 
+        # We pool separately and then we concatenate.
         ads = self.current_tags == 2
         cat = ~ads
 
@@ -62,6 +65,7 @@ class discOutputBlock(conOutputBlock):
 
         system = torch.cat([ads_out, cat_out], dim = 1)
 
+        # Finally, we predict a number.
         system = self.sys_lin1(system)
         energy = self.sys_lin2(system)
 
@@ -72,6 +76,7 @@ class depFAENet(FAENet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        # We replace the old output block by the new output block
         self.disconnected_mlp = kwargs.get("disconnected_mlp", False)
         self.output_block = discOutputBlock(
             self.energy_head, kwargs["hidden_channels"], self.act, self.disconnected_mlp
@@ -79,6 +84,7 @@ class depFAENet(FAENet):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
+        # We need to save the tags so this step is necessary. 
         self.output_block.tags_saver(data.tags)
         pred = super().energy_forward(data)
 

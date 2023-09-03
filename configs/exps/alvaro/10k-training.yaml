@@ -42,12 +42,4 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: afaenet-is2re-10k
-    model:
-      afaenet_gat_mode: "v1"
-
-  - config: indfaenet-is2re-10k
-
-  - config: depfaenet-is2re-10k
-
-  - config: faenet-is2re-10k
+  - config: gemnet-is2re-10k

@@ -42,9 +42,4 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: depfaenet-is2re-all
-
-  - config: faenet-is2re-all
-
-  - config: faenet-is2re-all
-    is_disconnected: True
+  - config: gemnet-is2re-all

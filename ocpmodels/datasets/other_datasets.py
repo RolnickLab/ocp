@@ -11,6 +11,8 @@ from ocpmodels.datasets.lmdb_dataset import LmdbDataset
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import pyg2_data_transform
 
+# This is a function that receives an adsorbate/catalyst system and returns 
+# each of these parts separately. 
 def graph_splitter(graph):
     edge_index = graph.edge_index
     pos = graph.pos
@@ -84,6 +86,7 @@ def graph_splitter(graph):
 
     return adsorbate, catalyst
 
+# This dataset class sends back a tuple with the adsorbate and catalyst.
 @registry.register_dataset("separate")
 class SeparateLmdbDataset(LmdbDataset): # Check that the dataset works as intended, with an specific example.
     def __getitem__(self, idx):
@@ -109,6 +112,7 @@ class SeparateLmdbDataset(LmdbDataset): # Check that the dataset works as intend
             datapoint_pickled = self.env.begin().get(self._keys[idx])
             data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
 
+        # We separate the graphs
         adsorbate, catalyst = graph_splitter(data_object)
 
         t1 = time.time_ns()
@@ -134,8 +138,10 @@ class SeparateLmdbDataset(LmdbDataset): # Check that the dataset works as intend
 @registry.register_dataset("heterogeneous")
 class HeterogeneousDataset(SeparateLmdbDataset):
     def __getitem__(self, idx):
+        # We start by separating the adsorbate and catalyst
         adsorbate, catalyst = super().__getitem__(idx)
 
+        # We save each into the heterogeneous graph
         reaction = HeteroData()
         for graph in [adsorbate, catalyst]:
             mode = graph.mode
@@ -146,6 +152,7 @@ class HeterogeneousDataset(SeparateLmdbDataset):
 
             reaction[mode, "is_close", mode].edge_index = graph.edge_index
 
+        # We create the edges between both parts of the graph.
         sender = torch.repeat_interleave(torch.arange(catalyst.natoms.item()), adsorbate.natoms.item())
         receiver = torch.arange(0, adsorbate.natoms.item()).repeat(catalyst.natoms.item())
         reaction["catalyst", "is_disc", "adsorbate"].edge_index = torch.stack([sender, receiver])

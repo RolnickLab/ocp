@@ -96,7 +96,7 @@ if __name__ == "__main__":
     args.mode = "train"
     args.graph_rewiring = "remove-tag-0"
     args.cp_data_to_tmpdir = True
-    args.config = "faenet-is2re-10k"
+    args.config = "schnet-is2re-10k"
     args.frame_averaging = "2D"
     args.fa_frames = "se3-random"
 
@@ -124,8 +124,8 @@ if __name__ == "__main__":
     trainer_config["model"]["num_interactions"] = 6
     trainer_config["model"]["second_layer_MLP"] = True
     trainer_config["model"]["skip_co"] = "concat"
-    trainer_config["model"]["transformer_out"] = False
-    trainer_config["model"]["afaenet_gat_mode"] = "v1"
+    #trainer_config["model"]["transformer_out"] = False
+    #trainer_config["model"]["afaenet_gat_mode"] = "v1"
     #trainer_config["model"]["disconnected_mlp"] = True
 
     #trainer_config["optim"]["batch_sizes"] = 256
