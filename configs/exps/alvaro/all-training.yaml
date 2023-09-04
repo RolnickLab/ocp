@@ -42,6 +42,11 @@ default:
     eval_batch_size: 256
 
 runs:
-  - config: gemnet_oc-is2re-all
+  - config: schnet-is2re-all
 
   - config: schnet-is2re-all
+    is_disconnected: True
+
+  - config: depschnet-is2re-all
+
+  - config: indschnet-is2re-all
