@@ -102,7 +102,7 @@ if __name__ == "__main__":
     args.max_num_neighbors = 40
     args.hidden_channels = 142
     args.graph_rewiring = "remove-tag-0"
-    args.config = "gemnet_oc-is2re-10k"
+    args.config = "depschnet-is2re-10k"
 
     trainer_config = build_config(args, override_args)
 

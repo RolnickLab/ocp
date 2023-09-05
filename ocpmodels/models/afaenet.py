@@ -57,9 +57,9 @@ class GATInteraction(nn.Module):
 
         # We separate again and we return
         ads, cat = combined[:separation_pt], combined[separation_pt:]
-        #ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
-        #ads, cat = ads + h_ads, cat + h_cat
         # QUESTION: Should normalization happen before separating them?
+        # ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
+        # ads, cat = ads + h_ads, cat + h_cat
 
         return ads, cat
 
@@ -222,6 +222,7 @@ class AFaenet(BaseModel):
         else:
             self.combination = nn.Sequential(
                 Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
+                nn.ReLU(),
                 Linear(kwargs["hidden_channels"] // 2, 1)
             )
 
@@ -303,9 +304,10 @@ class AFaenet(BaseModel):
                 data["is_disc"].edge_index,
                 edge_weights,
             )
-            h_ads = h_ads + inter_ads
-            h_cat = h_cat + inter_cat
             # QUESTION: Can we do both simultaneously?
+
+            h_ads, h_cat = h_ads + inter_ads, h_cat + inter_cat
+            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(h_cat)
 
         # Atom skip-co
         if self.skip_co == "concat_atom":
