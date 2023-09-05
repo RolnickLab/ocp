@@ -55,9 +55,9 @@ class GATInteraction(nn.Module):
         combined = torch.concat([h_ads, h_cat], dim = 0)
         combined = self.interaction(combined, bipartite_edges, bipartite_weights)
 
-        # Then we normalize and add residual connections
+        # Then we add residual connections
         ads, cat = combined[:separation_pt], combined[separation_pt:]
-        ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
+        #ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
         ads, cat = ads + h_ads, cat + h_cat
         # QUESTION: Should normalization happen before separating them?
 
@@ -127,7 +127,7 @@ class AFaenet(BaseModel):
             kwargs["second_layer_MLP"],
             kwargs["edge_embed_type"],
         )
-        self.disc_edge_embed = Linear(kwargs["num_gaussians"], kwargs["num_filters"] // 2)
+        self.disc_edge_embed = Linear(kwargs["num_gaussians"], kwargs["num_filters"])
 
         # Interaction block
         self.interaction_blocks_ads = nn.ModuleList(
@@ -166,7 +166,7 @@ class AFaenet(BaseModel):
                 GATInteraction(
                     kwargs["hidden_channels"],
                     kwargs["afaenet_gat_mode"],
-                    kwargs["num_filters"] // 2,
+                    kwargs["num_filters"],
                 )
                 for _ in range(kwargs["num_interactions"])
             ]
@@ -222,7 +222,6 @@ class AFaenet(BaseModel):
         else:
             self.combination = nn.Sequential(
                 Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
-                self.act,
                 Linear(kwargs["hidden_channels"] // 2, 1)
             )
 

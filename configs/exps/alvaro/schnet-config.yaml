@@ -1,0 +1,42 @@
+# MODIFY THIS ONE FOR RUNS
+
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  tag_hidden_channels: 32
+  pg_hidden_channels: 32
+  phys_embeds: true
+  phys_hidden_channels: 0
+  energy_head: false
+  num_targets: 1
+  otf_graph: false
+  max_num_neighbors: 40
+  hidden_channels: 142
+  graph_rewiring: remove-tag-0
+  optim:
+    batch_size: 32
+    eval_batch_size: 32
+    num_workers: 4
+    max_epochs: 30
+    es_patience: 5
+
+runs:
+  - config: schnet-is2re-all
+
+  - config: schnet-is2re-all
+    is_disconnected: True
+
+  - config: depschnet-is2re-all
+
+  - config: indschnet-is2re-all
+
+  - config: aschnet-is2re-all
+    model:
+      gat_mode: v1

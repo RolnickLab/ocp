@@ -92,17 +92,13 @@ if __name__ == "__main__":
 
     args.wandb_name = "alvaro-carbonero-math"
     args.wandb_project = "ocp-alvaro"
-    args.tag_hidden_channels: 32
-    args.pg_hidden_channels: 32
-    args.phys_embeds = True
-    args.phys_hidden_channels = 0
-    args.energy_head = False
-    args.num_targets = 1
-    args.otf_graph = False
-    args.max_num_neighbors = 40
-    args.hidden_channels = 142
+    args.test_ri = True
+    args.mode = "train"
     args.graph_rewiring = "remove-tag-0"
-    args.config = "aschnet-is2re-10k"
+    args.cp_data_to_tmpdir = True
+    args.config = "afaenet-is2re-10k"
+    args.frame_averaging = "2D"
+    args.fa_frames = "se3-random"
 
     trainer_config = build_config(args, override_args)
 
@@ -114,13 +110,30 @@ if __name__ == "__main__":
         trainer_config["dataset"]
     )
 
-    trainer_config["optim"]["batch_size"] = 32
-    trainer_config["optim"]["eval_batch_size"] = 32
-    #trainer_config["optim"]["num_workers"] = 4
-    trainer_config["optim"]["max_epochs"] = 30
-    trainer_config["optim"]["es_patience"] = 5
+    trainer_config["model"]["edge_embed_type"] = "all_rij"
+    trainer_config["model"]["mp_type"] = "updownscale"
+    trainer_config["model"]["phys_embeds"] = True
+    trainer_config["model"]["tag_hidden_channels"] = 32
+    trainer_config["model"]["pg_hidden_channels"] = 64
+    trainer_config["model"]["energy_head"] = "weighted-av-final-embeds"
+    trainer_config["model"]["complex_mp"] = False
+    trainer_config["model"]["graph_norm"] = True
+    trainer_config["model"]['hidden_channels'] = 352
+    trainer_config["model"]["num_filters"] = 448
+    trainer_config["model"]["num_gaussians"] = 99
+    trainer_config["model"]["num_interactions"] = 6
+    trainer_config["model"]["second_layer_MLP"] = True
+    trainer_config["model"]["skip_co"] = "concat"
+    #trainer_config["model"]["transformer_out"] = False
+    trainer_config["model"]["afaenet_gat_mode"] = "v1"
+    #trainer_config["model"]["disconnected_mlp"] = True
 
-    trainer_config["model"]["gat_mode"] = "v1"
+    #trainer_config["optim"]["batch_sizes"] = 256
+    #trainer_config["optim"]["eval_batch_sizes"] = 256
+    trainer_config["optim"]["lr_initial"] = 0.0019
+    trainer_config["optim"]["scheduler"] = "LinearWarmupCosineAnnealingLR"
+    trainer_config["optim"]["max_epochs"] = 20
+    trainer_config["optim"]["eval_every"] = 0.4
 
     # -- Initial setup
 
