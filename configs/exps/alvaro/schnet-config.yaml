@@ -12,7 +12,6 @@ default:
   wandb_project: ocp-alvaro
   energy_head: false
   num_targets: 15
-  hidden_channels: 142
   graph_rewiring: remove-tag-0
   model:
     otf_graph: false
