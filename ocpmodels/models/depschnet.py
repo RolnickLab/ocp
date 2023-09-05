@@ -16,6 +16,8 @@ class depSchNet(SchNet):
 
         # We replace the last linear transform to keep dimentionality
         self.lin2 = Linear(self.hidden_channels // 2, self.hidden_channels // 2)
+        torch.nn.init.xavier_uniform_(self.lin2.weight)
+        self.lin2.bias.data.fill_(0)
 
         self.sys_lin1 = Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2)
         self.sys_lin2 = Linear(self.hidden_channels // 2, 1)

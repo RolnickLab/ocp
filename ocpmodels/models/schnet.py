@@ -258,10 +258,10 @@ class SchNet(BaseModel):
         # Output block
         self.lin1 = Linear(self.hidden_channels, self.hidden_channels // 2)
         self.act = ShiftedSoftplus()
-        if kwargs["model_name"] == "schnet":
-            self.lin2 = Linear(self.hidden_channels // 2, 1)
-        elif kwargs["model_name"] in ["indschnet"]:
+        if kwargs["model_name"] in ["indschnet"]:
             self.lin2 = Linear(self.hidden_channels // 2, self.hidden_channels // 2)
+        else:
+            self.lin2 = Linear(self.hidden_channels // 2, 1)
 
         # weighted average & pooling
         if self.energy_head in {"pooling", "random"}:
