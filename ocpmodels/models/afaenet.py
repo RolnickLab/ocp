@@ -55,10 +55,10 @@ class GATInteraction(nn.Module):
         combined = torch.concat([h_ads, h_cat], dim = 0)
         combined = self.interaction(combined, bipartite_edges, bipartite_weights)
 
-        # Then we add residual connections
+        # We separate again and we return
         ads, cat = combined[:separation_pt], combined[separation_pt:]
         #ads, cat = nn.functional.normalize(ads), nn.functional.normalize(cat)
-        ads, cat = ads + h_ads, cat + h_cat
+        #ads, cat = ads + h_ads, cat + h_cat
         # QUESTION: Should normalization happen before separating them?
 
         return ads, cat
@@ -297,12 +297,14 @@ class AFaenet(BaseModel):
             intra_cat = interaction_cat(h_cat, edge_index_cat, e_cat)
 
             # Then we do inter interaction
-            h_ads, h_cat = inter_interaction(
+            inter_ads, inter_cat = inter_interaction(
                 intra_ads,
                 intra_cat,
                 data["is_disc"].edge_index,
                 edge_weights,
             )
+            h_ads = h_ads + inter_ads
+            h_cat = h_cat + inter_cat
             # QUESTION: Can we do both simultaneously?
 
         # Atom skip-co

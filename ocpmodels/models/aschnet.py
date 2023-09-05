@@ -375,14 +375,16 @@ class ASchNet(BaseModel):
             self.interactions_cat,
             self.interactions_disc
         ):
-            h_ads = h_ads + interaction_ads(h_ads, edge_index_ads, edge_weight_ads, edge_attr_ads)
-            h_cat = h_cat + interaction_cat(h_cat, edge_index_cat, edge_weight_cat, edge_attr_cat)
-            h_ads, h_cat = interaction_disc(
-                h_ads,
-                h_cat,
+            intra_ads = interaction_ads(h_ads, edge_index_ads, edge_weight_ads, edge_attr_ads)
+            intra_cat = interaction_cat(h_cat, edge_index_cat, edge_weight_cat, edge_attr_cat)
+            inter_ads, inter_cat = interaction_disc(
+                intra_ads,
+                intra_cat,
                 data["is_disc"].edge_index,
                 edge_weights_disc
             )
+            h_ads = h_ads + inter_ads
+            h_cat = h_cat + inter_cat
 
         pooling_loss = None  # deal with pooling loss
 
