@@ -43,3 +43,5 @@ default:
 
 runs:
   - config: afaenet-is2re-all
+    model:
+      afaenet_gat_mode: v1
