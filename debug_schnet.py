@@ -89,7 +89,21 @@ if __name__ == "__main__":
         args.logdir = resolve(args.logdir)
 
     # -- Build config
-    
+
+    args.wandb_name = "alvaro-carbonero-math"
+    args.wandb_project = "ocp-alvaro"
+    args.tag_hidden_channels: 32
+    args.pg_hidden_channels: 32
+    args.phys_embeds = True
+    args.phys_hidden_channels = 0
+    args.energy_head = False
+    args.num_targets = 1
+    args.otf_graph = False
+    args.max_num_neighbors = 40
+    args.hidden_channels = 142
+    args.graph_rewiring = "remove-tag-0"
+    args.config = "depschnet-is2re-10k"
+
     trainer_config = build_config(args, override_args)
 
     if dist_utils.is_master():
@@ -99,6 +113,14 @@ if __name__ == "__main__":
     trainer_config["dataset"] = dist_utils.broadcast_from_master(
         trainer_config["dataset"]
     )
+
+    trainer_config["optim"]["batch_size"] = 64
+    trainer_config["optim"]["eval_batch_size"] = 64
+    trainer_config["optim"]["lr_initial"] = 0.0005
+    trainer_config["optim"]["max_epochs"] = 30
+    trainer_config["optim"]["es_patience"] = 5
+
+    trainer_config["model"]["gat_mode"] = "v1"
 
     # -- Initial setup
 
@@ -125,7 +147,6 @@ if __name__ == "__main__":
             trainer_config = merge_dicts(trainer_config, hparams)
 
         # -- Setup trainer
-
         trainer_config = continue_orion_exp(trainer_config)
         trainer_config = auto_note(trainer_config)
         trainer_config = set_min_hidden_channels(trainer_config)

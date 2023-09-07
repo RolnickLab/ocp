@@ -10,6 +10,7 @@ import logging
 import os
 import random
 import time
+import pickle
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
@@ -22,7 +23,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 from torch.nn.parallel.distributed import DistributedDataParallel
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch_geometric.data import Batch
 from tqdm import tqdm
 from uuid import uuid4
@@ -50,6 +51,7 @@ from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
 class BaseTrainer(ABC):
     def __init__(self, **kwargs):
         run_dir = kwargs["run_dir"]
+
         model_name = kwargs["model"].pop(
             "name", kwargs.get("model_name", "Unknown - base_trainer issue")
         )
@@ -150,11 +152,35 @@ class BaseTrainer(ABC):
                 "to stop the training after the next validation\n",
             )
             (run_dir / f"config-{JOB_ID}.yaml").write_text(yaml.dump(self.config))
-        self.load()
 
+        # Here's the models whose edges are removed as a transform
+        transform_models = ["depfaenet", "depschnet"]
+        if self.config["is_disconnected"]:
+            print("\n\nHeads up: cat-ads edges being removed!")
+        if self.config["model_name"] in transform_models:
+            if not self.config["is_disconnected"]:
+                print(f"\n\nWhen using {self.config['model_name']},",
+                    "the flag 'is_disconnected' should be used! The flag has been turned on.\n")
+                self.config["is_disconnected"] = True
+
+        # Here's the models whose graphs are disconnected in the dataset
+        self.separate_models = ["indfaenet", "indschnet"]
+        self.heterogeneous_models = ["afaenet", "aschnet"]
+        self.data_mode = "normal"
+        self.separate_dataset = False
+
+        if self.config["model_name"] in self.separate_models:
+            self.data_mode = "separate"
+            print("\n\nHeads up: using separate dataset, so ads/cats are separated before transforms.\n")
+
+        elif self.config["model_name"] in self.heterogeneous_models:
+            self.data_mode = "heterogeneous"
+            print("\n\nHeads up: using heterogeneous dataset, so ads/cats are stored separately in a het graph.\n")
+
+        self.load()
         self.evaluator = Evaluator(
-            task=self.task_name,
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
+            task = self.task_name,
+            model_regresses_forces = self.config["model"].get("regress_forces", ""),
         )
 
     def load(self):
@@ -220,6 +246,7 @@ class BaseTrainer(ABC):
             pin_memory=True,
             batch_sampler=sampler,
         )
+
         return loader
 
     def load_datasets(self):
@@ -239,9 +266,28 @@ class BaseTrainer(ABC):
             if split == "default_val":
                 continue
 
-            self.datasets[split] = registry.get_dataset_class(
-                self.config["task"]["dataset"]
-            )(ds_conf, transform=transform)
+            if self.data_mode == "separate":
+                self.datasets[split] = registry.get_dataset_class(
+                    "separate"
+                )(ds_conf, transform=transform)
+
+            elif self.data_mode == "heterogeneous":
+                self.datasets[split] = registry.get_dataset_class(
+                    "heterogeneous"
+                )(ds_conf, transform=transform)
+
+            else:
+                self.datasets[split] = registry.get_dataset_class(
+                    self.config["task"]["dataset"]
+                )(ds_conf, transform=transform)
+
+            if self.config["lowest_energy_only"]:
+                with open('/network/scratch/a/alvaro.carbonero/lowest_energy.pkl', 'rb') as fp:
+                    good_indices = pickle.load(fp)
+                good_indices = list(good_indices)
+
+                self.real_dataset = self.datasets["train"]
+                self.datasets["train"] = Subset(self.datasets["train"], good_indices)
 
             shuffle = False
             if split == "train":
@@ -364,6 +410,7 @@ class BaseTrainer(ABC):
                 "task_name": self.task_name,
             },
             **self.config["model"],
+            "model_name": self.config["model_name"],            
         }
 
         self.model = registry.get_model_class(self.config["model_name"])(
@@ -1055,6 +1102,7 @@ class BaseTrainer(ABC):
                         # time forward pass
                         with timer.next("forward"):
                             _ = self.model_forward(b, mode="inference")
+
 
         # divide times by batch size
         mean, std = timer.prepare_for_logging(

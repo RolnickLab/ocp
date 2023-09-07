@@ -1,0 +1,47 @@
+# MODIFY THIS ONE FOR RUNS
+
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  test_ri: True
+  mode: train
+  graph_rewiring: remove-tag-0
+  optim:
+  cp_data_to_tmpdir: true
+  wandb-tags: 'best-config-??' # Insert what model you're running if running one by one.
+  frame_averaging: 2D
+  fa_frames: se3-random
+  model:
+    mp_type: updownscale
+    phys_embeds: True
+    tag_hidden_channels: 32
+    pg_hidden_channels: 64
+    energy_head: weighted-av-final-embeds
+    complex_mp: False
+    graph_norm: True
+    hidden_channels: 352
+    num_filters: 448
+    num_gaussians: 99
+    num_interactions: 6
+    second_layer_MLP: True
+    skip_co: concat
+    edge_embed_type: all_rij
+  optim:
+    lr_initial: 0.001
+    scheduler: LinearWarmupCosineAnnealingLR
+    max_epochs: 20
+    eval_every: 0.4
+    batch_size: 256
+    eval_batch_size: 256
+
+runs:
+  - config: schnet-is2re-10k
+
+  - config: gemnet_oc-is2re-10k

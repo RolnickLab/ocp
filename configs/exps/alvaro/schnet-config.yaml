@@ -1,0 +1,36 @@
+# MODIFY THIS ONE FOR RUNS
+
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  energy_head: false
+  num_targets: 15
+  graph_rewiring: remove-tag-0
+  model:
+    otf_graph: false
+    max_num_neighbors: 40
+  optim:
+    num_workers: 4
+    max_epochs: 17
+    warmup_factor: 0.2
+
+runs:
+  #- config: schnet-is2re-all
+
+  - config: schnet-is2re-all
+    is_disconnected: True
+
+  - config: depschnet-is2re-all
+
+  - config: indschnet-is2re-all
+
+  - config: aschnet-is2re-all
+    model:
+      gat_mode: v1

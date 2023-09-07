@@ -153,7 +153,6 @@ class EmbeddingBlock(nn.Module):
         self, z, rel_pos, edge_attr, tag=None, normalised_rel_pos=None, subnodes=None
     ):
         # --- Edge embedding --
-
         if self.edge_embed_type == "rij":
             e = self.lin_e1(rel_pos)
         elif self.edge_embed_type == "all_rij":
@@ -397,13 +396,18 @@ class InteractionBlock(MessagePassing):
 
 
 class OutputBlock(nn.Module):
-    def __init__(self, energy_head, hidden_channels, act):
+    def __init__(
+        self, energy_head, hidden_channels, act, model_name = "faenet"
+    ):
         super().__init__()
         self.energy_head = energy_head
         self.act = act
 
         self.lin1 = Linear(hidden_channels, hidden_channels // 2)
-        self.lin2 = Linear(hidden_channels // 2, 1)
+        if model_name == "faenet":
+            self.lin2 = Linear(hidden_channels // 2, 1)
+        elif model_name in {"indfaenet", "afaenet"}: # These are models that output more than one scalar.
+            self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         # weighted average & pooling
         if self.energy_head in {"pooling", "random"}:
@@ -527,6 +531,7 @@ class FAENet(BaseModel):
             "one-supernode-per-atom-type",
             "one-supernode-per-atom-type-dist",
         }
+        
         # Gaussian Basis
         self.distance_expansion = GaussianSmearing(
             0.0, self.cutoff, kwargs["num_gaussians"]
@@ -565,7 +570,7 @@ class FAENet(BaseModel):
 
         # Output block
         self.output_block = OutputBlock(
-            self.energy_head, kwargs["hidden_channels"], self.act
+            self.energy_head, kwargs["hidden_channels"], self.act, kwargs["model_name"]
         )
 
         # Energy head
@@ -586,7 +591,13 @@ class FAENet(BaseModel):
 
         # Skip co
         if self.skip_co == "concat":
-            self.mlp_skip_co = Linear((kwargs["num_interactions"] + 1), 1)
+            if kwargs["model_name"] in ["faenet", "depfaenet"]:
+                self.mlp_skip_co = Linear((kwargs["num_interactions"] + 1), 1)
+            elif kwargs["model_name"] == "indfaenet":
+                self.mlp_skip_co = Linear(
+                    (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
+                    kwargs["hidden_channels"] // 2
+                )
         elif self.skip_co == "concat_atom":
             self.mlp_skip_co = Linear(
                 ((kwargs["num_interactions"] + 1) * kwargs["hidden_channels"]),
@@ -600,6 +611,7 @@ class FAENet(BaseModel):
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         # Rewire the graph
+        
         z = data.atomic_numbers.long()
         pos = data.pos
         batch = data.batch

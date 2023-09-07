@@ -287,6 +287,18 @@ class Flags:
             help="Number of validation loops to run in order to collect inference"
             + " timing stats",
         )
+        self.parser.add_argument(
+            "--is_disconnected",
+            type=bool,
+            default=False,
+            help="Eliminates edges between catalyst and adsorbate."
+        )
+        self.parser.add_argument(
+            "--lowest_energy_only",
+            type=bool,
+            default=False,
+            help="Makes trainer use the lowest energy data point for every (catalyst, adsorbate, cell) tuple. ONLY USE WITH ALL DATASET"
+        )
 
 
 flags = Flags()
