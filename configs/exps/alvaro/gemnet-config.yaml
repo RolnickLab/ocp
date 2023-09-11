@@ -24,3 +24,7 @@ default:
 
 runs:
   - config: gemnet_oc-is2re-all
+
+  - config: depgemnet_oc-is2re-all
+
+  - config: indgemnet_oc-is2re-all
