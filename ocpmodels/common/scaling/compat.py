@@ -50,6 +50,8 @@ def _load_scale_dict(scale_file: Optional[Union[str, ScaleDict]]):
 
 
 def load_scales_compat(module: nn.Module, scale_file: Optional[Union[str, ScaleDict]]):
+    import ipdb
+    ipdb.set_trace()
     scale_dict = _load_scale_dict(scale_file)
     if not scale_dict:
         return

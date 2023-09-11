@@ -358,6 +358,7 @@ class GemNetOC(BaseModel):
             for _ in range(num_global_out_layers)
         ]
         self.out_mlp_E = torch.nn.Sequential(*out_mlp_E)
+
         self.out_energy = Dense(emb_size_atom, num_targets, bias=False, activation=None)
         if direct_forces:
             out_mlp_F = [
@@ -383,6 +384,9 @@ class GemNetOC(BaseModel):
         self.out_energy.reset_parameters(out_initializer)
         if direct_forces:
             self.out_forces.reset_parameters(out_initializer)
+
+        import ipdb
+        ipdb.set_trace()
 
         load_scales_compat(self, scale_file)
 

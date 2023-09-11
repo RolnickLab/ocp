@@ -759,6 +759,7 @@ def setup_imports():
 
     # manual model imports
     importlib.import_module("ocpmodels.models.gemnet_oc.gemnet_oc")
+    importlib.import_module("ocpmodels.models.gemnet_oc.depgemnet_oc")
 
     experimental_folder = os.path.join(root_folder, "../experimental/")
     if os.path.exists(experimental_folder):

@@ -2,25 +2,21 @@ import torch
 from torch.nn import Linear
 from torch_scatter import scatter
 
-from ocpmodels.models.schnet import SchNet
-from ocpmodels.models.faenet import OutputBlock as conOutputBlock
+from ocpmodels.models.gemnet_oc.gemnet_oc import GemNetOC
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
 
 from torch_geometric.data import Batch
 
 @registry.register_model("depgemnet_oc")
-class depGemNetOC(SchNet):
+class depGemNetOC(GemNetOC):
     def __init__(self, **kwargs):
+        import ipdb
+        ipdb.set_trace()
+        kwargs["num_targets"] = kwargs["emb_size_atom"] // 2
         super().__init__(**kwargs)
-
-        # We replace the last linear transform to keep dimentionality
-        self.lin2 = Linear(self.hidden_channels // 2, self.hidden_channels // 2)
-        torch.nn.init.xavier_uniform_(self.lin2.weight)
-        self.lin2.bias.data.fill_(0)
-
-        self.sys_lin1 = Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2)
-        self.sys_lin2 = Linear(self.hidden_channels // 2, 1)
+        import ipdb
+        ipdb.set_trace()
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
