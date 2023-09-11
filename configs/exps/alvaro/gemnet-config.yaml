@@ -12,7 +12,14 @@ default:
    tag_hidden_channels: 32
    pg_hidden_channels: 32
    phys_embeds: True
-
+   otf_graph: False
+   max_num_neighbors: 40
+   hidden_channels: 142
+   graph_rewiring: remove-0-tag
+  optim:
+    batch_size: 32
+    eval_batch_size: 32
+    max_epochs: 30
 
 runs:
   - config: gemnet_oc-is2re-all
