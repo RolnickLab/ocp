@@ -1,5 +1,3 @@
-# MODIFY THIS ONE FOR RUNS
-
 job:
   mem: 32GB
   cpus: 4

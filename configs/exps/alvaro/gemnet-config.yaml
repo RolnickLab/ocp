@@ -1,0 +1,18 @@
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  model:
+   tag_hidden_channels: 32
+   pg_hidden_channels: 32
+   phys_embeds: True
+
+
+runs:
+  - config: gemnet_oc-is2re-all

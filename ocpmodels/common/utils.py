@@ -1437,6 +1437,7 @@ def get_max_neighbors_mask(natoms, index, atom_distance, max_num_neighbors_thres
     `max_num_neighbors_threshold` neighbors.
     Assumes that `index` is sorted.
     """
+
     device = natoms.device
     num_atoms = natoms.sum()
 
