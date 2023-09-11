@@ -1282,6 +1282,9 @@ class GemNetOC(BaseModel):
             xs_E.append(x_E)
             xs_F.append(x_F)
 
+        import ipdb
+        ipdb.set_trace()
+
         # Global output block for final predictions
         x_E = self.out_mlp_E(torch.cat(xs_E, dim=-1))
         if self.direct_forces:

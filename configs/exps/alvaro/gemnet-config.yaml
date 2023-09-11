@@ -15,6 +15,7 @@ default:
    otf_graph: False
    max_num_neighbors: 40
    hidden_channels: 142
+   regress_forces: True
    graph_rewiring: remove-0-tag
   optim:
     batch_size: 32
