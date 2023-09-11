@@ -385,9 +385,6 @@ class GemNetOC(BaseModel):
         if direct_forces:
             self.out_forces.reset_parameters(out_initializer)
 
-        import ipdb
-        ipdb.set_trace()
-
         load_scales_compat(self, scale_file)
 
     def set_cutoffs(self, cutoff, cutoff_qint, cutoff_aeaint, cutoff_aint):
@@ -1286,9 +1283,6 @@ class GemNetOC(BaseModel):
             xs_E.append(x_E)
             xs_F.append(x_F)
 
-        import ipdb
-        ipdb.set_trace()
-
         # Global output block for final predictions
         x_E = self.out_mlp_E(torch.cat(xs_E, dim=-1))
         if self.direct_forces:
@@ -1299,12 +1293,13 @@ class GemNetOC(BaseModel):
                 F_st = self.out_forces(x_F.float())
 
         nMolecules = torch.max(batch) + 1
+
         if self.extensive:
-            E_t = scatter_det(
+            E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="add"
-            )  # (nMolecules, num_targets)
+            ) # (nMolecules, num_targets)
         else:
-            E_t = scatter_det(
+            E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="mean"
             )  # (nMolecules, num_targets)
 
@@ -1317,6 +1312,14 @@ class GemNetOC(BaseModel):
             "pos": pos,
             "F_st": F_st,
         }
+
+    @conditional_grad(torch.enable_grad())
+    def scattering(self, E_t, batch, dim, dim_size, reduce="add"):
+        E_t = scatter_det(
+            src=E_t, index=batch, dim=dim, dim_size=dim_size, reduce=reduce
+        )
+
+        return E_t
 
     @conditional_grad(torch.enable_grad())
     def forces_forward(self, preds):

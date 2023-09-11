@@ -4,22 +4,28 @@ from torch_scatter import scatter
 
 from ocpmodels.models.gemnet_oc.gemnet_oc import GemNetOC
 from ocpmodels.common.registry import registry
-from ocpmodels.common.utils import conditional_grad
+from ocpmodels.common.utils import (
+    conditional_grad,
+    scatter_det
+)
 
 from torch_geometric.data import Batch
 
 @registry.register_model("depgemnet_oc")
 class depGemNetOC(GemNetOC):
     def __init__(self, **kwargs):
-        import ipdb
-        ipdb.set_trace()
-        kwargs["num_targets"] = kwargs["emb_size_atom"] // 2
+        self.hidden_channels = kwargs["emb_size_atom"]
+
+        kwargs["num_targets"] = self.hidden_channels // 2
         super().__init__(**kwargs)
-        import ipdb
-        ipdb.set_trace()
+
+        self.sys_lin1 = Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2)
+        self.sys_lin2 = Linear(self.hidden_channels // 2, 1)
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
+        import ipdb
+        ipdb.set_trace()
         # We need to save the tags so this step is necessary. 
         self.tags_saver(data.tags)
         pred = super().energy_forward(data)
@@ -30,12 +36,16 @@ class depGemNetOC(GemNetOC):
         self.current_tags = tags
 
     @conditional_grad(torch.enable_grad())
-    def scattering(self, h, batch):
+    def scattering(self, E_t, batch, dim, dim_size, reduce="add"):
         ads = self.current_tags == 2
         cat = ~ads
 
-        ads_out = scatter(h, batch * ads, dim = 0, reduce = self.readout)
-        cat_out = scatter(h, batch * cat, dim = 0, reduce = self.readout)
+        ads_out = scatter_det(
+            src=E_t, index=batch * ads, dim=dim, reduce=reduce
+        )
+        cat_out = scatter_det(
+            src=E_t, index=batch * cat, dim=dim, reduce=reduce
+        )
 
         system = torch.cat([ads_out, cat_out], dim = 1)
         system = self.sys_lin1(system)

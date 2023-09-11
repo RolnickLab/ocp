@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     args.wandb_name = "alvaro-carbonero-math"
     args.wandb_project = "ocp-alvaro"
-    args.config = "gemnet_oc-is2re-10k"
+    args.config = "indgemnet_oc-is2re-10k"
 
     args.tag_hidden_channels = 32
     args.pg_hidden_channels = 32
