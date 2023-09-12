@@ -24,8 +24,6 @@ class depGemNetOC(GemNetOC):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        import ipdb
-        ipdb.set_trace()
         # We need to save the tags so this step is necessary. 
         self.tags_saver(data.tags)
         pred = super().energy_forward(data)

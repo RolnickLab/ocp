@@ -860,8 +860,11 @@ class GemNetOC(BaseModel):
                 subgraph["distance"] = subgraph["distance"][edge_mask]
                 subgraph["vector"] = subgraph["vector"][edge_mask]
 
+
         empty_image = subgraph["num_neighbors"] == 0
         if torch.any(empty_image):
+            import ipdb
+            ipdb.set_trace()
             raise ValueError(
                 f"An image has no neighbors: id={data.id[empty_image]}, "
                 f"sid={data.sid[empty_image]}, fid={data.fid[empty_image]}"
@@ -1213,6 +1216,102 @@ class GemNetOC(BaseModel):
         if self.regress_forces and not self.direct_forces:
             pos.requires_grad_(True)
 
+        outputs = self.pre_interaction(
+            pos, batch, atomic_numbers, num_atoms, data
+        )
+
+        #h, m, basis_output, idx_t, x_E, x_F, xs_E, xs_F
+        interaction_outputs = self.interactions(outputs)
+
+        E_t, idx_t, F_st = self.post_interactions(
+            batch=batch, **interaction_outputs,
+        )
+
+        return {
+            "energy": E_t.squeeze(1),  # (num_molecules)
+            "E_t": E_t,
+            "idx_t": idx_t,
+            "main_graph": outputs["main_graph"],
+            "num_atoms": num_atoms,
+            "pos": pos,
+            "F_st": F_st,
+        }
+
+    def post_interactions(self, h, m, basis_output, idx_t, x_E, x_F, xs_E, xs_F, batch):
+        # Global output block for final predictions
+        x_E = self.out_mlp_E(torch.cat(xs_E, dim=-1))
+        if self.direct_forces:
+            x_F = self.out_mlp_F(torch.cat(xs_F, dim=-1))
+        with torch.cuda.amp.autocast(False):
+            E_t = self.out_energy(x_E.float())
+            if self.direct_forces:
+                F_st = self.out_forces(x_F.float())
+
+        nMolecules = torch.max(batch) + 1
+
+        if self.extensive:
+            E_t = self.scattering(
+                E_t, batch, dim=0, dim_size=nMolecules, reduce="add"
+            ) # (nMolecules, num_targets)
+        else:
+            E_t = self.scattering(
+                E_t, batch, dim=0, dim_size=nMolecules, reduce="mean"
+            )  # (nMolecules, num_targets)
+
+        return E_t, idx_t, F_st
+
+    def interactions(self, outputs):
+        h, m = outputs["h"], outputs["m"]
+        del outputs["h"]; del outputs["m"]
+
+        basis_output, idx_t = outputs["basis_output"], outputs["idx_t"]
+        del outputs["basis_output"]; del outputs["idx_t"]
+
+        x_E, x_F = outputs["x_E"], outputs["x_F"]
+        del outputs["x_E"]; outputs["x_F"]
+
+        xs_E, xs_F = outputs["xs_E"], outputs["xs_F"]
+        del outputs["xs_E"]; del outputs["xs_F"]
+
+        for i in range(self.num_blocks):
+            # Interaction block
+            h, m = self.int_blocks[i](
+                h=h,
+                m=m,
+                bases_qint=outputs["bases_qint"],
+                bases_e2e=outputs["bases_e2e"],
+                bases_a2e=outputs["bases_a2e"],
+                bases_e2a=outputs["bases_e2a"],
+                basis_a2a_rad=outputs["basis_a2a_rad"],
+                basis_atom_update=outputs["basis_atom_update"],
+                edge_index_main=outputs["main_graph"]["edge_index"],
+                a2ee2a_graph=outputs["a2ee2a_graph"],
+                a2a_graph=outputs["a2a_graph"],
+                id_swap=outputs["id_swap"],
+                trip_idx_e2e=outputs["trip_idx_e2e"],
+                trip_idx_a2e=outputs["trip_idx_a2e"],
+                trip_idx_e2a=outputs["trip_idx_e2a"],
+                quad_idx=outputs["quad_idx"],
+            )  # (nAtoms, emb_size_atom), (nEdges, emb_size_edge)
+
+            x_E, x_F = self.out_blocks[i + 1](h, m, basis_output, idx_t)
+            # (nAtoms, emb_size_atom), (nEdges, emb_size_edge)
+            xs_E.append(x_E)
+            xs_F.append(x_F)
+
+        interaction_outputs = {
+            "h" : h,
+            "m" : m,
+            "basis_output" : basis_output,
+            "idx_t" : idx_t,
+            "x_E" : x_E,
+            "x_F" : x_F,
+            "xs_E" : xs_E,
+            "xs_F" : xs_F
+        }
+        return interaction_outputs
+
+    def pre_interaction(self, pos, batch, atomic_numbers, num_atoms, data):
         (
             main_graph,
             a2a_graph,
@@ -1257,61 +1356,33 @@ class GemNetOC(BaseModel):
         # (nAtoms, emb_size_atom), (nEdges, emb_size_edge)
         xs_E, xs_F = [x_E], [x_F]
 
-        for i in range(self.num_blocks):
-            # Interaction block
-            h, m = self.int_blocks[i](
-                h=h,
-                m=m,
-                bases_qint=bases_qint,
-                bases_e2e=bases_e2e,
-                bases_a2e=bases_a2e,
-                bases_e2a=bases_e2a,
-                basis_a2a_rad=basis_a2a_rad,
-                basis_atom_update=basis_atom_update,
-                edge_index_main=main_graph["edge_index"],
-                a2ee2a_graph=a2ee2a_graph,
-                a2a_graph=a2a_graph,
-                id_swap=id_swap,
-                trip_idx_e2e=trip_idx_e2e,
-                trip_idx_a2e=trip_idx_a2e,
-                trip_idx_e2a=trip_idx_e2a,
-                quad_idx=quad_idx,
-            )  # (nAtoms, emb_size_atom), (nEdges, emb_size_edge)
-
-            x_E, x_F = self.out_blocks[i + 1](h, m, basis_output, idx_t)
-            # (nAtoms, emb_size_atom), (nEdges, emb_size_edge)
-            xs_E.append(x_E)
-            xs_F.append(x_F)
-
-        # Global output block for final predictions
-        x_E = self.out_mlp_E(torch.cat(xs_E, dim=-1))
-        if self.direct_forces:
-            x_F = self.out_mlp_F(torch.cat(xs_F, dim=-1))
-        with torch.cuda.amp.autocast(False):
-            E_t = self.out_energy(x_E.float())
-            if self.direct_forces:
-                F_st = self.out_forces(x_F.float())
-
-        nMolecules = torch.max(batch) + 1
-
-        if self.extensive:
-            E_t = self.scattering(
-                E_t, batch, dim=0, dim_size=nMolecules, reduce="add"
-            ) # (nMolecules, num_targets)
-        else:
-            E_t = self.scattering(
-                E_t, batch, dim=0, dim_size=nMolecules, reduce="mean"
-            )  # (nMolecules, num_targets)
-
-        return {
-            "energy": E_t.squeeze(1),  # (num_molecules)
-            "E_t": E_t,
-            "idx_t": idx_t,
-            "main_graph": main_graph,
-            "num_atoms": num_atoms,
-            "pos": pos,
-            "F_st": F_st,
+        outputs = {
+            "main_graph" : main_graph,
+            "a2a_graph" : a2a_graph,
+            "a2ee2a_graph" : a2ee2a_graph,
+            "id_swap" : id_swap,
+            "trip_idx_e2e" : trip_idx_e2e,
+            "trip_idx_a2e" : trip_idx_a2e,
+            "trip_idx_e2a" : trip_idx_e2a,
+            "quad_idx" : quad_idx,
+            "idx_t" : idx_t,
+            "basis_rad_raw" : basis_rad_raw,
+            "basis_atom_update" : basis_atom_update,
+            "basis_output" : basis_output,
+            "bases_qint" : bases_qint,
+            "bases_e2e" : bases_e2e,
+            "bases_a2e" : bases_a2e,
+            "bases_e2a" :bases_e2a,
+            "basis_a2a_rad" : basis_a2a_rad,
+            "h" : h,
+            "m" : m,
+            "x_E" : x_E,
+            "x_F" : x_F,
+            "xs_E" : xs_E,
+            "xs_F" : xs_F,
         }
+
+        return outputs
 
     @conditional_grad(torch.enable_grad())
     def scattering(self, E_t, batch, dim, dim_size, reduce="add"):

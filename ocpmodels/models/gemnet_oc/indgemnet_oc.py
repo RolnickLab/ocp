@@ -1,9 +1,8 @@
 import torch, math
 from torch import nn
-from torch.nn import Linear, Transformer
+from torch.nn import Linear
 
 from ocpmodels.models.gemnet_oc.gemnet_oc import GemNetOC
-from ocpmodels.models.faenet import OutputBlock
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.common.registry import registry
 from ocpmodels.models.utils.activations import swish
@@ -50,8 +49,12 @@ class indGemNetOC(BaseModel): # Change to make it inherit from base model.
         # We return them
         pred_system = {
             "energy" : system_energy,
-            "pooling_loss" : pred_ads["pooling_loss"] if pred_ads["pooling_loss"] is None
-                else pred_ads["pooling_loss"] + pred_cat["pooling_loss"]
+            "E_t": pred_ads["E_t"],
+            "idx_t": pred_ads["idx_t"],
+            "main_graph": pred_ads["main_graph"],
+            "num_atoms": pred_ads["num_atoms"],
+            "pos": pred_ads["pos"],
+            "F_st": pred_ads["F_st"]
         }
 
         return pred_system

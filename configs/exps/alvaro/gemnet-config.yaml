@@ -1,9 +1,9 @@
 job:
-  mem: 32GB
+  mem: 40GB
   cpus: 4
   gres: gpu:rtx8000:1
   partition: long
-  time: 15:00:00
+  time: 18:00:00
 
 default:
   wandb_name: alvaro-carbonero-math
@@ -23,13 +23,13 @@ default:
     max_epochs: 30
 
 runs:
-  #- config: gemnet_oc-is2re-all
+  - config: gemnet_oc-is2re-all
 
-  #- config: depgemnet_oc-is2re-all
+  - config: depgemnet_oc-is2re-all
 
   #- config: indgemnet_oc-is2re-all
 
   - config: gemnet_oc-is2re-all
     is_disconnected: True
 
-  - config: agemnet_oc-is2re-all
+  #- config: agemnet_oc-is2re-all
