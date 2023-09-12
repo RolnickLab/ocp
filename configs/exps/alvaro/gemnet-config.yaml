@@ -23,8 +23,13 @@ default:
     max_epochs: 30
 
 runs:
+  #- config: gemnet_oc-is2re-all
+
+  #- config: depgemnet_oc-is2re-all
+
+  #- config: indgemnet_oc-is2re-all
+
   - config: gemnet_oc-is2re-all
+    is_disconnected: True
 
-  - config: depgemnet_oc-is2re-all
-
-  - config: indgemnet_oc-is2re-all
+  - config: agemnet_oc-is2re-all
