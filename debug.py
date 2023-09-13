@@ -92,15 +92,16 @@ if __name__ == "__main__":
 
     args.wandb_name = "alvaro-carbonero-math"
     args.wandb_project = "ocp-alvaro"
-    args.config = "indgemnet_oc-is2re-10k"
+    # args.config = "faenet-is2re-all"
+    args.config = "gemnet_t-is2re-all"
 
-    args.tag_hidden_channels = 32
-    args.pg_hidden_channels = 32
-    args.phys_embeds = True
-    args.otf_graph = False
-    args.max_num_neighbors = 40
-    args.hidden_channels = 142
-    args.graph_rewiring = "remove-tag-0"
+    # args.tag_hidden_channels = 32
+    # args.pg_hidden_channels = 32
+    # args.phys_embeds = True
+    # args.otf_graph = False
+    # args.max_num_neighbors = 40
+    # args.hidden_channels = 142
+    # args.graph_rewiring = "remove-tag-0"
 
     trainer_config = build_config(args, override_args)
 
@@ -112,12 +113,12 @@ if __name__ == "__main__":
         trainer_config["dataset"]
     )
 
-    trainer_config["optim"]["batch_size"] = 32
-    trainer_config["optim"]["eval_batch_size"] = 32
-    trainer_config["optim"]["max_epochs"] = 30
+    # trainer_config["optim"]["batch_size"] = 32
+    # trainer_config["optim"]["eval_batch_size"] = 32
+    # trainer_config["optim"]["max_epochs"] = 30
     #trainer_config["optim"]["es_patience"] = 5
-
-    trainer_config["model"]["regress_forces"] = False
+    trainer_config["optim"]["num_workers"] = 0
+    # trainer_config["model"]["regress_forces"] = False
 
     # -- Initial setup
 

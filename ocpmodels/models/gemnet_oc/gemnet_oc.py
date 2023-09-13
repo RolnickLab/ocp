@@ -1262,16 +1262,16 @@ class GemNetOC(BaseModel):
 
     def interactions(self, outputs):
         h, m = outputs["h"], outputs["m"]
-        del outputs["h"]; del outputs["m"]
+        # del outputs["h"]; del outputs["m"]
 
         basis_output, idx_t = outputs["basis_output"], outputs["idx_t"]
-        del outputs["basis_output"]; del outputs["idx_t"]
+        # del outputs["basis_output"]; del outputs["idx_t"]
 
         x_E, x_F = outputs["x_E"], outputs["x_F"]
-        del outputs["x_E"]; outputs["x_F"]
+        # del outputs["x_E"]; outputs["x_F"]
 
         xs_E, xs_F = outputs["xs_E"], outputs["xs_F"]
-        del outputs["xs_E"]; del outputs["xs_F"]
+        # del outputs["xs_E"]; del outputs["xs_F"]
 
         for i in range(self.num_blocks):
             # Interaction block

@@ -1,5 +1,5 @@
 job:
-  mem: 32GB
+  mem: 40GB
   cpus: 4
   gres: gpu:rtx8000:1
   partition: long
@@ -15,6 +15,7 @@ default:
    otf_graph: False
    max_num_neighbors: 40
    hidden_channels: 142
+   regress_forces: True
    graph_rewiring: remove-0-tag
   optim:
     batch_size: 32
@@ -22,13 +23,13 @@ default:
     max_epochs: 30
 
 runs:
-  - config: gemnet_t-is2re-all
+  - config: gemnet_oc-is2re-all
 
-  #- config: depgemnet_t-is2re-all
+  - config: depgemnet_oc-is2re-all
 
-  #- config: indgemnet_t-is2re-all
+  #- config: indgemnet_oc-is2re-all
 
-  #- config: gemnet_t-is2re-all
-  #  is_disconnected: True
+  - config: gemnet_oc-is2re-all
+    is_disconnected: True
 
-  #- config: agemnet_t-is2re-all
+  #- config: agemnet_oc-is2re-all
