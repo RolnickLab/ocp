@@ -154,7 +154,7 @@ class BaseTrainer(ABC):
             (run_dir / f"config-{JOB_ID}.yaml").write_text(yaml.dump(self.config))
 
         # Here's the models whose edges are removed as a transform
-        transform_models = ["depfaenet", "depschnet", "depgemnet_oc"]
+        transform_models = ["depfaenet", "depschnet", "depgemnet_oc", "depgemnet_t"]
         if self.config["is_disconnected"]:
             print("\n\nHeads up: cat-ads edges being removed!")
         if self.config["model_name"] in transform_models:
@@ -164,8 +164,8 @@ class BaseTrainer(ABC):
                 self.config["is_disconnected"] = True
 
         # Here's the models whose graphs are disconnected in the dataset
-        self.separate_models = ["indfaenet", "indschnet", "indgemnet_oc"]
-        self.heterogeneous_models = ["afaenet", "aschnet", "agemnet_oc"]
+        self.separate_models = ["indfaenet", "indschnet", "indgemnet_oc", "indgemnet_t"]
+        self.heterogeneous_models = ["afaenet", "aschnet", "agemnet_oc", "agemnet_t"]
         self.data_mode = "normal"
         self.separate_dataset = False
 

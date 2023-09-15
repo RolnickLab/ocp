@@ -1,0 +1,37 @@
+# MODIFY THIS ONE FOR RUNS
+
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  test_ri: True
+  mode: train
+  graph_rewiring: remove-tag-0
+  cp_data_to_tmpdir: true
+  frame_averaging: 2D
+  fa_frames: se3-random
+  model:
+    phys_embeds: True
+    tag_hidden_channels: 32
+    pg_hidden_channels: 32
+    energy_head: weighted-av-final-embeds
+    skip_co: concat
+    edge_embed_type: all_rij
+  optim:
+    lr_initial: 0.0005
+    scheduler: LinearWarmupCosineAnnealingLR
+    max_epochs: 20
+    eval_every: 0.4
+    batch_size: 256
+    eval_batch_size: 256
+
+runs:
+  - config: faenet-is2re-all
+    model:
+      afaenet_gat_mode: v1

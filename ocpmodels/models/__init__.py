@@ -8,6 +8,8 @@ from .cgcnn import CGCNN  # noqa: F401
 from .dimenet import DimeNet  # noqa: F401
 from .faenet import FAENet  # noqa: F401
 from .gemnet.gemnet import GemNetT  # noqa: F401
+from .gemnet.depgemnet_t import depGemNetT  # noqa: F401
+from .gemnet.indgemnet_t import indGemNetT  # noqa: F401
 from .dimenet_plus_plus import DimeNetPlusPlus  # noqa: F401
 from .forcenet import ForceNet  # noqa: F401
 from .schnet import SchNet  # noqa: F401

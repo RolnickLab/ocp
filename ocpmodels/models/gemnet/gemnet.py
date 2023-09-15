@@ -414,7 +414,7 @@ class GemNetT(BaseModel):
             edge_vector = edge_vector[edge_mask]
 
         empty_image = neighbors == 0
-        if torch.any(empty_image):
+        if torch.any(empty_image) and "mode" not in data.keys:
             raise ValueError(
                 f"An image has no neighbors: id={data.id[empty_image]}, "
                 f"sid={data.sid[empty_image]}, fid={data.fid[empty_image]}"
@@ -494,7 +494,7 @@ class GemNetT(BaseModel):
         )
 
         # Indices for swapping c->a and a->c (for symmetric MP)
-        block_sizes = torch.div(neighbors, 2, rounding_mode="trunc")
+        block_sizes = torch.div(neighbors, 2, rounding_mode="trunc") 
         id_swap = repeat_blocks(
             block_sizes,
             repeats=2,
@@ -582,11 +582,11 @@ class GemNetT(BaseModel):
 
         nMolecules = torch.max(batch) + 1
         if self.extensive:
-            E_t = scatter(
+            E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="add"
             )  # (nMolecules, num_targets)
         else:
-            E_t = scatter(
+            E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="mean"
             )  # (nMolecules, num_targets)
 
@@ -598,6 +598,12 @@ class GemNetT(BaseModel):
             "dim_size": data.atomic_numbers.size(0),
             "pos": pos,
         }
+
+    def scattering(self, E_t, batch, dim, dim_size, reduce="add"):
+        E_t = scatter(
+            E_t, batch, dim=0, dim_size=dim_size, reduce=reduce
+        )
+        return E_t
 
     @conditional_grad(torch.enable_grad())
     def forces_forward(self, preds):
