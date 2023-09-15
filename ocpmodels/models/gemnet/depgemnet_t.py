@@ -2,7 +2,7 @@ import torch
 from torch.nn import Linear
 from torch_scatter import scatter
 
-from ocpmodels.models.gemnet_oc.gemnet_oc import GemNetOC
+from ocpmodels.models.gemnet.gemnet import GemNetT
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
@@ -12,7 +12,7 @@ from ocpmodels.common.utils import (
 from torch_geometric.data import Batch
 
 @registry.register_model("depgemnet_t")
-class depGemNetOC(GemNetOC):
+class depGemNetOC(GemNetT):
     def __init__(self, **kwargs):
         self.hidden_channels = kwargs["emb_size_atom"]
 

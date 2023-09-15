@@ -383,8 +383,8 @@ class ASchNet(BaseModel):
                 data["is_disc"].edge_index,
                 edge_weights_disc
             )
-            h_ads = h_ads + inter_ads
-            h_cat = h_cat + inter_cat
+            h_ads, h_cat = h_ads + inter_ads, h_cat + inter_cat
+            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(h_cat)
 
         pooling_loss = None  # deal with pooling loss
 

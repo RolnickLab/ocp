@@ -52,7 +52,7 @@ class TrainTask(BaseTask):
             if loops > 0:
                 print("----------------------------------------")
                 print("⏱️  Measuring inference time.")
-                #self.trainer.measure_inference_time(loops=loops)
+                self.trainer.measure_inference_time(loops=loops)
                 print("----------------------------------------\n")
             torch.set_grad_enabled(True)
             return self.trainer.train(
