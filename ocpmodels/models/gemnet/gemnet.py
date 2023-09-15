@@ -520,8 +520,6 @@ class GemNetT(BaseModel):
         )
 
     def energy_forward(self, data):
-        import ipdb
-        ipdb.set_trace()
         pos = data.pos
         batch = data.batch
         atomic_numbers = data.atomic_numbers.long()
