@@ -8,7 +8,7 @@ job:
 default:
   wandb_name: alvaro-carbonero-math
   wandb_project: ocp-alvaro
-  graph_rewiring: remove-0-tag
+  graph_rewiring: remove-tag-0
   model:
    tag_hidden_channels: 32
    pg_hidden_channels: 32
