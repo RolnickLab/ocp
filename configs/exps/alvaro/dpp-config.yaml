@@ -1,0 +1,21 @@
+# MODIFY THIS ONE FOR RUNS
+
+job:
+  mem: 32GB
+  cpus: 4
+  gres: gpu:rtx8000:1
+  partition: long
+  time: 15:00:00
+
+default:
+  wandb_name: alvaro-carbonero-math
+  wandb_project: ocp-alvaro
+  test_ri: True
+  mode: train
+  graph_rewiring: remove-tag-0
+  optim:
+    batch_size: 16
+    eval_batch_size: 16
+
+runs:
+  - config: dpp-is2re-all
