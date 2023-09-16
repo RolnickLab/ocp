@@ -3,7 +3,6 @@ from torch import nn
 from torch.nn import Linear, Transformer
 
 from ocpmodels.models.schnet import SchNet
-from ocpmodels.models.faenet import OutputBlock
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.common.registry import registry
 from ocpmodels.models.utils.activations import swish

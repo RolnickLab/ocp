@@ -1,37 +1,3 @@
-"""
-Copyright (c) Facebook, Inc. and its affiliates.
-
-This source code is licensed under the MIT license found in the
-LICENSE file in the root directory of this source tree.
-
----
-
-This code borrows heavily from the DimeNet implementation as part of
-pytorch-geometric: https://github.com/rusty1s/pytorch_geometric. License:
-
----
-
-Copyright (c) 2020 Matthias Fey <matthias.fey@tu-dortmund.de>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-"""
-
 from math import pi as PI
 from math import sqrt
 
@@ -52,13 +18,18 @@ from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
     get_pbc_distances,
-    radius_graph_pbc,
+    radius_graph_pbc_inputs,
 )
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.utils.pos_encodings import PositionalEncoding
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
 from ocpmodels.modules.pooling import Graclus, Hierarchical_Pooling
 from ocpmodels.models.utils.activations import swish
+from ocpmodels.models.afaenet import (
+    GATInteraction,
+    GaussianSmearing
+)
+
 
 try:
     import sympy as sym
@@ -433,8 +404,8 @@ class OutputPPBlock(torch.nn.Module):
         return self.lin(x)
 
 
-@registry.register_model("dpp")
-class DimeNetPlusPlus(BaseModel):
+@registry.register_model("adpp")
+class ADPP(BaseModel):
     r"""DimeNet++ implementation based on https://github.com/klicperajo/dimenet.
 
     Args:
@@ -474,7 +445,9 @@ class DimeNetPlusPlus(BaseModel):
     url = "https://github.com/klicperajo/dimenet/raw/master/pretrained"
 
     def __init__(self, **kwargs):
-        super(DimeNetPlusPlus, self).__init__()
+        super().__init__()
+
+        kwargs["num_targets"] = kwargs["hidden_channels"] // 2
 
         self.cutoff = kwargs["cutoff"]
         self.use_pbc = kwargs["use_pbc"]
@@ -494,18 +467,42 @@ class DimeNetPlusPlus(BaseModel):
         if sym is None:
             raise ImportError("Package `sympy` could not be found.")
 
-        self.rbf = BesselBasisLayer(
+        self.rbf_ads = BesselBasisLayer(
             kwargs["num_radial"], self.cutoff, kwargs["envelope_exponent"]
         )
-        self.sbf = SphericalBasisLayer(
+        self.rbf_cat = BesselBasisLayer(
+            kwargs["num_radial"], self.cutoff, kwargs["envelope_exponent"]
+        )
+        self.sbf_ads = SphericalBasisLayer(
             kwargs["num_spherical"],
             kwargs["num_radial"],
             self.cutoff,
             kwargs["envelope_exponent"],
         )
+        self.sbf_cat = SphericalBasisLayer(
+            kwargs["num_spherical"],
+            kwargs["num_radial"],
+            self.cutoff,
+            kwargs["envelope_exponent"],
+        )
+        # Disconnected interaction embedding
+        self.distance_expansion_disc = GaussianSmearing(
+            0.0, 20.0, 100
+        )
+        self.disc_edge_embed = Linear(100, kwargs["hidden_channels"])
 
         if use_tag or use_pg or kwargs["phys_embeds"] or kwargs["graph_rewiring"]:
-            self.emb = AdvancedEmbeddingBlock(
+            self.emb_ads = AdvancedEmbeddingBlock(
+                kwargs["num_radial"],
+                kwargs["hidden_channels"],
+                kwargs["tag_hidden_channels"],
+                kwargs["pg_hidden_channels"],
+                kwargs["phys_hidden_channels"],
+                kwargs["phys_embeds"],
+                kwargs["graph_rewiring"],
+                act,
+            )
+            self.emb_cat = AdvancedEmbeddingBlock(
                 kwargs["num_radial"],
                 kwargs["hidden_channels"],
                 kwargs["tag_hidden_channels"],
@@ -516,12 +513,29 @@ class DimeNetPlusPlus(BaseModel):
                 act,
             )
         else:
-            self.emb = EmbeddingBlock(
+            self.emb_ads = EmbeddingBlock(
+                kwargs["num_radial"], kwargs["hidden_channels"], act
+            )
+            self.emb_cat = EmbeddingBlock(
                 kwargs["num_radial"], kwargs["hidden_channels"], act
             )
 
         if self.energy_head:
-            self.output_blocks = torch.nn.ModuleList(
+            self.output_blocks_ads = torch.nn.ModuleList(
+                [
+                    EHOutputPPBlock(
+                        kwargs["num_radial"],
+                        kwargs["hidden_channels"],
+                        kwargs["out_emb_channels"],
+                        kwargs["num_targets"],
+                        kwargs["num_output_layers"],
+                        self.energy_head,
+                        act,
+                    )
+                    for _ in range(kwargs["num_blocks"] + 1)
+                ]
+            )
+            self.output_blocks_cat = torch.nn.ModuleList(
                 [
                     EHOutputPPBlock(
                         kwargs["num_radial"],
@@ -536,7 +550,20 @@ class DimeNetPlusPlus(BaseModel):
                 ]
             )
         else:
-            self.output_blocks = torch.nn.ModuleList(
+            self.output_blocks_ads = torch.nn.ModuleList(
+                [
+                    OutputPPBlock(
+                        kwargs["num_radial"],
+                        kwargs["hidden_channels"],
+                        kwargs["out_emb_channels"],
+                        kwargs["num_targets"],
+                        kwargs["num_output_layers"],
+                        act,
+                    )
+                    for _ in range(kwargs["num_blocks"] + 1)
+                ]
+            )
+            self.output_blocks_cat = torch.nn.ModuleList(
                 [
                     OutputPPBlock(
                         kwargs["num_radial"],
@@ -550,7 +577,7 @@ class DimeNetPlusPlus(BaseModel):
                 ]
             )
 
-        self.interaction_blocks = torch.nn.ModuleList(
+        self.interaction_blocks_ads = torch.nn.ModuleList(
             [
                 InteractionPPBlock(
                     kwargs["hidden_channels"],
@@ -565,23 +592,56 @@ class DimeNetPlusPlus(BaseModel):
                 for _ in range(kwargs["num_blocks"])
             ]
         )
+        self.interaction_blocks_cat = torch.nn.ModuleList(
+            [
+                InteractionPPBlock(
+                    kwargs["hidden_channels"],
+                    kwargs["int_emb_size"],
+                    kwargs["basis_emb_size"],
+                    kwargs["num_spherical"],
+                    kwargs["num_radial"],
+                    kwargs["num_before_skip"],
+                    kwargs["num_after_skip"],
+                    act,
+                )
+                for _ in range(kwargs["num_blocks"])
+            ]
+        )
+        self.inter_interactions = torch.nn.ModuleList(
+            [
+                GATInteraction(
+                    kwargs["hidden_channels"],
+                    kwargs["gat_mode"],
+                    kwargs["hidden_channels"]
+                )
+                for _ in range(kwargs["num_blocks"])
+            ]
+        )
 
         if self.energy_head == "weighted-av-initial-embeds":
-            self.w_lin = Linear(kwargs["hidden_channels"], 1)
+            self.w_lin_ads = Linear(kwargs["hidden_channels"], 1)
+            self.w_lin_cat = Linear(kwargs["hidden_channels"], 1)
 
         self.task = kwargs["task_name"]
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        self.rbf.reset_parameters()
-        self.emb.reset_parameters()
-        for out in self.output_blocks:
+        self.rbf_ads.reset_parameters()
+        self.rbf_cat.reset_parameters()
+        self.emb_ads.reset_parameters()
+        self.emb_cat.reset_parameters()
+        for out in self.output_blocks_ads:
             out.reset_parameters()
-        for interaction in self.interaction_blocks:
+        for out in self.output_blocks_cat:
+            out.reset_parameters()
+        for interaction in self.interaction_blocks_ads:
+            interaction.reset_parameters()
+        for interaction in self.interaction_blocks_cat:
             interaction.reset_parameters()
         if self.energy_head == "weighted-av-initial-embeds":
-            self.w_lin.bias.data.fill_(0)
+            self.w_lin_ads.bias.data.fill_(0)
+            self.w_lin_cat.bias.data.fill_(0)
             torch.nn.init.xavier_uniform_(self.w_lin.weight)
 
     def triplets(self, edge_index, cell_offsets, num_nodes):
@@ -615,75 +675,144 @@ class DimeNetPlusPlus(BaseModel):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        if self.otf_graph:
-            edge_index, cell_offsets, neighbors = radius_graph_pbc(
-                data, self.cutoff, 50
+        import ipdb
+        ipdb.set_trace()
+        (
+            pos_ads,
+            edge_index_ads,
+            cell_ads,
+            cell_offsets_ads,
+            neighbors_ads,
+            batch_ads,
+            atomic_numbers_ads,
+        ) = (
+            data["adsorbate"].pos,
+            data["adsorbate", "is_close", "adsorbate"].edge_index,
+            data["adsorbate"].cell,
+            data["adsorbate"].cell_offsets,
+            data["adsorbate"].neighbors,
+            data["adsorbate"].batch,
+            data["adsorbate"].atomic_numbers,
+        )
+        (
+            pos_cat,
+            edge_index_cat,
+            cell_cat,
+            cell_offsets_cat,
+            neighbors_cat,
+            batch_cat,
+            atomic_numbers_cat,
+        ) = (
+            data["catalyst"].pos,
+            data["catalyst", "is_close", "catalyst"].edge_index,
+            data["catalyst"].cell,
+            data["catalyst"].cell_offsets,
+            data["catalyst"].neighbors,
+            data["catalyst"].batch
+            data["catalyst"].atomic_numbers,
+        )
+
+        if self.otf_graph: # NOT IMPLEMENTED!!
+            edge_index, cell_offsets, neighbors = radius_graph_pbc_inputs(
+                pos,
+                natoms,
+                cell,
+                self.cutoff,
+                50
             )
             data.edge_index = edge_index
             data.cell_offsets = cell_offsets
             data.neighbors = neighbors
 
         # Rewire the graph
-        pos = data.pos
-        batch = data.batch
-        if not hasattr(data, "subnodes"):
-            data.subnodes = False
+        subnodes = False
 
         if self.use_pbc:
             out = get_pbc_distances(
-                pos,
-                data.edge_index,
-                data.cell,
-                data.cell_offsets,
-                data.neighbors,
+                pos_ads,
+                edge_index_ads,
+                cell_ads,
+                cell_offsets_ads,
+                neighbors_ads,
                 return_offsets=True,
             )
 
-            edge_index = out["edge_index"]
-            dist = out["distances"]
-            offsets = out["offsets"]
+            edge_index_ads = out["edge_index"]
+            dist_ads = out["distances"]
+            offsets_ads = out["offsets"]
 
-            j, i = edge_index
-        else:
+            j_ads, i_ads = edge_index_ads
+
+            out = get_pbc_distances(
+                pos_cat,
+                edge_index_cat,
+                cell_cat,
+                cell_offsets_cat,
+                neighbors_cat,
+                return_offsets=True,
+            )
+
+            edge_index_cat = out["edge_index"]
+            dist_cat = out["distances"]
+            offsets_cat = out["offsets"]
+
+            j_cat, i_cat = edge_index_cat
+        else: # NOT IMPLEMENTED
             edge_index = radius_graph(pos, r=self.cutoff, batch=batch)
             j, i = edge_index
             dist = (pos[i] - pos[j]).pow(2).sum(dim=-1).sqrt()
 
-        if (
-            self.task == "qm9" and edge_index.shape[1] != len(data.cell_offsets)
-        ) or self.task == "qm7x":
-            data.cell_offsets = torch.zeros(
-                (edge_index.shape[1], 3), device=edge_index.device
-            )
-
-        _, _, idx_i, idx_j, idx_k, idx_kj, idx_ji = self.triplets(
-            edge_index,
-            data.cell_offsets,
-            num_nodes=data.atomic_numbers.size(0),
+        _, _, idx_i_ads, idx_j_ads, idx_k_ads, idx_kj_ads, idx_ji_ads = self.triplets(
+            edge_index_ads,
+            cell_offsets_ads,
+            num_nodes=atomic_numbers_ads.size(0),
+        )
+        _, _, idx_i_cat, idx_j_cat, idx_k_cat, idx_kj_cat, idx_ji_cat = self.triplets(
+            edge_index_cat,
+            cell_offsets_cat,
+            num_nodes=atomic_numbers_cat.size(0),
         )
 
         # Calculate angles.
-        pos_i = pos[idx_i].detach()
-        pos_j = pos[idx_j].detach()
+        pos_i_ads = pos_ads[idx_i_ads].detach()
+        pos_j_ads = pos_ads[idx_j_ads].detach()
+
+        pos_i_cat = pos_cat[idx_i_cat].detach()
+        pos_j_cat = pos_cat[idx_j_cat].detach()
         if self.use_pbc:
-            pos_ji, pos_kj = (
-                pos[idx_j].detach() - pos_i + offsets[idx_ji],
-                pos[idx_k].detach() - pos_j + offsets[idx_kj],
+            pos_ji_ads, pos_kj_ads = (
+                pos_ads[idx_j_ads].detach() - pos_i_ads + offsets_ads[idx_ji_ads],
+                pos_ads[idx_k_ads].detach() - pos_j_ads + offsets_ads[idx_kj_ads],
             )
-        else:
+            pos_ji_cat, pos_kj_cat = (
+                pos_cat[idx_j_cat].detach() - pos_i_cat + offsets_cat[idx_ji_cat],
+                pos_cat[idx_k_cat].detach() - pos_j_cat + offsets_cat[idx_kj_cat],
+            )
+        else: # NOT IMPLEMENTED
             pos_ji, pos_kj = (
                 pos[idx_j].detach() - pos_i,
                 pos[idx_k].detach() - pos_j,
             )
 
-        a = (pos_ji * pos_kj).sum(dim=-1)
-        b = torch.cross(pos_ji, pos_kj).norm(dim=-1)
-        angle = torch.atan2(b, a)
+        a_ads = (pos_ji_ads * pos_kj_ads).sum(dim=-1)
+        b_ads = torch.cross(pos_ji_ads, pos_kj_ads).norm(dim=-1)
+        angle_ads = torch.atan2(b_ads, a_ads)
 
-        rbf = self.rbf(dist)
-        sbf = self.sbf(dist, angle, idx_kj)
+        a_cat = (pos_ji_cat * pos_kj_cat).sum(dim=-1)
+        b_cat = torch.cross(pos_ji_cat, pos_kj_cat).norm(dim=-1)
+        angle_cat = torch.atan2(b_cat, a_cat)
+
+        rbf_ads = self.rbf_ads(dist_ads)
+        sbf_ads = self.sbf_ads(dist_ads, angle_ads, idx_kj_ads)
+
+        rbf_cat = self.rbf_cat(dist_cat)
+        sbf_cat = self.sbf_cat(dist_cat, angle_cat, idx_kj_cat)
 
         pooling_loss = None  # deal with pooling loss
+
+
+        # IMPLEMENTED UP TO HERE. DAMN I WANT TO BE DONE ALREADY
+
 
         # Embedding block.
         x = self.emb(data.atomic_numbers.long(), rbf, i, j, data.tags, data.subnodes)
