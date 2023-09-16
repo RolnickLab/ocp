@@ -20,13 +20,13 @@ default:
 runs:
   #- config: dpp-is2re-all
 
-  - config: dpp-is2re-all
-    is_disconnected: True
+  # - config: dpp-is2re-all
+    # is_disconnected: True
+ 
+  # - config: depdpp-is2re-all
+ 
+  # - config: inddpp-is2re-all
 
-  - config: depdpp-is2re-all
-
-  - config: inddpp-is2re-all
-
-  - config: aschnet-is2re-all
+  - config: adpp-is2re-all
     model:
       gat_mode: v1
