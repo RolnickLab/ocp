@@ -23,6 +23,7 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.utils.pos_encodings import PositionalEncoding
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
 from ocpmodels.modules.pooling import Graclus, Hierarchical_Pooling
+from ocpmodels.models.utils.activations import swish
 from ocpmodels.models.schnet import (
     InteractionBlock,
     CFConv,
@@ -236,6 +237,7 @@ class ASchNet(BaseModel):
 
         self.combination = nn.Sequential(
             Linear(self.hidden_channels, self.hidden_channels // 2),
+            swish,
             Linear(kwargs["hidden_channels"] // 2, 1)
         )
 

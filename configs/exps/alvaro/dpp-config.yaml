@@ -27,6 +27,6 @@ runs:
 
   - config: inddpp-is2re-all
 
-  #- config: aschnet-is2re-all
-    #model:
-      #gat_mode: v1
+  - config: aschnet-is2re-all
+    model:
+      gat_mode: v1

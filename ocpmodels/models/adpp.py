@@ -448,6 +448,7 @@ class ADPP(BaseModel):
         super().__init__()
 
         kwargs["num_targets"] = kwargs["hidden_channels"] // 2
+        self.act = swish
 
         self.cutoff = kwargs["cutoff"]
         self.use_pbc = kwargs["use_pbc"]
@@ -624,6 +625,12 @@ class ADPP(BaseModel):
 
         self.task = kwargs["task_name"]
 
+        self.combination = nn.Sequential(
+            Linear(kwargs["hidden_channels"] // 2 * 2, kwargs["hidden_channels"] // 2),
+            self.act,
+            Linear(kwargs["hidden_channels"] // 2, 1)
+        )
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -675,8 +682,6 @@ class ADPP(BaseModel):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        import ipdb
-        ipdb.set_trace()
         (
             pos_ads,
             edge_index_ads,
@@ -685,6 +690,7 @@ class ADPP(BaseModel):
             neighbors_ads,
             batch_ads,
             atomic_numbers_ads,
+            tags_ads,
         ) = (
             data["adsorbate"].pos,
             data["adsorbate", "is_close", "adsorbate"].edge_index,
@@ -693,6 +699,7 @@ class ADPP(BaseModel):
             data["adsorbate"].neighbors,
             data["adsorbate"].batch,
             data["adsorbate"].atomic_numbers,
+            data["adsorbate"].tags,
         )
         (
             pos_cat,
@@ -702,14 +709,16 @@ class ADPP(BaseModel):
             neighbors_cat,
             batch_cat,
             atomic_numbers_cat,
+            tags_cat,
         ) = (
             data["catalyst"].pos,
             data["catalyst", "is_close", "catalyst"].edge_index,
             data["catalyst"].cell,
             data["catalyst"].cell_offsets,
             data["catalyst"].neighbors,
-            data["catalyst"].batch
+            data["catalyst"].batch,
             data["catalyst"].atomic_numbers,
+            data["catalyst"].tags,
         )
 
         if self.otf_graph: # NOT IMPLEMENTED!!
@@ -810,61 +819,108 @@ class ADPP(BaseModel):
 
         pooling_loss = None  # deal with pooling loss
 
-
-        # IMPLEMENTED UP TO HERE. DAMN I WANT TO BE DONE ALREADY
-
-
         # Embedding block.
-        x = self.emb(data.atomic_numbers.long(), rbf, i, j, data.tags, data.subnodes)
+        x_ads = self.emb_ads(atomic_numbers_ads.long(), rbf_ads, i_ads, j_ads, tags_ads, subnodes)
         if self.energy_head:
-            P, pooling_loss, batch = self.output_blocks[0](
-                x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0)
+            P_ads, pooling_loss, batch_ads = self.output_blocks_ads[0](
+                x_ads, rbf_ads, i_ads, edge_index_ads, dist_ads, batch_ads, num_nodes=pos_ads.size(0)
             )
         else:
-            P = self.output_blocks[0](x, rbf, i, num_nodes=pos.size(0))
+            P_ads = self.output_blocks_ads[0](x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0))
 
         if self.energy_head == "weighted-av-initial-embeds":
-            alpha = self.w_lin(scatter(x, i, dim=0, dim_size=pos.size(0)))
+            alpha_ads = self.w_lin_ads(scatter(x_ads, i_ads, dim=0, dim_size=pos_ads.size(0)))
+
+        x_cat = self.emb_cat(atomic_numbers_cat.long(), rbf_cat, i_cat, j_cat, tags_cat, subnodes)
+        if self.energy_head:
+            P_cat, pooling_loss, batch_cat = self.output_blocks_cat[0](
+                x_cat, rbf_cat, i_cat, edge_index_cat, dist_cat, batch_cat, num_nodes=pos_cat.size(0)
+            )
+        else:
+            P_cat = self.output_blocks_cat[0](x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0))
+
+        if self.energy_head == "weighted-av-initial-embeds":
+            alpha_cat = self.w_lin_cat(scatter(x_cat, i_cat, dim=0, dim_size=pos_cat.size(0)))
+
+        edge_weights = self.distance_expansion_disc(data["is_disc"].edge_weight)
+        edge_weights = self.disc_edge_embed(edge_weights)
 
         # Interaction blocks.
+        energy_Ps_ads = []
+        energy_Ps_cat = []
 
-        energy_Ps = []
-
-        for interaction_block, output_block in zip(
-            self.interaction_blocks, self.output_blocks[1:]
+        for (
+            interaction_block_ads,
+            interaction_block_cat,
+            output_block_ads,
+            output_block_cat,
+            disc_interaction,
+        ) in zip(
+            self.interaction_blocks_ads, 
+            self.interaction_blocks_cat,
+            self.output_blocks_ads[1:],
+            self.output_blocks_cat[1:],
+            self.inter_interactions,
         ):
-            x = interaction_block(x, rbf, sbf, idx_kj, idx_ji)
-            if self.energy_head:
-                P_bis, pooling_loss_bis, _ = output_block(
-                    x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0)
-                )
-                energy_Ps.append(
-                    P_bis.sum(0) / len(P)
-                    if batch is None
-                    else scatter(P_bis, batch, dim=0)
-                )
-                if pooling_loss_bis is not None:
-                    pooling_loss += pooling_loss_bis
-            else:
-                P += output_block(x, rbf, i, num_nodes=pos.size(0))
+            intra_ads = interaction_block_ads(x_ads, rbf_ads, sbf_ads, idx_kj_ads, idx_ji_ads)
+            intra_cat = interaction_block_cat(x_cat, rbf_cat, sbf_cat, idx_kj_cat, idx_ji_cat)
 
-        P_bis = sum(energy_Ps or [0])
+            inter_ads, inter_cat = disc_interaction(
+                intra_ads,
+                intra_cat,
+                data["is_disc"].edge_index,
+                edge_weights
+            )
+
+            x_ads, x_cat = x_ads + inter_ads, x_cat + inter_cat
+            x_ads, x_cat = nn.functional.normalize(x_ads), nn.functional.normalize(x_cat)
+
+            if self.energy_head:
+                P_bis_ads, pooling_loss_bis_ads, _ = output_block_ads(
+                    x_ads, rbf_ads, i_ads, edge_index_ads, dist_ads, batch_ads, num_nodes=pos_ads.size(0)
+                )
+                energy_Ps_ads.append(
+                    P_bis_ads.sum(0) / len(P)
+                    if batch_ads is None
+                    else scatter(P_bis_ads, batch_ads, dim=0)
+                )
+                if pooling_loss_bis_ads is not None:
+                    pooling_loss += pooling_loss_bis_ads
+
+                P_bis_cat, pooling_loss_bis_cat, _ = output_block_cat(
+                    x_cat, rbf_cat, i_cat, edge_index_cat, dist_cat, batch_cat, num_nodes=pos_cat.size(0)
+                )
+                energy_Ps_cat.append(
+                    P_bis_cat.sum(0) / len(P)
+                    if batch_cat is None
+                    else scatter(P_bis_cat, batch_cat, dim=0)
+                )
+                if pooling_loss_bis_cat is not None:
+                    pooling_loss += pooling_loss_bis_cat
+            else:
+                P_ads += output_block_ads(x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0))
+                P_cat += output_block_cat(x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0))
 
         if self.energy_head == "weighted-av-initial-embeds":
             P = P * alpha
 
+        import ipdb
+        ipdb.set_trace()
+
         # Output
         # scatter
-        energy = self.scattering(batch, P, P_bis)
+        energy_ads = self.scattering(batch_ads, P_ads)
+        energy_cat = self.scattering(batch_cat, P_cat)
+        energy = torch.cat([energy_ads, energy_cat], dim=1)
+        energy = self.combination(energy)
 
         return {
             "energy": energy,
             "pooling_loss": pooling_loss,
         }
 
-    def scattering(self, batch, P, P_bis):
-        energy = P.sum(dim=0) if batch is None else scatter(P, batch, dim=0)
-        energy = energy + P_bis
+    def scattering(self, batch, P, P_bis=0):
+        energy = scatter(P, batch, dim=0, reduce="add")
 
         return energy
 
