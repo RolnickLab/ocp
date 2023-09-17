@@ -904,9 +904,6 @@ class ADPP(BaseModel):
         if self.energy_head == "weighted-av-initial-embeds":
             P = P * alpha
 
-        import ipdb
-        ipdb.set_trace()
-
         # Output
         # scatter
         energy_ads = self.scattering(batch_ads, P_ads)
