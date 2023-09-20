@@ -13,7 +13,6 @@ default:
   test_ri: True
   mode: train
   graph_rewiring: remove-tag-0
-  optim:
   cp_data_to_tmpdir: true
   wandb-tags: 'best-config-??' # Insert what model you're running if running one by one.
   frame_averaging: 2D
