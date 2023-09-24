@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from torch.nn import Linear
 from torch_scatter import scatter
 
@@ -6,6 +7,7 @@ from ocpmodels.models.schnet import SchNet
 from ocpmodels.models.faenet import OutputBlock as conOutputBlock
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
+from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
@@ -19,8 +21,11 @@ class depSchNet(SchNet):
         torch.nn.init.xavier_uniform_(self.lin2.weight)
         self.lin2.bias.data.fill_(0)
 
-        self.sys_lin1 = Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2)
-        self.sys_lin2 = Linear(self.hidden_channels // 2, 1)
+        self.combination = nn.Sequential(
+            Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2),
+            swish,
+            Linear(self.hidden_channels // 2, 1)
+        )
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):

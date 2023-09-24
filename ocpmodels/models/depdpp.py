@@ -1,10 +1,12 @@
 import torch
+from torch import nn
 from torch.nn import Linear
 from torch_scatter import scatter
 
 from ocpmodels.models.dimenet_plus_plus import DimeNetPlusPlus
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
+from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
@@ -16,8 +18,12 @@ class depSchNet(DimeNetPlusPlus):
         kwargs["num_targets"] = kwargs["hidden_channels"] // 2
         super().__init__(**kwargs)
 
-        self.sys_lin1 = Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2)
-        self.sys_lin2 = Linear(self.hidden_channels // 2, 1)
+        self.act = swish
+        self.combination = nn.Sequential(
+            Linear(self.hidden_channels // 2 * 2, self.hidden_channels // 2),
+            self.act,
+            Linear(self.hidden_channels // 2, 1)
+        )
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):

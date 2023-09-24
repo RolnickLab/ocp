@@ -20,15 +20,15 @@ default:
     warmup_factor: 0.2
 
 runs:
-  #- config: schnet-is2re-all
+  # - config: schnet-is2re-10k
 
-  #- config: schnet-is2re-all
-    #is_disconnected: True
+  # - config: schnet-is2re-10k
+    # is_disconnected: True
 
-  #- config: depschnet-is2re-all
+  - config: depschnet-is2re-10k
 
-  #- config: indschnet-is2re-all
+  # - config: indschnet-is2re-10k
 
-  - config: aschnet-is2re-all
-    model:
-      gat_mode: v1
+  # - config: aschnet-is2re-10k
+    # model:
+      # gat_mode: v1

@@ -1,11 +1,13 @@
 import torch
 from torch.nn import Linear
+from torch import nn
 from torch_scatter import scatter
 
 from ocpmodels.models.faenet import FAENet
 from ocpmodels.models.faenet import OutputBlock as conOutputBlock
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
+from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
@@ -24,8 +26,11 @@ class discOutputBlock(conOutputBlock):
             self.cat_lin = Linear(hidden_channels // 2, hidden_channels // 2)
 
         # Combines the hidden representation of each to a scalar.
-        self.sys_lin1 = Linear(hidden_channels // 2 * 2, hidden_channels // 2)
-        self.sys_lin2 = Linear(hidden_channels // 2, 1)
+        self.combination = nn.Sequential(
+            Linear(hidden_channels // 2 * 2, hidden_channels // 2),
+            swish,
+            Linear(hidden_channels // 2, 1)
+        )
 
     def tags_saver(self, tags):
         self.current_tags = tags
@@ -66,8 +71,7 @@ class discOutputBlock(conOutputBlock):
         system = torch.cat([ads_out, cat_out], dim = 1)
 
         # Finally, we predict a number.
-        system = self.sys_lin1(system)
-        energy = self.sys_lin2(system)
+        energy = self.combination(system)
 
         return energy
 

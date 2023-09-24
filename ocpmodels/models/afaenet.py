@@ -222,7 +222,7 @@ class AFaenet(BaseModel):
         else:
             self.combination = nn.Sequential(
                 Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
-                nn.ReLU(),
+                swish,
                 Linear(kwargs["hidden_channels"] // 2, 1)
             )
 
