@@ -47,7 +47,6 @@ class depSchNet(SchNet):
         cat_out = scatter(h, batch * cat, dim = 0, reduce = self.readout)
 
         system = torch.cat([ads_out, cat_out], dim = 1)
-        system = self.sys_lin1(system)
-        system = self.sys_lin2(system)
+        system = self.combination(system)
 
         return system
