@@ -38,8 +38,17 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
 
         self.regress_forces = kwargs["regress_forces"]
 
-        self.ads_model = FAENet(**kwargs)
+        old_hc = kwargs["hidden_channels"]
+        old_gaus = kwargs["num_gaussians"]
+        old_filt = kwargs["num_filters"]
+
         self.cat_model = FAENet(**kwargs)
+
+        kwargs["hidden_channels"] = kwargs["hidden_channels"] // 2
+        kwargs["num_gaussians"] = kwargs["num_gaussians"] // 2
+        kwargs["num_filters"] = kwargs["num_filters"] // 2
+
+        self.ads_model = FAENet(**kwargs)
 
         self.act = (
             getattr(nn.functional, kwargs["act"]) if kwargs["act"] != "swish" else swish
@@ -69,7 +78,7 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             self.transformer_lin = Linear(kwargs["hidden_channels"] // 2, 1)
         else:
             self.combination = nn.Sequential(
-                Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
+                Linear(kwargs["hidden_channels"] // 2 + old_hc // 2, kwargs["hidden_channels"] // 2),
                 self.act,
                 Linear(kwargs["hidden_channels"] // 2, 1)
             )
@@ -114,7 +123,7 @@ class indFAENet(BaseModel): # Change to make it inherit from base model.
             "energy" : system_energy,
             "pooling_loss" : pred_ads["pooling_loss"] if pred_ads["pooling_loss"] is None
                 else pred_ads["pooling_loss"] + pred_cat["pooling_loss"],
-            "hidden_state" : torch.cat([pred_ads["hidden_state"], pred_cat["hidden_state"]], dim = 0)
+            "hidden_state" : pred_ads["hidden_state"]
         }
 
         return pred_system

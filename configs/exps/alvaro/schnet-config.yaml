@@ -18,6 +18,7 @@ default:
     num_workers: 4
     max_epochs: 17
     warmup_factor: 0.2
+    lr_initial: 0.0005
 
 runs:
   # - config: schnet-is2re-10k
@@ -25,9 +26,35 @@ runs:
   # - config: schnet-is2re-10k
     # is_disconnected: True
 
-  - config: depschnet-is2re-10k
+  # - config: depschnet-is2re-all
 
-  # - config: indschnet-is2re-10k
+  - config: indschnet-is2re-10k
+    note: so that cat get old dimensions
+    model:
+      hidden_channels: 256
+      num_filters: 128
+      num_gaussians: 100
+
+  - config: indschnet-is2re-10k
+    note: dimensions both smaller
+    model:
+      hidden_channels: 126
+      num_filters: 64
+      num_gaussians: 50
+
+  - config: indschnet-is2re-10k
+    note: so that ads get old dimensions
+    model:
+      hidden_channels: 512
+      num_filters: 256
+      num_gaussians: 200
+
+  - config: indschnet-is2re-10k
+    note: so that their average is old dimensions
+    model:
+      hidden_channels: 340
+      num_filters: 170
+      num_gaussians: 132
 
   # - config: aschnet-is2re-10k
     # model:

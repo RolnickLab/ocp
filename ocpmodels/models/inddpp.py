@@ -17,14 +17,30 @@ class indDimeNetPlusPlus(BaseModel): # Change to make it inherit from base model
         self.regress_forces = kwargs["regress_forces"]
         kwargs["num_targets"] = kwargs["hidden_channels"] // 2
 
-        self.ads_model = DimeNetPlusPlus(**kwargs)
+        import ipdb
+        ipdb.set_trace()
+
         self.cat_model = DimeNetPlusPlus(**kwargs)
+
+        old_hc = kwargs["hidden_channels"]
+        old_sphr = kwargs["num_spherical"]
+        old_radi = kwargs["num_radial"]
+        old_out_emb = kwargs["out_emb_channels"]
+        old_targets = kwargs["num_targets"]
+
+        kwargs["hidden_channels"] = kwargs["hidden_channels"] // 2
+        kwargs["num_spherical"] = kwargs["num_spherical"] // 2
+        kwargs["num_radial"] = kwargs["num_radial"] // 2
+        kwargs["out_emb_channesl"] = kwargs["out_emb_channels"] // 2
+        kwargs["num_targets"] = kwargs["num_targets"] // 2
+
+        self.ads_model = DimeNetPlusPlus(**kwargs)
 
         self.act = swish
         self.combination = nn.Sequential(
-            Linear(kwargs["hidden_channels"] // 2 * 2, kwargs["hidden_channels"] // 2),
+            Linear(kwargs["num_targets"] + old_targets, kwargs["num_targets"] // 2),
             self.act,
-            Linear(kwargs["hidden_channels"] // 2, 1)
+            Linear(kwargs["num_targets"] // 2, 1)
         )
 
     def energy_forward(self, data, mode = "train"): # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!

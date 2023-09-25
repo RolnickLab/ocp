@@ -46,10 +46,36 @@ runs:
   # - config: faenet-is2re-10k
     # is_disconnected: True
  
-  - config: depfaenet-is2re-10k
+  - config: indfaenet-is2re-all
+    note: so that cat get old dimensions
+    model:
+      hidden_channels: 352
+      num_gaussians: 99
+      num_filters: 448
+
+  - config: indfaenet-is2re-all
+    note: dimensions of both smaller
+    model:
+      hidden_channels: 176
+      num_gaussians: 50
+      num_filters: 224
+
+  - config: indfaenet-is2re-all
+    note: so that ads get old dimensions
+    model:
+      hidden_channels: 704 
+      num_gaussians: 200
+      num_filters: 896
+
+  - config: indfaenet-is2re-all
+    note: so that their average is old dimension
+    model:
+      hidden_channels: 468 
+      num_gaussians: 132
+      num_filters: 596
  
   # - config: indfaenet-is2re-10k
  
-  - config: afaenet-is2re-10k
-    model:
-      afaenet_gat_mode: v1
+  # - config: afaenet-is2re-all
+    # model:
+      # afaenet_gat_mode: v1

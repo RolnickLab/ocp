@@ -92,16 +92,9 @@ if __name__ == "__main__":
 
     args.wandb_name = "alvaro-carbonero-math"
     args.wandb_project = "ocp-alvaro"
-    # args.config = "faenet-is2re-all"
-    args.config = "gemnet_t-is2re-all"
+    args.config = "inddpp-is2re-all"
 
-    # args.tag_hidden_channels = 32
-    # args.pg_hidden_channels = 32
-    # args.phys_embeds = True
-    # args.otf_graph = False
-    # args.max_num_neighbors = 40
-    # args.hidden_channels = 142
-    # args.graph_rewiring = "remove-tag-0"
+    args.graph_rewiring = "remove-tag-0"
 
     trainer_config = build_config(args, override_args)
 

@@ -23,9 +23,39 @@ runs:
   # - config: dpp-is2re-10k
     # is_disconnected: True
  
-  - config: depdpp-is2re-10k
+  # - config: depdpp-is2re-all
  
-  # - config: inddpp-is2re-10k
+  - config: inddpp-is2re-10k
+    note:so that cat get old dimensions
+    model:
+      hidden_channels: 256
+      num_spherical: 7
+      num_radial: 6
+      out_emb_channels: 192
+
+  - config: inddpp-is2re-10k
+    note: dimensions both smaller
+    model:
+      hidden_channels: 128
+      num_spherical: 4
+      num_radial: 3
+      out_emb_channels: 96
+
+  - config: inddpp-is2re-10k
+    note: so that ads get old dimensions
+    model:
+      hidden_channels: 512
+      num_spherical: 14
+      num_radial: 12
+      out_emb_channels: 384
+
+  - config: inddpp-is2re-10k
+    note: so that their average is old dimensions
+    model:
+      hidden_channels: 340
+      num_spherical: 9
+      num_radial: 8
+      out_emb_channels: 256
 
   # - config: adpp-is2re-10k
     # model:

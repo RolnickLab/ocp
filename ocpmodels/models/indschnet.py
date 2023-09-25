@@ -37,8 +37,17 @@ class indSchNet(BaseModel): # Change to make it inherit from base model.
 
         self.regress_forces = kwargs["regress_forces"]
 
-        self.ads_model = SchNet(**kwargs)
         self.cat_model = SchNet(**kwargs)
+
+        old_filt = kwargs["num_filters"]
+        old_gaus = kwargs["num_gaussians"]
+        old_hc = kwargs["hidden_channels"]
+
+        kwargs["num_filters"] = kwargs["num_filters"] // 2
+        kwargs["num_gaussians"] = kwargs["num_gaussians"] // 2
+        kwargs["hidden_channels"] = kwargs["hidden_channels"] // 2
+
+        self.ads_model = SchNet(**kwargs)
 
         self.disconnected_mlp = kwargs.get("disconnected_mlp", False)
         if self.disconnected_mlp:
@@ -65,7 +74,7 @@ class indSchNet(BaseModel): # Change to make it inherit from base model.
             self.transformer_lin = Linear(kwargs["hidden_channels"] // 2, 1)
         else:
             self.combination = nn.Sequential(
-                Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
+                Linear(kwargs["hidden_channels"] // 2 + old_hc // 2, kwargs["hidden_channels"] // 2),
                 self.act,
                 Linear(kwargs["hidden_channels"] // 2, 1)
             )
