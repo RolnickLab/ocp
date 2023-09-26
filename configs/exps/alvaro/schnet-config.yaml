@@ -28,28 +28,28 @@ runs:
 
   # - config: depschnet-is2re-all
 
-  - config: indschnet-is2re-10k
+  - config: indschnet-is2re-all
     note: so that cat get old dimensions
     model:
       hidden_channels: 256
       num_filters: 128
       num_gaussians: 100
 
-  - config: indschnet-is2re-10k
+  - config: indschnet-is2re-all
     note: dimensions both smaller
     model:
       hidden_channels: 126
       num_filters: 64
       num_gaussians: 50
 
-  - config: indschnet-is2re-10k
+  - config: indschnet-is2re-all
     note: so that ads get old dimensions
     model:
       hidden_channels: 512
       num_filters: 256
       num_gaussians: 200
 
-  - config: indschnet-is2re-10k
+  - config: indschnet-is2re-all
     note: so that their average is old dimensions
     model:
       hidden_channels: 340

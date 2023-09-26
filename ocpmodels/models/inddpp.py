@@ -17,9 +17,6 @@ class indDimeNetPlusPlus(BaseModel): # Change to make it inherit from base model
         self.regress_forces = kwargs["regress_forces"]
         kwargs["num_targets"] = kwargs["hidden_channels"] // 2
 
-        import ipdb
-        ipdb.set_trace()
-
         self.cat_model = DimeNetPlusPlus(**kwargs)
 
         old_hc = kwargs["hidden_channels"]
