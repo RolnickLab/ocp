@@ -1287,6 +1287,7 @@ def get_pbc_distances(
 
     return out
 
+
 def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     atom_pos = data.pos
     natoms = data.natoms
@@ -1295,6 +1296,7 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     return radius_graph_pbc_inputs(
         atom_pos, natoms, cell, radius, max_num_neighbors_threshold
     )
+
 
 def radius_graph_pbc_inputs(
     atom_pos, natoms, cell, radius, max_num_neighbors_threshold
@@ -1760,3 +1762,64 @@ def scatter_det(*args, **kwargs):
         torch.use_deterministic_algorithms(mode=False)
 
     return out
+
+
+def make_config_from_dir(path, mode, overrides={}, silent=None):
+    """
+    Make a config from a directory. This is useful when restarting or continuing from a
+    previous run.
+
+    Args:
+        path (str): Where to load the config from. mode (str): Either 'continue' or
+        'restart'. overrides (dict, optional): Dictionary to update the config with .
+        Defaults to {}. silent (bool, optional): Whether or not to print loading
+        status. Defaults to None.
+
+    Returns:
+        dict: The loaded and overridden config.
+    """
+    path = resolve(path)
+    assert path.exists()
+    assert mode in {
+        "continue",
+        "restart",
+    }, f"Invalid mode: {mode}. Expected 'continue' or 'restart'."
+    assert isinstance(
+        overrides, dict
+    ), f"Overrides must be a dict. Received {overrides}"
+
+    argv = deepcopy(sys.argv)
+    sys.argv[1:] = []
+    default_args = Flags().get_parser().parse_args()
+    sys.argv = argv
+
+    if mode == "continue":
+        default_args.continue_from_dir = str(path)
+    else:
+        default_args.restart_from_dir = str(path)
+
+    config = build_config(default_args, silent=silent)
+    config = merge_dicts(config, overrides)
+
+    setup_imports()
+    return config
+
+
+def make_trainer_from_dir(path, mode, overrides={}, silent=None):
+    """
+    Make a trainer from a directory.
+
+    Load a config with `make_config_from_dir` and then make a trainer from it.
+
+    Args:
+        path (str): Where to load the config from.
+        mode (str): Either 'continue' or 'restart'.
+        overrides (dict, optional): Dictionary to update the config with.
+            Defaults to {}.
+        silent (bool, optional): _description_. Defaults to None.
+
+    Returns:
+        Trainer: The loaded trainer.
+    """
+    config = make_config_from_dir(path, mode, overrides, silent)
+    return registry.get_trainer_class(config["trainer"])(**config)
