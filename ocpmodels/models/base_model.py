@@ -40,7 +40,7 @@ class BaseModel(nn.Module):
     def forces_forward(self, preds):
         raise NotImplementedError
 
-    def forward(self, data, mode="train"):
+    def forward(self, data, mode="train", **kwargs):
         grad_forces = forces = None
 
         # energy gradient w.r.t. positions will be computed
