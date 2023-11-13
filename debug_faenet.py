@@ -118,18 +118,18 @@ if __name__ == "__main__":
     trainer_config["model"]["energy_head"] = "weighted-av-final-embeds"
     trainer_config["model"]["complex_mp"] = False
     trainer_config["model"]["graph_norm"] = True
-    trainer_config["model"]['hidden_channels'] = 352
+    trainer_config["model"]["hidden_channels"] = 352
     trainer_config["model"]["num_filters"] = 448
     trainer_config["model"]["num_gaussians"] = 99
     trainer_config["model"]["num_interactions"] = 6
     trainer_config["model"]["second_layer_MLP"] = True
     trainer_config["model"]["skip_co"] = "concat"
-    #trainer_config["model"]["transformer_out"] = False
+    # trainer_config["model"]["transformer_out"] = False
     trainer_config["model"]["afaenet_gat_mode"] = "v1"
-    #trainer_config["model"]["disconnected_mlp"] = True
+    # trainer_config["model"]["disconnected_mlp"] = True
 
-    #trainer_config["optim"]["batch_sizes"] = 256
-    #trainer_config["optim"]["eval_batch_sizes"] = 256
+    # trainer_config["optim"]["batch_sizes"] = 256
+    # trainer_config["optim"]["eval_batch_sizes"] = 256
     trainer_config["optim"]["lr_initial"] = 0.0019
     trainer_config["optim"]["scheduler"] = "LinearWarmupCosineAnnealingLR"
     trainer_config["optim"]["max_epochs"] = 20

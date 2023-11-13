@@ -89,7 +89,7 @@ if __name__ == "__main__":
         args.logdir = resolve(args.logdir)
 
     # -- Build config
-    
+
     trainer_config = build_config(args, override_args)
 
     if dist_utils.is_master():

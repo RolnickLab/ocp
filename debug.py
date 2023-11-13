@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # trainer_config["optim"]["batch_size"] = 32
     # trainer_config["optim"]["eval_batch_size"] = 32
     # trainer_config["optim"]["max_epochs"] = 30
-    #trainer_config["optim"]["es_patience"] = 5
+    # trainer_config["optim"]["es_patience"] = 5
     trainer_config["optim"]["num_workers"] = 0
     # trainer_config["model"]["regress_forces"] = False
 

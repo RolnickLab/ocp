@@ -11,11 +11,10 @@ from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
+
 class discOutputBlock(conOutputBlock):
-    def __init__(self, energy_head, hidden_channels, act, disconnected_mlp = False):
-        super(discOutputBlock, self).__init__(
-            energy_head, hidden_channels, act
-        )
+    def __init__(self, energy_head, hidden_channels, act, disconnected_mlp=False):
+        super(discOutputBlock, self).__init__(energy_head, hidden_channels, act)
 
         # We modify the last output linear function to make the output a vector
         self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
@@ -29,14 +28,16 @@ class discOutputBlock(conOutputBlock):
         self.combination = nn.Sequential(
             Linear(hidden_channels // 2 * 2, hidden_channels // 2),
             swish,
-            Linear(hidden_channels // 2, 1)
+            Linear(hidden_channels // 2, 1),
         )
 
     def tags_saver(self, tags):
         self.current_tags = tags
 
     def forward(self, h, edge_index, edge_weight, batch, alpha):
-        if self.energy_head == "weighted-av-final-embeds": # Right now, this is the only available option.
+        if (
+            self.energy_head == "weighted-av-final-embeds"
+        ):  # Right now, this is the only available option.
             alpha = self.w_lin(h)
 
         elif self.energy_head == "graclus":
@@ -61,19 +62,20 @@ class discOutputBlock(conOutputBlock):
         ads = self.current_tags == 2
         cat = ~ads
 
-        ads_out = scatter(h, batch * ads, dim = 0, reduce = "add")
-        cat_out = scatter(h, batch * cat, dim = 0, reduce = "add")
+        ads_out = scatter(h, batch * ads, dim=0, reduce="add")
+        cat_out = scatter(h, batch * cat, dim=0, reduce="add")
 
         if self.disconnected_mlp:
             ads_out = self.ads_lin(ads_out)
             cat_out = self.cat_lin(cat_out)
 
-        system = torch.cat([ads_out, cat_out], dim = 1)
+        system = torch.cat([ads_out, cat_out], dim=1)
 
         # Finally, we predict a number.
         energy = self.combination(system)
 
         return energy
+
 
 @registry.register_model("depfaenet")
 class depFAENet(FAENet):
@@ -88,7 +90,7 @@ class depFAENet(FAENet):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        # We need to save the tags so this step is necessary. 
+        # We need to save the tags so this step is necessary.
         self.output_block.tags_saver(data.tags)
         pred = super().energy_forward(data)
 

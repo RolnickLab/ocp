@@ -473,7 +473,13 @@ class GemNetT(BaseModel):
             select_cutoff = None
         else:
             select_cutoff = self.cutoff
-        (edge_index, cell_offsets, neighbors, D_st, V_st,) = self.select_edges(
+        (
+            edge_index,
+            cell_offsets,
+            neighbors,
+            D_st,
+            V_st,
+        ) = self.select_edges(
             data=data,
             edge_index=edge_index,
             cell_offsets=cell_offsets,
@@ -494,7 +500,7 @@ class GemNetT(BaseModel):
         )
 
         # Indices for swapping c->a and a->c (for symmetric MP)
-        block_sizes = torch.div(neighbors, 2, rounding_mode="trunc") 
+        block_sizes = torch.div(neighbors, 2, rounding_mode="trunc")
         id_swap = repeat_blocks(
             block_sizes,
             repeats=2,
@@ -600,9 +606,7 @@ class GemNetT(BaseModel):
         }
 
     def scattering(self, E_t, batch, dim, dim_size, reduce="add"):
-        E_t = scatter(
-            E_t, batch, dim=0, dim_size=dim_size, reduce=reduce
-        )
+        E_t = scatter(E_t, batch, dim=0, dim_size=dim_size, reduce=reduce)
         return E_t
 
     @conditional_grad(torch.enable_grad())

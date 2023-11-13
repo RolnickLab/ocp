@@ -507,11 +507,17 @@ class SingleTrainer(BaseTrainer):
             # Compute model prediction for each frame
             for i in range(fa_pos_length):
                 if self.data_mode == "heterogeneous":
-                    batch_list[0]["adsorbate"].pos = batch_list[0]["adsorbate"].fa_pos[i]
+                    batch_list[0]["adsorbate"].pos = batch_list[0]["adsorbate"].fa_pos[
+                        i
+                    ]
                     batch_list[0]["catalyst"].pos = batch_list[0]["catalyst"].fa_pos[i]
                     if self.task_name in OCP_TASKS:
-                        batch_list[0]["adsorbate"].cell = batch_list[0]["adsorbate"].fa_cell[i]
-                        batch_list[0]["catalyst"].cell = batch_list[0]["catalyst"].fa_cell[i]
+                        batch_list[0]["adsorbate"].cell = batch_list[0][
+                            "adsorbate"
+                        ].fa_cell[i]
+                        batch_list[0]["catalyst"].cell = batch_list[0][
+                            "catalyst"
+                        ].fa_cell[i]
                 elif self.data_mode == "separate":
                     batch_list[0][0].pos = batch_list[0][0].fa_pos[i]
                     batch_list[0][1].pos = batch_list[0][1].fa_pos[i]
@@ -606,7 +612,7 @@ class SingleTrainer(BaseTrainer):
                     else batch["adsorbate"].y.to(self.device)
                     for batch in batch_list
                 ],
-                dim=0
+                dim=0,
             )
 
         elif self.data_mode == "separate":
@@ -717,15 +723,18 @@ class SingleTrainer(BaseTrainer):
         self, preds: Dict, batch_list: List[Data], evaluator: Evaluator, metrics={}
     ):
         if self.data_mode == "heterogeneous":
-            natoms = (batch_list[0]["adsorbate"].natoms.to(self.device) 
-                        + batch_list[0]["catalyst"].natoms.to(self.device))
+            natoms = batch_list[0]["adsorbate"].natoms.to(self.device) + batch_list[0][
+                "catalyst"
+            ].natoms.to(self.device)
             target = {
                 "energy": batch_list[0]["adsorbate"].y_relaxed.to(self.device),
                 "natoms": natoms,
             }
 
         elif self.data_mode == "separate":
-            natoms = batch_list[0][0].natoms.to(self.device) + batch_list[0][1].natoms.to(self.device)
+            natoms = batch_list[0][0].natoms.to(self.device) + batch_list[0][
+                1
+            ].natoms.to(self.device)
             target = {
                 "energy": batch_list[0][0].y_relaxed.to(self.device),
                 "natoms": natoms,
@@ -743,11 +752,10 @@ class SingleTrainer(BaseTrainer):
                         else batch.y.to(self.device)
                         for batch in batch_list
                     ],
-                    dim = 0,
+                    dim=0,
                 ),
                 "natoms": natoms,
             }
-
 
         if self.config["model"].get("regress_forces", False):
             target["forces"] = torch.cat(

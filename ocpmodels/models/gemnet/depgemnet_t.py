@@ -4,12 +4,10 @@ from torch_scatter import scatter
 
 from ocpmodels.models.gemnet.gemnet import GemNetT
 from ocpmodels.common.registry import registry
-from ocpmodels.common.utils import (
-    conditional_grad,
-    scatter_det
-)
+from ocpmodels.common.utils import conditional_grad, scatter_det
 
 from torch_geometric.data import Batch
+
 
 @registry.register_model("depgemnet_t")
 class depGemNetT(GemNetT):
@@ -24,7 +22,7 @@ class depGemNetT(GemNetT):
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
-        # We need to save the tags so this step is necessary. 
+        # We need to save the tags so this step is necessary.
         self.tags_saver(data.tags)
         pred = super().energy_forward(data)
 
@@ -38,14 +36,10 @@ class depGemNetT(GemNetT):
         ads = self.current_tags == 2
         cat = ~ads
 
-        ads_out = scatter_det(
-            src=E_t, index=batch * ads, dim=dim, reduce=reduce
-        )
-        cat_out = scatter_det(
-            src=E_t, index=batch * cat, dim=dim, reduce=reduce
-        )
+        ads_out = scatter_det(src=E_t, index=batch * ads, dim=dim, reduce=reduce)
+        cat_out = scatter_det(src=E_t, index=batch * cat, dim=dim, reduce=reduce)
 
-        system = torch.cat([ads_out, cat_out], dim = 1)
+        system = torch.cat([ads_out, cat_out], dim=1)
         system = self.sys_lin1(system)
         system = self.sys_lin2(system)
 
