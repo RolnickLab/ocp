@@ -33,12 +33,12 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from torch_geometric.data import Data
 from torch_geometric.utils import remove_self_loops
-from torch_scatter import segment_coo, segment_csr, scatter
+from torch_scatter import scatter, segment_coo, segment_csr
 
 import ocpmodels
-from ocpmodels.common.flags import flags
-from ocpmodels.common.registry import registry
 import ocpmodels.common.dist_utils as dist_utils
+from ocpmodels.common.flags import Flags, flags
+from ocpmodels.common.registry import registry
 
 
 class Cluster:
@@ -976,7 +976,7 @@ def load_config(config_str):
     return config
 
 
-def build_config(args, args_override, silent=False):
+def build_config(args, args_override=[], silent=None):
     config, overrides, loaded_config = {}, {}, {}
 
     if hasattr(args, "config_yml") and args.config_yml:
@@ -1000,10 +1000,11 @@ def build_config(args, args_override, silent=False):
             if args.continue_from_dir
             else resolve(args.restart_from_dir)
         )
+        already_ckpt = load_dir.exists() and load_dir.is_file()
         # find configs: from checkpoints first, from the dropped config file
         # otherwise
         ckpts = list(load_dir.glob("checkpoints/checkpoint-*.pt"))
-        if not ckpts:
+        if not ckpts and not already_ckpt:
             print(f"💥 Could not find checkpoints in {str(load_dir)}.")
             configs = list(load_dir.glob("config-*.y*ml"))
             if not configs:
@@ -1014,11 +1015,14 @@ def build_config(args, args_override, silent=False):
             loaded_config = yaml.safe_load(configs[0].read_text())
             load_path = str(configs[0])
         else:
-            latest_ckpt = str(
-                sorted(ckpts, key=lambda c: float(c.stem.split("-")[-1]))[-1]
-            )
+            if already_ckpt:
+                latest_ckpt = load_dir
+            else:
+                latest_ckpt = str(
+                    sorted(ckpts, key=lambda c: float(c.stem.split("-")[-1]))[-1]
+                )
             load_path = latest_ckpt
-            loaded_config = torch.load((latest_ckpt), map_location="cpu")["config"]
+            loaded_config = torch.load(latest_ckpt, map_location="cpu")["config"]
 
         # config has been found. We need to prune/modify it depending on whether
         # we're restarting or continuing.
@@ -1039,7 +1043,7 @@ def build_config(args, args_override, silent=False):
             loaded_config["checkpoint"] = str(latest_ckpt)
             loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
             loaded_config["job_id"] = JOB_ID
-            loaded_config["local_rank"] = config["local_rank"]
+            loaded_config["local_rank"] = config.get("local_rank", 0)
         else:
             # restarting from scratch
             keep_keys = [
@@ -1047,7 +1051,7 @@ def build_config(args, args_override, silent=False):
                 "config",
                 "dataset",
                 "energy_head",
-                "fa_frames",
+                "fa_method",
                 "frame_averaging",
                 "graph_rewiring",
                 "model",
@@ -1057,6 +1061,7 @@ def build_config(args, args_override, silent=False):
                 "test_ri",
                 "use_pbc",
                 "wandb_project",
+                "grad_fine_tune",
             ]
             loaded_config = {
                 k: loaded_config[k] for k in keep_keys if k in loaded_config
@@ -1282,6 +1287,7 @@ def get_pbc_distances(
 
     return out
 
+
 def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     atom_pos = data.pos
     natoms = data.natoms
@@ -1290,6 +1296,7 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     return radius_graph_pbc_inputs(
         atom_pos, natoms, cell, radius, max_num_neighbors_threshold
     )
+
 
 def radius_graph_pbc_inputs(
     atom_pos, natoms, cell, radius, max_num_neighbors_threshold
@@ -1755,3 +1762,64 @@ def scatter_det(*args, **kwargs):
         torch.use_deterministic_algorithms(mode=False)
 
     return out
+
+
+def make_config_from_dir(path, mode, overrides={}, silent=None):
+    """
+    Make a config from a directory. This is useful when restarting or continuing from a
+    previous run.
+
+    Args:
+        path (str): Where to load the config from. mode (str): Either 'continue' or
+        'restart'. overrides (dict, optional): Dictionary to update the config with .
+        Defaults to {}. silent (bool, optional): Whether or not to print loading
+        status. Defaults to None.
+
+    Returns:
+        dict: The loaded and overridden config.
+    """
+    path = resolve(path)
+    assert path.exists()
+    assert mode in {
+        "continue",
+        "restart",
+    }, f"Invalid mode: {mode}. Expected 'continue' or 'restart'."
+    assert isinstance(
+        overrides, dict
+    ), f"Overrides must be a dict. Received {overrides}"
+
+    argv = deepcopy(sys.argv)
+    sys.argv[1:] = []
+    default_args = Flags().get_parser().parse_args()
+    sys.argv = argv
+
+    if mode == "continue":
+        default_args.continue_from_dir = str(path)
+    else:
+        default_args.restart_from_dir = str(path)
+
+    config = build_config(default_args, silent=silent)
+    config = merge_dicts(config, overrides)
+
+    setup_imports()
+    return config
+
+
+def make_trainer_from_dir(path, mode, overrides={}, silent=None):
+    """
+    Make a trainer from a directory.
+
+    Load a config with `make_config_from_dir` and then make a trainer from it.
+
+    Args:
+        path (str): Where to load the config from.
+        mode (str): Either 'continue' or 'restart'.
+        overrides (dict, optional): Dictionary to update the config with.
+            Defaults to {}.
+        silent (bool, optional): _description_. Defaults to None.
+
+    Returns:
+        Trainer: The loaded trainer.
+    """
+    config = make_config_from_dir(path, mode, overrides, silent)
+    return registry.get_trainer_class(config["trainer"])(**config)

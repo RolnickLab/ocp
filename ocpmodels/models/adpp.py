@@ -25,10 +25,7 @@ from ocpmodels.models.utils.pos_encodings import PositionalEncoding
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
 from ocpmodels.modules.pooling import Graclus, Hierarchical_Pooling
 from ocpmodels.models.utils.activations import swish
-from ocpmodels.models.afaenet import (
-    GATInteraction,
-    GaussianSmearing
-)
+from ocpmodels.models.afaenet import GATInteraction, GaussianSmearing
 
 
 try:
@@ -487,9 +484,7 @@ class ADPP(BaseModel):
             kwargs["envelope_exponent"],
         )
         # Disconnected interaction embedding
-        self.distance_expansion_disc = GaussianSmearing(
-            0.0, 20.0, 100
-        )
+        self.distance_expansion_disc = GaussianSmearing(0.0, 20.0, 100)
         self.disc_edge_embed = Linear(100, kwargs["hidden_channels"])
 
         if use_tag or use_pg or kwargs["phys_embeds"] or kwargs["graph_rewiring"]:
@@ -613,7 +608,7 @@ class ADPP(BaseModel):
                 GATInteraction(
                     kwargs["hidden_channels"],
                     kwargs["gat_mode"],
-                    kwargs["hidden_channels"]
+                    kwargs["hidden_channels"],
                 )
                 for _ in range(kwargs["num_blocks"])
             ]
@@ -628,7 +623,7 @@ class ADPP(BaseModel):
         self.combination = nn.Sequential(
             Linear(kwargs["hidden_channels"] // 2 * 2, kwargs["hidden_channels"] // 2),
             self.act,
-            Linear(kwargs["hidden_channels"] // 2, 1)
+            Linear(kwargs["hidden_channels"] // 2, 1),
         )
 
         self.reset_parameters()
@@ -721,13 +716,9 @@ class ADPP(BaseModel):
             data["catalyst"].tags,
         )
 
-        if self.otf_graph: # NOT IMPLEMENTED!!
+        if self.otf_graph:  # NOT IMPLEMENTED!!
             edge_index, cell_offsets, neighbors = radius_graph_pbc_inputs(
-                pos,
-                natoms,
-                cell,
-                self.cutoff,
-                50
+                pos, natoms, cell, self.cutoff, 50
             )
             data.edge_index = edge_index
             data.cell_offsets = cell_offsets
@@ -766,7 +757,7 @@ class ADPP(BaseModel):
             offsets_cat = out["offsets"]
 
             j_cat, i_cat = edge_index_cat
-        else: # NOT IMPLEMENTED
+        else:  # NOT IMPLEMENTED
             edge_index = radius_graph(pos, r=self.cutoff, batch=batch)
             j, i = edge_index
             dist = (pos[i] - pos[j]).pow(2).sum(dim=-1).sqrt()
@@ -797,7 +788,7 @@ class ADPP(BaseModel):
                 pos_cat[idx_j_cat].detach() - pos_i_cat + offsets_cat[idx_ji_cat],
                 pos_cat[idx_k_cat].detach() - pos_j_cat + offsets_cat[idx_kj_cat],
             )
-        else: # NOT IMPLEMENTED
+        else:  # NOT IMPLEMENTED
             pos_ji, pos_kj = (
                 pos[idx_j].detach() - pos_i,
                 pos[idx_k].detach() - pos_j,
@@ -820,27 +811,51 @@ class ADPP(BaseModel):
         pooling_loss = None  # deal with pooling loss
 
         # Embedding block.
-        x_ads = self.emb_ads(atomic_numbers_ads.long(), rbf_ads, i_ads, j_ads, tags_ads, subnodes)
+        x_ads = self.emb_ads(
+            atomic_numbers_ads.long(), rbf_ads, i_ads, j_ads, tags_ads, subnodes
+        )
         if self.energy_head:
             P_ads, pooling_loss, batch_ads = self.output_blocks_ads[0](
-                x_ads, rbf_ads, i_ads, edge_index_ads, dist_ads, batch_ads, num_nodes=pos_ads.size(0)
+                x_ads,
+                rbf_ads,
+                i_ads,
+                edge_index_ads,
+                dist_ads,
+                batch_ads,
+                num_nodes=pos_ads.size(0),
             )
         else:
-            P_ads = self.output_blocks_ads[0](x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0))
+            P_ads = self.output_blocks_ads[0](
+                x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0)
+            )
 
         if self.energy_head == "weighted-av-initial-embeds":
-            alpha_ads = self.w_lin_ads(scatter(x_ads, i_ads, dim=0, dim_size=pos_ads.size(0)))
+            alpha_ads = self.w_lin_ads(
+                scatter(x_ads, i_ads, dim=0, dim_size=pos_ads.size(0))
+            )
 
-        x_cat = self.emb_cat(atomic_numbers_cat.long(), rbf_cat, i_cat, j_cat, tags_cat, subnodes)
+        x_cat = self.emb_cat(
+            atomic_numbers_cat.long(), rbf_cat, i_cat, j_cat, tags_cat, subnodes
+        )
         if self.energy_head:
             P_cat, pooling_loss, batch_cat = self.output_blocks_cat[0](
-                x_cat, rbf_cat, i_cat, edge_index_cat, dist_cat, batch_cat, num_nodes=pos_cat.size(0)
+                x_cat,
+                rbf_cat,
+                i_cat,
+                edge_index_cat,
+                dist_cat,
+                batch_cat,
+                num_nodes=pos_cat.size(0),
             )
         else:
-            P_cat = self.output_blocks_cat[0](x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0))
+            P_cat = self.output_blocks_cat[0](
+                x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0)
+            )
 
         if self.energy_head == "weighted-av-initial-embeds":
-            alpha_cat = self.w_lin_cat(scatter(x_cat, i_cat, dim=0, dim_size=pos_cat.size(0)))
+            alpha_cat = self.w_lin_cat(
+                scatter(x_cat, i_cat, dim=0, dim_size=pos_cat.size(0))
+            )
 
         edge_weights = self.distance_expansion_disc(data["is_disc"].edge_weight)
         edge_weights = self.disc_edge_embed(edge_weights)
@@ -856,28 +871,37 @@ class ADPP(BaseModel):
             output_block_cat,
             disc_interaction,
         ) in zip(
-            self.interaction_blocks_ads, 
+            self.interaction_blocks_ads,
             self.interaction_blocks_cat,
             self.output_blocks_ads[1:],
             self.output_blocks_cat[1:],
             self.inter_interactions,
         ):
-            intra_ads = interaction_block_ads(x_ads, rbf_ads, sbf_ads, idx_kj_ads, idx_ji_ads)
-            intra_cat = interaction_block_cat(x_cat, rbf_cat, sbf_cat, idx_kj_cat, idx_ji_cat)
+            intra_ads = interaction_block_ads(
+                x_ads, rbf_ads, sbf_ads, idx_kj_ads, idx_ji_ads
+            )
+            intra_cat = interaction_block_cat(
+                x_cat, rbf_cat, sbf_cat, idx_kj_cat, idx_ji_cat
+            )
 
             inter_ads, inter_cat = disc_interaction(
-                intra_ads,
-                intra_cat,
-                data["is_disc"].edge_index,
-                edge_weights
+                intra_ads, intra_cat, data["is_disc"].edge_index, edge_weights
             )
 
             x_ads, x_cat = x_ads + inter_ads, x_cat + inter_cat
-            x_ads, x_cat = nn.functional.normalize(x_ads), nn.functional.normalize(x_cat)
+            x_ads, x_cat = nn.functional.normalize(x_ads), nn.functional.normalize(
+                x_cat
+            )
 
             if self.energy_head:
                 P_bis_ads, pooling_loss_bis_ads, _ = output_block_ads(
-                    x_ads, rbf_ads, i_ads, edge_index_ads, dist_ads, batch_ads, num_nodes=pos_ads.size(0)
+                    x_ads,
+                    rbf_ads,
+                    i_ads,
+                    edge_index_ads,
+                    dist_ads,
+                    batch_ads,
+                    num_nodes=pos_ads.size(0),
                 )
                 energy_Ps_ads.append(
                     P_bis_ads.sum(0) / len(P)
@@ -888,7 +912,13 @@ class ADPP(BaseModel):
                     pooling_loss += pooling_loss_bis_ads
 
                 P_bis_cat, pooling_loss_bis_cat, _ = output_block_cat(
-                    x_cat, rbf_cat, i_cat, edge_index_cat, dist_cat, batch_cat, num_nodes=pos_cat.size(0)
+                    x_cat,
+                    rbf_cat,
+                    i_cat,
+                    edge_index_cat,
+                    dist_cat,
+                    batch_cat,
+                    num_nodes=pos_cat.size(0),
                 )
                 energy_Ps_cat.append(
                     P_bis_cat.sum(0) / len(P)
@@ -898,8 +928,12 @@ class ADPP(BaseModel):
                 if pooling_loss_bis_cat is not None:
                     pooling_loss += pooling_loss_bis_cat
             else:
-                P_ads += output_block_ads(x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0))
-                P_cat += output_block_cat(x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0))
+                P_ads += output_block_ads(
+                    x_ads, rbf_ads, i_ads, num_nodes=pos_ads.size(0)
+                )
+                P_cat += output_block_cat(
+                    x_cat, rbf_cat, i_cat, num_nodes=pos_cat.size(0)
+                )
 
         if self.energy_head == "weighted-av-initial-embeds":
             P = P * alpha

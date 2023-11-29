@@ -9,8 +9,9 @@ from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
+
 @registry.register_model("indgemnet_oc")
-class indGemNetOC(BaseModel): # Change to make it inherit from base model.
+class indGemNetOC(BaseModel):  # Change to make it inherit from base model.
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -25,11 +26,14 @@ class indGemNetOC(BaseModel): # Change to make it inherit from base model.
         self.combination = nn.Sequential(
             Linear(kwargs["emb_size_atom"] // 2 * 2, kwargs["emb_size_atom"] // 2),
             self.act,
-            Linear(kwargs["emb_size_atom"] // 2, 1)
+            Linear(kwargs["emb_size_atom"] // 2, 1),
         )
 
-    def energy_forward(self, data, mode = "train"): # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
+    def energy_forward(
+        self, data, mode="train"
+    ):  # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
         import ipdb
+
         ipdb.set_trace()
 
         adsorbates = data[0]
@@ -43,18 +47,18 @@ class indGemNetOC(BaseModel): # Change to make it inherit from base model.
         cat_energy = pred_cat["energy"]
 
         # We combine predictions
-        system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
+        system_energy = torch.cat([ads_energy, cat_energy], dim=1)
         system_energy = self.combination(system_energy)
 
         # We return them
         pred_system = {
-            "energy" : system_energy,
+            "energy": system_energy,
             "E_t": pred_ads["E_t"],
             "idx_t": pred_ads["idx_t"],
             "main_graph": pred_ads["main_graph"],
             "num_atoms": pred_ads["num_atoms"],
             "pos": pred_ads["pos"],
-            "F_st": pred_ads["F_st"]
+            "F_st": pred_ads["F_st"],
         }
 
         return pred_system

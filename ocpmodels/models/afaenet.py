@@ -14,7 +14,7 @@ from ocpmodels.models.faenet import (
     GaussianSmearing,
     EmbeddingBlock,
     InteractionBlock,
-    OutputBlock
+    OutputBlock,
 )
 from ocpmodels.models.indfaenet import PositionalEncoding
 from ocpmodels.common.registry import registry
@@ -22,37 +22,40 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.utils.activations import swish
 
+
 class GATInteraction(nn.Module):
     def __init__(self, d_model, version, edge_dim, dropout=0.1):
         super(GATInteraction, self).__init__()
 
         if version not in {"v1", "v2"}:
-            raise ValueError(f"Invalid GAT version. Received {version}, available: v1, v2.")
+            raise ValueError(
+                f"Invalid GAT version. Received {version}, available: v1, v2."
+            )
 
         # Not quite sure what is the impact of increasing or decreasing the number of heads
         if version == "v1":
             self.interaction = GATConv(
-                in_channels = d_model,
-                out_channels = d_model,
-                heads = 3,
-                concat = False,
-                edge_dim = edge_dim,
-                dropout = dropout
+                in_channels=d_model,
+                out_channels=d_model,
+                heads=3,
+                concat=False,
+                edge_dim=edge_dim,
+                dropout=dropout,
             )
         else:
             self.interaction = GATv2Conv(
-                in_channels = d_model,
-                out_channels = d_model,
-                head = 3,
-                concat = False,
-                edge_dim = edge_dim,
-                dropout = dropout
+                in_channels=d_model,
+                out_channels=d_model,
+                head=3,
+                concat=False,
+                edge_dim=edge_dim,
+                dropout=dropout,
             )
 
     def forward(self, h_ads, h_cat, bipartite_edges, bipartite_weights):
         # We first do the message passing
         separation_pt = h_ads.shape[0]
-        combined = torch.concat([h_ads, h_cat], dim = 0)
+        combined = torch.concat([h_ads, h_cat], dim=0)
         combined = self.interaction(combined, bipartite_edges, bipartite_weights)
 
         # We separate again and we return
@@ -62,6 +65,7 @@ class GATInteraction(nn.Module):
         # ads, cat = ads + h_ads, cat + h_cat
 
         return ads, cat
+
 
 @registry.register_model("afaenet")
 class AFaenet(BaseModel):
@@ -96,7 +100,7 @@ class AFaenet(BaseModel):
             0.0, self.cutoff, kwargs["num_gaussians"]
         )
         self.distance_expansion_disc = GaussianSmearing(
-            0.0, 20.0, kwargs["num_gaussians"] 
+            0.0, 20.0, kwargs["num_gaussians"]
         )
         # Set the second parameter as the highest possible z-axis value
 
@@ -159,7 +163,9 @@ class AFaenet(BaseModel):
             ]
         )
 
-        assert "afaenet_gat_mode" in kwargs, "GAT version needs to be specified. Options: v1, v2"
+        assert (
+            "afaenet_gat_mode" in kwargs
+        ), "GAT version needs to be specified. Options: v1, v2"
         # Inter Interaction
         self.inter_interactions = nn.ModuleList(
             [
@@ -186,14 +192,16 @@ class AFaenet(BaseModel):
             self.w_lin_cat = Linear(kwargs["hidden_channels"], 1)
 
         # Skip co
-        if self.skip_co == "concat": # for the implementation of independent faenet, make sure the input is large enough
+        if (
+            self.skip_co == "concat"
+        ):  # for the implementation of independent faenet, make sure the input is large enough
             self.mlp_skip_co_ads = Linear(
                 (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
-                kwargs["hidden_channels"] // 2
+                kwargs["hidden_channels"] // 2,
             )
             self.mlp_skip_co_cat = Linear(
                 (kwargs["num_interactions"] + 1) * kwargs["hidden_channels"] // 2,
-                kwargs["hidden_channels"] // 2
+                kwargs["hidden_channels"] // 2,
             )
 
         elif self.skip_co == "concat_atom":
@@ -205,17 +213,17 @@ class AFaenet(BaseModel):
         self.transformer_out = kwargs.get("transformer_out", False)
         if self.transformer_out:
             self.combination = Transformer(
-                d_model = kwargs["hidden_channels"] // 2,
-                nhead = 2,
-                num_encoder_layers = 2,
-                num_decoder_layers = 2,
-                dim_feedforward = kwargs["hidden_channels"],
-                batch_first = True
+                d_model=kwargs["hidden_channels"] // 2,
+                nhead=2,
+                num_encoder_layers=2,
+                num_decoder_layers=2,
+                dim_feedforward=kwargs["hidden_channels"],
+                batch_first=True,
             )
             self.positional_encoding = PositionalEncoding(
                 kwargs["hidden_channels"] // 2,
-                dropout = 0.1,
-                max_len = 5,
+                dropout=0.1,
+                max_len=5,
             )
             self.query_pos = nn.Parameter(torch.rand(kwargs["hidden_channels"] // 2))
             self.transformer_lin = Linear(kwargs["hidden_channels"] // 2, 1)
@@ -223,7 +231,7 @@ class AFaenet(BaseModel):
             self.combination = nn.Sequential(
                 Linear(kwargs["hidden_channels"], kwargs["hidden_channels"] // 2),
                 swish,
-                Linear(kwargs["hidden_channels"] // 2, 1)
+                Linear(kwargs["hidden_channels"] // 2, 1),
             )
 
     @conditional_grad(torch.enable_grad())
@@ -240,11 +248,11 @@ class AFaenet(BaseModel):
         # Embedding
         h_ads, e_ads = self.embedding(
             data["adsorbate"].atomic_numbers.long(),
-            edge_weight_ads, 
+            edge_weight_ads,
             rel_pos_ads,
             edge_attr_ads,
             data["adsorbate"].tags,
-            self.embed_block_ads
+            self.embed_block_ads,
         )
         h_cat, e_cat = self.embedding(
             data["catalyst"].atomic_numbers.long(),
@@ -252,7 +260,7 @@ class AFaenet(BaseModel):
             rel_pos_cat,
             edge_attr_cat,
             data["catalyst"].tags,
-            self.embed_block_cat
+            self.embed_block_cat,
         )
 
         # Compute atom weights for late energy head
@@ -270,11 +278,7 @@ class AFaenet(BaseModel):
         # Now we do interactions.
         energy_skip_co_ads = []
         energy_skip_co_cat = []
-        for (
-            interaction_ads,
-            interaction_cat,
-            inter_interaction
-        ) in zip(
+        for interaction_ads, interaction_cat, inter_interaction in zip(
             self.interaction_blocks_ads,
             self.interaction_blocks_cat,
             self.inter_interactions,
@@ -307,15 +311,17 @@ class AFaenet(BaseModel):
             # QUESTION: Can we do both simultaneously?
 
             h_ads, h_cat = h_ads + inter_ads, h_cat + inter_cat
-            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(h_cat)
+            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(
+                h_cat
+            )
 
         # Atom skip-co
         if self.skip_co == "concat_atom":
             energy_skip_co_ads.append(h_ads)
             energy_skip_co_cat.append(h_cat)
 
-            h_ads = self.act(self.mlp_skip_co_ads(torch.cat(energy_skip_co_ads, dim = 1)))
-            h_cat = self.act(self.mlp_skip_co_cat(torch.cat(energy_skip_co_cat, dim = 1)))        
+            h_ads = self.act(self.mlp_skip_co_ads(torch.cat(energy_skip_co_ads, dim=1)))
+            h_cat = self.act(self.mlp_skip_co_cat(torch.cat(energy_skip_co_cat, dim=1)))
 
         energy_ads = self.output_block_ads(
             h_ads, edge_index_ads, edge_weight_ads, batch_ads, alpha_ads
@@ -328,8 +334,8 @@ class AFaenet(BaseModel):
         energy_skip_co_ads.append(energy_ads)
         energy_skip_co_cat.append(energy_cat)
         if self.skip_co == "concat":
-            energy_ads = self.mlp_skip_co_ads(torch.cat(energy_skip_co_ads, dim = 1))
-            energy_cat = self.mlp_skip_co_cat(torch.cat(energy_skip_co_cat, dim = 1))
+            energy_ads = self.mlp_skip_co_ads(torch.cat(energy_skip_co_ads, dim=1))
+            energy_cat = self.mlp_skip_co_cat(torch.cat(energy_skip_co_cat, dim=1))
         elif self.skip_co == "add":
             energy_ads = sum(energy_skip_co_ads)
             energy_cat = sum(energy_skip_co_cat)
@@ -337,29 +343,29 @@ class AFaenet(BaseModel):
         # Combining hidden representations
         if self.transformer_out:
             batch_size = energy_ads.shape[0]
-            
-            fake_target_sequence = self.query_pos.unsqueeze(0).expand(batch_size, -1).unsqueeze(1)
+
+            fake_target_sequence = (
+                self.query_pos.unsqueeze(0).expand(batch_size, -1).unsqueeze(1)
+            )
             system_energy = torch.cat(
-                [
-                    energy_ads.unsqueeze(1),
-                    energy_cat.unsqueeze(1)
-                ],
-                dim = 1
+                [energy_ads.unsqueeze(1), energy_cat.unsqueeze(1)], dim=1
             )
 
             system_energy = self.positional_encoding(system_energy)
-            
-            system_energy = self.combination(system_energy, fake_target_sequence).squeeze(1)
+
+            system_energy = self.combination(
+                system_energy, fake_target_sequence
+            ).squeeze(1)
             system_energy = self.transformer_lin(system_energy)
         else:
-            system_energy = torch.cat([energy_ads, energy_cat], dim = 1)
+            system_energy = torch.cat([energy_ads, energy_cat], dim=1)
             system_energy = self.combination(system_energy)
 
         # We combine predictions and return them
         pred_system = {
-            "energy" : system_energy,
-            "pooling_loss" : None, # This might break something.
-            "hidden_state" : torch.cat([energy_ads, energy_cat], dim = 1)
+            "energy": system_energy,
+            "pooling_loss": None,  # This might break something.
+            "hidden_state": torch.cat([energy_ads, energy_cat], dim=1),
         }
 
         return pred_system
@@ -403,7 +409,7 @@ class AFaenet(BaseModel):
                 if mode == "adsorbate":
                     distance_expansion = self.distance_expansion_ads
                 else:
-                    distance_expansion = self.distance_expansion_cat 
+                    distance_expansion = self.distance_expansion_cat
                 edge_attr = distance_expansion(edge_weight)
                 results.append([edge_index, edge_weight, rel_pos, edge_attr])
         else:

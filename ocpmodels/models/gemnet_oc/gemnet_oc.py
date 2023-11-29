@@ -860,10 +860,10 @@ class GemNetOC(BaseModel):
                 subgraph["distance"] = subgraph["distance"][edge_mask]
                 subgraph["vector"] = subgraph["vector"][edge_mask]
 
-
         empty_image = subgraph["num_neighbors"] == 0
         if torch.any(empty_image):
             import ipdb
+
             ipdb.set_trace()
             raise ValueError(
                 f"An image has no neighbors: id={data.id[empty_image]}, "
@@ -1216,15 +1216,14 @@ class GemNetOC(BaseModel):
         if self.regress_forces and not self.direct_forces:
             pos.requires_grad_(True)
 
-        outputs = self.pre_interaction(
-            pos, batch, atomic_numbers, num_atoms, data
-        )
+        outputs = self.pre_interaction(pos, batch, atomic_numbers, num_atoms, data)
 
-        #h, m, basis_output, idx_t, x_E, x_F, xs_E, xs_F
+        # h, m, basis_output, idx_t, x_E, x_F, xs_E, xs_F
         interaction_outputs = self.interactions(outputs)
 
         E_t, idx_t, F_st = self.post_interactions(
-            batch=batch, **interaction_outputs,
+            batch=batch,
+            **interaction_outputs,
         )
 
         return {
@@ -1252,7 +1251,7 @@ class GemNetOC(BaseModel):
         if self.extensive:
             E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="add"
-            ) # (nMolecules, num_targets)
+            )  # (nMolecules, num_targets)
         else:
             E_t = self.scattering(
                 E_t, batch, dim=0, dim_size=nMolecules, reduce="mean"
@@ -1300,14 +1299,14 @@ class GemNetOC(BaseModel):
             xs_F.append(x_F)
 
         interaction_outputs = {
-            "h" : h,
-            "m" : m,
-            "basis_output" : basis_output,
-            "idx_t" : idx_t,
-            "x_E" : x_E,
-            "x_F" : x_F,
-            "xs_E" : xs_E,
-            "xs_F" : xs_F
+            "h": h,
+            "m": m,
+            "basis_output": basis_output,
+            "idx_t": idx_t,
+            "x_E": x_E,
+            "x_F": x_F,
+            "xs_E": xs_E,
+            "xs_F": xs_F,
         }
         return interaction_outputs
 
@@ -1357,29 +1356,29 @@ class GemNetOC(BaseModel):
         xs_E, xs_F = [x_E], [x_F]
 
         outputs = {
-            "main_graph" : main_graph,
-            "a2a_graph" : a2a_graph,
-            "a2ee2a_graph" : a2ee2a_graph,
-            "id_swap" : id_swap,
-            "trip_idx_e2e" : trip_idx_e2e,
-            "trip_idx_a2e" : trip_idx_a2e,
-            "trip_idx_e2a" : trip_idx_e2a,
-            "quad_idx" : quad_idx,
-            "idx_t" : idx_t,
-            "basis_rad_raw" : basis_rad_raw,
-            "basis_atom_update" : basis_atom_update,
-            "basis_output" : basis_output,
-            "bases_qint" : bases_qint,
-            "bases_e2e" : bases_e2e,
-            "bases_a2e" : bases_a2e,
-            "bases_e2a" :bases_e2a,
-            "basis_a2a_rad" : basis_a2a_rad,
-            "h" : h,
-            "m" : m,
-            "x_E" : x_E,
-            "x_F" : x_F,
-            "xs_E" : xs_E,
-            "xs_F" : xs_F,
+            "main_graph": main_graph,
+            "a2a_graph": a2a_graph,
+            "a2ee2a_graph": a2ee2a_graph,
+            "id_swap": id_swap,
+            "trip_idx_e2e": trip_idx_e2e,
+            "trip_idx_a2e": trip_idx_a2e,
+            "trip_idx_e2a": trip_idx_e2a,
+            "quad_idx": quad_idx,
+            "idx_t": idx_t,
+            "basis_rad_raw": basis_rad_raw,
+            "basis_atom_update": basis_atom_update,
+            "basis_output": basis_output,
+            "bases_qint": bases_qint,
+            "bases_e2e": bases_e2e,
+            "bases_a2e": bases_a2e,
+            "bases_e2a": bases_e2a,
+            "basis_a2a_rad": basis_a2a_rad,
+            "h": h,
+            "m": m,
+            "x_E": x_E,
+            "x_F": x_F,
+            "xs_E": xs_E,
+            "xs_F": xs_F,
         }
 
         return outputs
@@ -1394,7 +1393,6 @@ class GemNetOC(BaseModel):
 
     @conditional_grad(torch.enable_grad())
     def forces_forward(self, preds):
-
         idx_t = preds["idx_t"]
         main_graph = preds["main_graph"]
         num_atoms = preds["num_atoms"]

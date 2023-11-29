@@ -9,8 +9,9 @@ from ocpmodels.models.utils.activations import swish
 
 from torch_geometric.data import Batch
 
+
 @registry.register_model("inddpp")
-class indDimeNetPlusPlus(BaseModel): # Change to make it inherit from base model.
+class indDimeNetPlusPlus(BaseModel):  # Change to make it inherit from base model.
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -37,10 +38,12 @@ class indDimeNetPlusPlus(BaseModel): # Change to make it inherit from base model
         self.combination = nn.Sequential(
             Linear(kwargs["num_targets"] + old_targets, kwargs["num_targets"] // 2),
             self.act,
-            Linear(kwargs["num_targets"] // 2, 1)
+            Linear(kwargs["num_targets"] // 2, 1),
         )
 
-    def energy_forward(self, data, mode = "train"): # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
+    def energy_forward(
+        self, data, mode="train"
+    ):  # PROBLEM TO FIX: THE PREDICTION IS BY AN AVERAGE!
         adsorbates = data[0]
         catalysts = data[1]
 
@@ -52,14 +55,15 @@ class indDimeNetPlusPlus(BaseModel): # Change to make it inherit from base model
         cat_energy = pred_cat["energy"]
 
         # We combine predictions
-        system_energy = torch.cat([ads_energy, cat_energy], dim = 1)
+        system_energy = torch.cat([ads_energy, cat_energy], dim=1)
         system_energy = self.combination(system_energy)
 
         # We return them
         pred_system = {
-            "energy" : system_energy,
-            "pooling_loss" : pred_ads["pooling_loss"] if pred_ads["pooling_loss"] is None
-                else pred_ads["pooling_loss"] + pred_cat["pooling_loss"]
+            "energy": system_energy,
+            "pooling_loss": pred_ads["pooling_loss"]
+            if pred_ads["pooling_loss"] is None
+            else pred_ads["pooling_loss"] + pred_cat["pooling_loss"],
         }
 
         return pred_system

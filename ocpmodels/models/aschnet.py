@@ -35,6 +35,7 @@ from ocpmodels.models.afaenet import GATInteraction
 NUM_CLUSTERS = 20
 NUM_POOLING_LAYERS = 1
 
+
 @registry.register_model("aschnet")
 class ASchNet(BaseModel):
     r"""The continuous-filter convolutional neural network SchNet from the
@@ -177,9 +178,7 @@ class ASchNet(BaseModel):
         )
 
         # Gaussian basis and linear transformation of disc edges
-        self.distance_expansion_disc = GaussianSmearing(
-            0.0, 20.0, self.num_gaussians
-        )
+        self.distance_expansion_disc = GaussianSmearing(0.0, 20.0, self.num_gaussians)
         self.disc_edge_embed = Linear(self.num_gaussians, self.num_filters)
 
         # Position encoding
@@ -188,7 +187,7 @@ class ASchNet(BaseModel):
 
         # Interaction block
         self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)
-        
+
         self.interactions_ads = ModuleList()
         for _ in range(self.num_interactions):
             block = InteractionBlock(
@@ -204,7 +203,9 @@ class ASchNet(BaseModel):
             self.interactions_cat.append(block)
 
         self.interactions_disc = ModuleList()
-        assert "gat_mode" in kwargs, "GAT version needs to be specified. Options: v1, v2"
+        assert (
+            "gat_mode" in kwargs
+        ), "GAT version needs to be specified. Options: v1, v2"
         for _ in range(self.num_interactions):
             block = GATInteraction(
                 self.hidden_channels, kwargs["gat_mode"], self.num_filters
@@ -238,7 +239,7 @@ class ASchNet(BaseModel):
         self.combination = nn.Sequential(
             Linear(self.hidden_channels, self.hidden_channels // 2),
             swish,
-            Linear(kwargs["hidden_channels"] // 2, 1)
+            Linear(kwargs["hidden_channels"] // 2, 1),
         )
 
         self.reset_parameters()
@@ -256,18 +257,12 @@ class ASchNet(BaseModel):
         if self.energy_head in {"weighted-av-init-embeds", "weighted-av-final-embeds"}:
             self.w_lin.bias.data.fill_(0)
             torch.nn.init.xavier_uniform_(self.w_lin.weight)
-        for (
-            interaction_ads,
-            interaction_cat,
-            interaction_disc
-        ) in zip (
-            self.interactions_ads,
-            self.interactions_cat,
-            self.interactions_disc
+        for interaction_ads, interaction_cat, interaction_disc in zip(
+            self.interactions_ads, self.interactions_cat, self.interactions_disc
         ):
             interaction_ads.reset_parameters()
             interaction_cat.reset_parameters()
-            #interaction_disc.reset_parameters() # need to implement this!
+            # interaction_disc.reset_parameters() # need to implement this!
         torch.nn.init.xavier_uniform_(self.lin1_ads.weight)
         self.lin1_ads.bias.data.fill_(0)
         torch.nn.init.xavier_uniform_(self.lin2_ads.weight)
@@ -305,7 +300,7 @@ class ASchNet(BaseModel):
         if self.otf_graph:
             edge_index, cell_offsets, neighbors = radius_graph_pbc_inputs(
                 data["adsorbate"].pos,
-                data["adsorbate"].natoms, 
+                data["adsorbate"].natoms,
                 data["adsorbate"].cell,
                 self.cutoff,
                 50,
@@ -313,7 +308,7 @@ class ASchNet(BaseModel):
             data["adsorbate", "is_close", "adsorbate"].edge_index = edge_index
             data["adsorbate"].cell_offsets = cell_offsets
             data["adsorbate"].neighbors = neighbors
-    
+
             edge_index, cell_offsets, neighbors = radius_graph_pbc_inputs(
                 data["catalyst"].pos,
                 data["catalyst"].natoms,
@@ -327,7 +322,9 @@ class ASchNet(BaseModel):
 
         # Rewire the graph
         # Use periodic boundary conditions
-        ads_rewiring, cat_rewiring = self.graph_rewiring(data, ) 
+        ads_rewiring, cat_rewiring = self.graph_rewiring(
+            data,
+        )
         edge_index_ads, edge_weight_ads, edge_attr_ads = ads_rewiring
         edge_index_cat, edge_weight_cat, edge_attr_cat = cat_rewiring
 
@@ -337,27 +334,27 @@ class ASchNet(BaseModel):
         edge_weights_disc = self.distance_expansion_disc(data["is_disc"].edge_weight)
         edge_weights_disc = self.disc_edge_embed(edge_weights_disc)
 
-        if self.use_tag: # NOT IMPLEMENTED
+        if self.use_tag:  # NOT IMPLEMENTED
             assert data["adsorbate"].tags is not None
             h_tag = self.tag_embedding(data.tags)
             h = torch.cat((h, h_tag), dim=1)
 
-        if self.phys_emb.device != data["adsorbate"].batch.device: # NOT IMPLEMENTED
+        if self.phys_emb.device != data["adsorbate"].batch.device:  # NOT IMPLEMENTED
             self.phys_emb = self.phys_emb.to(data["adsorbate"].batch.device)
 
-        if self.use_phys_embeddings: # NOT IMPLEMENTED
+        if self.use_phys_embeddings:  # NOT IMPLEMENTED
             h_phys = self.phys_emb.properties[z]
             if self.use_mlp_phys:
                 h_phys = self.phys_lin(h_phys)
             h = torch.cat((h, h_phys), dim=1)
 
-        if self.use_pg: # NOT IMPLEMENTED
+        if self.use_pg:  # NOT IMPLEMENTED
             # assert self.phys_emb.period is not None
             h_period = self.period_embedding(self.phys_emb.period[z])
             h_group = self.group_embedding(self.phys_emb.group[z])
             h = torch.cat((h, h_period, h_group), dim=1)
 
-        if self.use_positional_embeds: # NOT IMPLEMENTED
+        if self.use_positional_embeds:  # NOT IMPLEMENTED
             idx_of_non_zero_val = (data.tags == 0).nonzero().T.squeeze(0)
             h_pos = torch.zeros_like(h, device=h.device)
             h_pos[idx_of_non_zero_val, :] = self.pe(data.subnodes).to(
@@ -368,35 +365,34 @@ class ASchNet(BaseModel):
         if self.energy_head == "weighted-av-initial-embeds":
             alpha = self.w_lin(h)
 
-        for (
-            interaction_ads,
-            interaction_cat,
-            interaction_disc
-        ) in zip (
-            self.interactions_ads,
-            self.interactions_cat,
-            self.interactions_disc
+        for interaction_ads, interaction_cat, interaction_disc in zip(
+            self.interactions_ads, self.interactions_cat, self.interactions_disc
         ):
-            intra_ads = interaction_ads(h_ads, edge_index_ads, edge_weight_ads, edge_attr_ads)
-            intra_cat = interaction_cat(h_cat, edge_index_cat, edge_weight_cat, edge_attr_cat)
+            intra_ads = interaction_ads(
+                h_ads, edge_index_ads, edge_weight_ads, edge_attr_ads
+            )
+            intra_cat = interaction_cat(
+                h_cat, edge_index_cat, edge_weight_cat, edge_attr_cat
+            )
             inter_ads, inter_cat = interaction_disc(
-                intra_ads,
-                intra_cat,
-                data["is_disc"].edge_index,
-                edge_weights_disc
+                intra_ads, intra_cat, data["is_disc"].edge_index, edge_weights_disc
             )
             h_ads, h_cat = h_ads + inter_ads, h_cat + inter_cat
-            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(h_cat)
+            h_ads, h_cat = nn.functional.normalize(h_ads), nn.functional.normalize(
+                h_cat
+            )
 
         pooling_loss = None  # deal with pooling loss
 
-        if self.energy_head == "weighted-av-final-embeds": # NOT IMPLEMENTED
+        if self.energy_head == "weighted-av-final-embeds":  # NOT IMPLEMENTED
             alpha = self.w_lin(h)
 
         elif self.energy_head == "graclus":
-            h, batch = self.graclus(h, edge_index, edge_weight, batch) # NOT IMPLEMENTED
+            h, batch = self.graclus(
+                h, edge_index, edge_weight, batch
+            )  # NOT IMPLEMENTED
 
-        if self.energy_head in {"pooling", "random"}: # NOT IMPLEMENTED
+        if self.energy_head in {"pooling", "random"}:  # NOT IMPLEMENTED
             h, batch, pooling_loss = self.hierarchical_pooling(
                 h, edge_index, edge_weight, batch
             )
@@ -410,13 +406,13 @@ class ASchNet(BaseModel):
         h_cat = self.act(h_cat)
         h_cat = self.lin2_cat(h_cat)
 
-        if self.energy_head in { # NOT IMPLEMENTED
+        if self.energy_head in {  # NOT IMPLEMENTED
             "weighted-av-initial-embeds",
             "weighted-av-final-embeds",
         }:
             h = h * alpha
 
-        if self.atomref is not None: # NOT IMPLEMENTED
+        if self.atomref is not None:  # NOT IMPLEMENTED
             h = h + self.atomref(z)
 
         # Global pooling
@@ -426,7 +422,7 @@ class ASchNet(BaseModel):
         if self.scale is not None:
             out = self.scale * out
 
-        system = torch.concat([out_ads, out_cat], dim = 1)
+        system = torch.concat([out_ads, out_cat], dim=1)
         out = self.combination(system)
 
         return {
@@ -446,7 +442,7 @@ class ASchNet(BaseModel):
                     data[mode].cell,
                     data[mode].cell_offsets,
                     data[mode].neighbors,
-                    return_distance_vec = True
+                    return_distance_vec=True,
                 )
 
                 edge_index = out["edge_index"]
@@ -457,9 +453,9 @@ class ASchNet(BaseModel):
             for mode in ["adsorbate", "catalyst"]:
                 edge_index = radius_graph(
                     data[mode].pos,
-                    r = self.cutoff,
-                    batch =data[mode].batch,
-                    max_num_neighbors = self.max_num_neighbors,
+                    r=self.cutoff,
+                    batch=data[mode].batch,
+                    max_num_neighbors=self.max_num_neighbors,
                 )
                 row, col = edge_index
                 edge_weight = (pos[row] - pos[col]).norm(dim=-1)

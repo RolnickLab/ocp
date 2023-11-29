@@ -291,13 +291,13 @@ class Flags:
             "--is_disconnected",
             type=bool,
             default=False,
-            help="Eliminates edges between catalyst and adsorbate."
+            help="Eliminates edges between catalyst and adsorbate.",
         )
         self.parser.add_argument(
             "--lowest_energy_only",
             type=bool,
             default=False,
-            help="Makes trainer use the lowest energy data point for every (catalyst, adsorbate, cell) tuple. ONLY USE WITH ALL DATASET"
+            help="Makes trainer use the lowest energy data point for every (catalyst, adsorbate, cell) tuple. ONLY USE WITH ALL DATASET",
         )
 
 

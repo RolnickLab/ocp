@@ -613,6 +613,7 @@ class PaiNN(BaseModel):
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data):
         import ipdb
+
         ipdb.set_trace()
 
         pos = data.pos
