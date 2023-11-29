@@ -8,12 +8,13 @@ import datetime
 import errno
 import logging
 import os
+import pickle
 import random
 import time
-import pickle
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
+from uuid import uuid4
 
 import numpy as np
 import torch
@@ -26,7 +27,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.utils.data import DataLoader, Subset
 from torch_geometric.data import Batch
 from tqdm import tqdm
-from uuid import uuid4
+
 from ocpmodels.common import dist_utils
 from ocpmodels.common.data_parallel import (
     BalancedBatchSampler,
@@ -36,7 +37,12 @@ from ocpmodels.common.data_parallel import (
 from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
-from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
+from ocpmodels.common.utils import (
+    JOB_ID,
+    get_commit_hash,
+    resolve,
+    save_checkpoint,
+)
 from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
@@ -292,18 +298,29 @@ class BaseTrainer(ABC):
 
             if self.data_mode == "separate":
                 self.datasets[split] = registry.get_dataset_class("separate")(
-                    ds_conf, transform=transform
+                    ds_conf,
+                    transform=transform,
+                    adsorbates=self.config.get("adsorbates"),
+                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
                 )
 
             elif self.data_mode == "heterogeneous":
                 self.datasets[split] = registry.get_dataset_class("heterogeneous")(
-                    ds_conf, transform=transform
+                    ds_conf,
+                    transform=transform,
+                    adsorbates=self.config.get("adsorbates"),
+                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
                 )
 
             else:
                 self.datasets[split] = registry.get_dataset_class(
                     self.config["task"]["dataset"]
-                )(ds_conf, transform=transform)
+                )(
+                    ds_conf,
+                    transform=transform,
+                    adsorbates=self.config.get("adsorbates"),
+                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
+                )
 
             if self.config["lowest_energy_only"]:
                 with open(
