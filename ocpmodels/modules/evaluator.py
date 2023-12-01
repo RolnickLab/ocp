@@ -48,6 +48,7 @@ class Evaluator:
             "positions_mae",
             "positions_mse",
         ],
+        "is2re-dense": ["energy_mae", "energy_mse", "success_rate"],
         "is2re": [
             "energy_mae",
             "energy_mse",
@@ -69,6 +70,7 @@ class Evaluator:
         "is2re": ["energy"],
         "qm9": ["energy"],
         "qm7x": ["energy"],
+        "is2re-dense": ["energy"],
     }
 
     task_primary_metric = {
@@ -77,11 +79,14 @@ class Evaluator:
         "is2re": "energy_mae",
         "qm9": "energy_mae",
         "qm7x": "energy_mae",
+        "is2re-dense": "success_rate",
     }
 
     def __init__(self, task=None, model_regresses_forces=""):
-        assert task in ["s2ef", "is2rs", "is2re", "qm9", "qm7x"]
+        assert task in ["s2ef", "is2rs", "is2re", "qm9", "qm7x", "is2re-dense"]
         self.task = task
+
+        self.history = dict()
 
         self.metric_fn = self.task_metrics[task]
         self.expect_forces_grad_target = (
@@ -117,8 +122,17 @@ class Evaluator:
         metrics = prev_metrics
 
         for fn in self.task_metrics[self.task]:
-            res = eval(fn)(prediction, target)
-            metrics = self.update(fn, res, metrics)
+            if fn == "success_rate":
+                self.history = update_success_rate(
+                    prediction,
+                    target,
+                    self.history,
+                )
+            else:
+                res = eval(fn)(prediction, target)
+                metrics = self.update(fn, res, metrics)
+        if self.task == "is2re-dense":
+            metrics["success_rate"] = success_rate(self.history, metrics)
 
         return metrics
 
@@ -144,6 +158,44 @@ class Evaluator:
             raise NotImplementedError
 
         return metrics
+
+
+def success_rate(history, metrics, threshold=0.1):
+    success_number = 0
+    total_number = len(history)
+    for system_id in history:
+        if history[system_id]["error"][-1] > threshold:
+            continue
+        if (
+            history[system_id]["best_target"][-1] - history[system_id]["global_target"]
+            < threshold
+        ):
+            success_number += 1
+    success_metrics = {
+        "metric": success_number / total_number,
+        "total": success_number / total_number,
+        "numel": 1,
+    }
+    return success_metrics
+
+
+def update_success_rate(prediction, target, history, threshold=0.1):
+    error_energy = torch.abs(target["energy"] - prediction["energy"])
+    system_ids = target["system_id"]
+    for i, system_id in enumerate(system_ids):
+        if system_id not in history:
+            history[system_id] = {}
+            history[system_id]["best_target"] = []
+            history[system_id]["error"] = []
+            history[system_id]["global_target"] = target["global_target"][i].item()
+        if len(history[system_id]["best_target"]) == 0:
+            history[system_id]["best_target"].append(error_energy[i].item())
+            history[system_id]["error"].append(error_energy[i].item())
+            continue
+        if prediction["energy"][i].item() < history[system_id]["best_target"][-1]:
+            history[system_id]["best_target"][-1] = prediction["energy"][i].item()
+            history[system_id]["error"][-1] = error_energy[i].item()
+    return history
 
 
 def energy_mae(prediction, target):

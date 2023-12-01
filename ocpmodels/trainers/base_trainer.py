@@ -635,9 +635,11 @@ class BaseTrainer(ABC):
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
-
+        task_name = self.task_name
+        if self.config["validate_dense"] and "dense" in split:
+            task_name = self.task_name + "-dense"
         evaluator = Evaluator(
-            task=self.task_name,
+            task=task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
         metrics = {}
@@ -818,6 +820,8 @@ class BaseTrainer(ABC):
         metrics_dict = {}
         # store all non-train splits: all vals and test
         all_splits = [s for s in self.config["dataset"] if s.startswith("val")]
+        if not (self.config["validate_dense"]):
+            all_splits = [s for s in all_splits if not ("dense" in s)]
 
         if not self.silent:
             print()

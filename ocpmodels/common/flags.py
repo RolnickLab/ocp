@@ -190,7 +190,7 @@ class Flags:
         self.parser.add_argument(
             "--wandb_project",
             type=str,
-            default="ocp-3",
+            default="faenet++",
             help="WandB project name to use",
         )
         self.parser.add_argument(
@@ -286,6 +286,12 @@ class Flags:
             default=3,
             help="Number of validation loops to run in order to collect inference"
             + " timing stats",
+        )
+        self.parser.add_argument(
+            "--validate_dense",
+            help="Whether or not to validate on dense graphs",
+            action="store_true",
+            default=False,
         )
 
 

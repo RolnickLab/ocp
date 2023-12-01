@@ -31,6 +31,14 @@ default:
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_ads/
     val_ood_both:
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_both/
+    val_id_dense:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/dense/id
+    val_ood_both_dense:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/dense/ood_both
+    val_ood_cat_dense:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/dense/ood_cat
+    val_ood_ads_dense:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/dense/ood_ads
 
 10k:
   dataset:
@@ -41,5 +49,13 @@ default:
   dataset:
     train:
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/100k/train
+
+dense:
+  dataset:
+    train:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/dense/id
+      # target_mean: null
+      # target_std: null
+    default_val: val_ood_both_dense
 
 all: {}

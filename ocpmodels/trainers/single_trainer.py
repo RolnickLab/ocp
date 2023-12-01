@@ -468,9 +468,9 @@ class SingleTrainer(BaseTrainer):
                 ds.close_db()
 
     def model_forward(self, batch_list, mode="train"):
-        """ Perform a forward pass of the model when frame averaging is applied. 
+        """Perform a forward pass of the model when frame averaging is applied.
         Returns:
-            (dict): model predictions tensor for "energy" and "forces". 
+            (dict): model predictions tensor for "energy" and "forces".
         """
         # Distinguish frame averaging from base case.
         if self.config["frame_averaging"] and self.config["frame_averaging"] != "DA":
@@ -663,6 +663,11 @@ class SingleTrainer(BaseTrainer):
             ),
             "natoms": natoms,
         }
+        if self.config["validate_dense"] and evaluator.task == "is2re-dense":
+            target["global_target"] = torch.cat(
+                [batch.global_target.to(self.device) for batch in batch_list], dim=0
+            )
+            target["system_id"] = [batch.system_id for batch in batch_list][0]
 
         if self.config["model"].get("regress_forces", False):
             target["forces"] = torch.cat(
