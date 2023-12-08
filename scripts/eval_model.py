@@ -7,7 +7,12 @@ from minydra import resolved_args
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from ocpmodels.common.flags import flags
-from ocpmodels.common.utils import build_config, resolve, setup_imports, merge_dicts
+from ocpmodels.common.utils import (
+    build_config,
+    resolve,
+    setup_imports,
+    merge_dicts,
+)
 from ocpmodels.trainers.single_trainer import SingleTrainer
 
 if __name__ == "__main__":
@@ -39,7 +44,15 @@ if __name__ == "__main__":
     config = build_config(trainer_args, [])
     config["logger"] = "dummy"
     config["checkpoint"] = str(path / "checkpoints" / args.checkpoint_ref)
-    config = merge_dicts(config, args.config)
+
+    if getattr(args, "dense_only", False):
+        config["dataset"] = {
+            key: val
+            for key, val in config["dataset"].items()
+            if ("dense" in key) or (key in ["default_val", "train"])
+        }
+
+    config = merge_dicts(config, {"config": args.config})
 
     trainer = SingleTrainer(**config)
 
