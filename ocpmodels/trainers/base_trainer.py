@@ -869,6 +869,7 @@ class BaseTrainer(ABC):
 
         self.silent = silent
 
+        dense_splits = [s for s in self.config["dataset"] if "dense" in s]
         all_splits = [s for s in all_splits if "dense" not in s]
         # Average metrics over all val splits
         metrics_dict["overall"] = {
@@ -933,6 +934,21 @@ class BaseTrainer(ABC):
             console = Console()
             console.print(table)
             print()
+            # Print dense results if requested
+            if self.config["validate_dense"]:
+                if final:
+                    table_dense = Table(title="Dense results")
+                    for c, col in enumerate(["Metric / Split"] + dense_splits):
+                        table_dense.add_column(
+                            col, justify="left" if c == 0 else "right"
+                        )
+                    row = ["success_rate"] + [
+                        f"{metrics_dict[split]['success_rate']['metric']:.5f}"
+                        for split in dense_splits
+                    ]
+                    table_dense.add_row(*row)
+                    console.print(table_dense)
+                    print()
             print("\n• Trainer objective set to:", self.objective, end="\n\n")
 
     def rotate_graph(self, batch, rotation=None):
