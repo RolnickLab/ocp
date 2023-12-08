@@ -132,7 +132,7 @@ class Evaluator:
                 res = eval(fn)(prediction, target)
                 metrics = self.update(fn, res, metrics)
         if self.task == "is2re-dense":
-            metrics["success_rate"] = success_rate(self.history, metrics)
+            metrics["success_rate"] = success_rate(self.history)
 
         return metrics
 
@@ -160,7 +160,7 @@ class Evaluator:
         return metrics
 
 
-def success_rate(history, metrics, threshold=0.1):
+def success_rate(history, threshold=0.1):
     success_number = 0
     total_number = len(history)
     for system_id in history:
@@ -168,7 +168,7 @@ def success_rate(history, metrics, threshold=0.1):
             continue
         if (
             history[system_id]["best_target"][-1] - history[system_id]["global_target"]
-            < threshold
+            <= threshold
         ):
             success_number += 1
     success_metrics = {
@@ -179,7 +179,7 @@ def success_rate(history, metrics, threshold=0.1):
     return success_metrics
 
 
-def update_success_rate(prediction, target, history, threshold=0.1):
+def update_success_rate(prediction, target, history):
     error_energy = torch.abs(target["energy"] - prediction["energy"])
     system_ids = target["system_id"]
     for i, system_id in enumerate(system_ids):
@@ -188,11 +188,15 @@ def update_success_rate(prediction, target, history, threshold=0.1):
             history[system_id]["best_target"] = []
             history[system_id]["error"] = []
             history[system_id]["global_target"] = target["global_target"][i].item()
+        if target["global_target"][i].item() != history[system_id]["global_target"]:
+            raise ValueError(
+                "The global target of the same system is different in different batches."
+            )
         if len(history[system_id]["best_target"]) == 0:
-            history[system_id]["best_target"].append(error_energy[i].item())
+            history[system_id]["best_target"].append(prediction["energy"][i].item())
             history[system_id]["error"].append(error_energy[i].item())
             continue
-        if prediction["energy"][i].item() < history[system_id]["best_target"][-1]:
+        if prediction["energy"][i].item() <= history[system_id]["best_target"][-1]:
             history[system_id]["best_target"][-1] = prediction["energy"][i].item()
             history[system_id]["error"][-1] = error_energy[i].item()
     return history
