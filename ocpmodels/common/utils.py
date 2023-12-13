@@ -1036,7 +1036,7 @@ def build_config(args, args_override, silent=False):
             loaded_config["checkpoint"] = str(latest_ckpt)
             loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
             loaded_config["job_id"] = JOB_ID
-            loaded_config["local_rank"] = config["local_rank"]
+            # loaded_config["local_rank"] = config["local_rank"] #Not sure what config is here, not working anyways
         else:
             # restarting from scratch
             keep_keys = [

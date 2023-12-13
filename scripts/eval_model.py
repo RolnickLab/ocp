@@ -51,6 +51,7 @@ if __name__ == "__main__":
             for key, val in config["dataset"].items()
             if ("dense" in key) or (key in ["default_val", "train"])
         }
+        config["dataset"]["default_val"] = "val_id_dense"
 
     config = merge_dicts(config, {"config": args.config})
 
