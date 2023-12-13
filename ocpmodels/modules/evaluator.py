@@ -160,6 +160,8 @@ class Evaluator:
         return metrics
 
 
+# Implemented as described in the paper AsrobML
+# https://github.com/Open-Catalyst-Project/AdsorbML/blob/main/adsorbml/scripts/dense_eval.py
 def success_rate(history, threshold=0.1):
     success_number = 0
     total_number = len(history)
