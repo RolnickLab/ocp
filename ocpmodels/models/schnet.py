@@ -21,6 +21,11 @@ from ocpmodels.common.utils import (
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.pos_encodings import PositionalEncoding
+from ocpmodels.modules.ewald_block import (
+    EwaldBlock,
+    get_ewald_params,
+    x_to_k_cell,
+)
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
 
 
@@ -192,6 +197,13 @@ class SchNet(BaseModel):
             "one-supernode-per-atom-type-dist",
         }
 
+        # Ewald summation
+        self.use_ewald = kwargs.get("use_ewald", False)
+        if self.use_ewald:
+            self.ewald_params = get_ewald_params(
+                kwargs["ewald_hyperparams"], self.use_pbc, self.hidden_channels
+            )
+
         self.register_buffer(
             "initial_atomref",
             torch.tensor(kwargs["atomref"]) if kwargs["atomref"] is not None else None,
@@ -255,6 +267,25 @@ class SchNet(BaseModel):
                 self.hidden_channels, self.num_gaussians, self.num_filters, self.cutoff
             )
             self.interactions.append(block)
+
+        # Ewald block
+        if self.use_ewald:
+            self.ewald_blocks = ModuleList(
+                [
+                    EwaldBlock(
+                        self.ewald_params["downproj_layer"],
+                        self.hidden_channels,
+                        self.ewald_params["downprojection_size"],
+                        self.ewald_params["num_hidden"],
+                        activation=self.ewald_params["activation"],
+                        use_pbc=self.use_pbc,
+                        delta_k=self.ewald_params["delta_k"],
+                        k_rbf_values=self.ewald_params["k_rbf_values"],
+                        # name=f"ewald_block_{i}",
+                    )
+                    for i in range(self.num_interactions)
+                ]
+            )
 
         # Output block
         self.lin1 = Linear(self.hidden_channels, self.hidden_channels // 2)
@@ -339,6 +370,22 @@ class SchNet(BaseModel):
         pos = data.pos
         batch = data.batch
 
+        if self.use_ewald:
+            if self.use_pbc:
+                # Compute reciprocal lattice basis of structure
+                k_cell, _ = x_to_k_cell(data.cell)
+                # Translate lattice indices to k-vectors
+                k_grid = torch.matmul(
+                    self.ewald_params["k_index_product_set"].to(batch.device), k_cell
+                )
+            else:
+                k_grid = (
+                    self.ewald_params["k_grid"]
+                    .to(batch.device)
+                    .unsqueeze(0)
+                    .expand(batch_size, -1, -1)
+                )
+
         # Use periodic boundary conditions
         if self.use_pbc:
             assert z.dim() == 1 and z.dtype == torch.long
@@ -399,8 +446,22 @@ class SchNet(BaseModel):
         if self.energy_head == "weighted-av-initial-embeds":
             alpha = self.w_lin(h)
 
-        for interaction in self.interactions:
+        for ib, interaction in enumerate(self.interactions):
+            if self.use_ewald:
+                dot, sinc_damping = None, None  # avoid redundant computation
+            if self.use_ewald:
+                h_ewald, dot, sinc_damping = self.ewald_blocks[ib](
+                    h,
+                    pos,
+                    k_grid,
+                    batch_size,
+                    batch,
+                    dot,
+                    sinc_damping,
+                )
             h = h + interaction(h, edge_index, edge_weight, edge_attr)
+            if self.use_ewald:
+                h = (1 / 2) ** 0.5 * (h + h_ewald)
 
         hidden_state = h  # store hidden rep for force head
 
