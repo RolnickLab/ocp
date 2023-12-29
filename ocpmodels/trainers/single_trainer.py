@@ -279,6 +279,10 @@ class SingleTrainer(BaseTrainer):
                 with timer.next("get_batch"):
                     batch = next(train_loader_iter)
 
+                # Optionally apply noise to node features
+                if self.config["noisy_nodes"]:
+                    batch = self.noised_nodes(batch.node_features, noise_std=noise_std)
+        
                 # Forward, loss, backward.
                 if epoch_int == 1:
                     s = time.time()
@@ -291,6 +295,7 @@ class SingleTrainer(BaseTrainer):
                 if epoch_int == 1:
                     model_run_time += time.time() - s
 
+                # create dictionary of losses
                 loss = {
                     k: self.scaler.scale(v) if self.scaler else v
                     for k, v in loss.items()
@@ -577,6 +582,12 @@ class SingleTrainer(BaseTrainer):
 
         return preds
 
+    def noised_nodes(self, x, noise_std: float):
+        """Noise nodes with Gaussian noise."""
+        noise = torch.randn_like(x, device=x.device) * noise_std
+        noised_nodes = x + noise
+        return noised_nodes
+
     def compute_loss(self, preds, batch_list):
         loss = {"total_loss": []}
 
@@ -605,6 +616,25 @@ class SingleTrainer(BaseTrainer):
         energy_mult = self.config["optim"].get("energy_coefficient", 1)
         loss["energy_loss"] = self.loss_fn["energy"](preds["energy"], target_normed)
         loss["total_loss"].append(energy_mult * loss["energy_loss"])
+
+        # Node features auxiliary loss.
+        if self.config["noisy_nodes"]:
+            node_target = torch.cat(
+                [batch.node_features.to(self.device) for batch in batch_list],
+                dim=0,
+            )
+            # TODO: check whether a normalization is needed
+            if self.normalizer.get("normalize_labels", False):
+                hofs = None
+                # Adjust normalization if needed based on your specific requirements
+                target_normed = self.normalizers["target"].norm(node_target, hofs=hofs)
+            else:
+                target_normed = node_target
+            # TODO: add node_loss_coefficients
+            node_loss_coefficient = self.config["optim"].get("node_loss_coefficient", 1)
+            loss["node_loss"] = self.loss_fn["node"](preds["node_features"], target_normed)
+            loss["total_loss"].append(node_loss_coefficient * loss["node_loss"])
+
 
         # Force loss.
         if self.task_name in {"is2rs", "s2ef"} or self.config["model"].get(

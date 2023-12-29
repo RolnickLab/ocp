@@ -563,6 +563,18 @@ class FAENet(BaseModel):
             else None
         )
 
+        # Position head
+        self.position_decoder = (
+            ForceDecoder(
+                self.force_decoder_type,
+                self.hidden_channels,
+                self.force_decoder_model_config,
+                self.act,
+            )
+            if self.config["noisy_nodes"]
+            else None
+        )
+
         # Skip co
         if self.skip_co == "concat":
             self.mlp_skip_co = Linear((self.num_interactions + 1), 1)
@@ -648,6 +660,20 @@ class FAENet(BaseModel):
         """
         if self.decoder:
             return self.decoder(preds["hidden_state"])
+
+    @conditional_grad(torch.enable_grad())
+    def positions_forward(self, preds):
+        """Predicts forces for 3D atomic systems.
+        Can be utilised to predict any atom-level property.
+
+        Args:
+            preds (dict): dictionnary with predicted properties for each graph.
+
+        Returns:
+            dict: additional predicted properties, at an atom-level (e.g. forces)
+        """
+        if self.position_decoder:
+            return self.position_decoder(preds["hidden_state"])
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data, q=None):

@@ -495,8 +495,11 @@ class BaseTrainer(ABC):
 
     def load_loss(self, reduction="mean"):
         self.loss_fn = {}
+        # Energy and force losses (unchanged)
         self.loss_fn["energy"] = self.config["optim"].get("loss_energy", "mae")
         self.loss_fn["force"] = self.config["optim"].get("loss_force", "mae")
+        # Node features auxiliary loss
+        self.loss_fn["node"] = self.config["optim"].get("loss_node", "mse")
         for loss, loss_name in self.loss_fn.items():
             if loss_name in ["l1", "mae"]:
                 self.loss_fn[loss] = nn.L1Loss(reduction=reduction)

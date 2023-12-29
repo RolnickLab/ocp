@@ -190,7 +190,7 @@ class Flags:
         self.parser.add_argument(
             "--wandb_project",
             type=str,
-            default="ocp-5",
+            default="faenet++",
             help="WandB project name to use",
         )
         self.parser.add_argument(
@@ -292,6 +292,13 @@ class Flags:
             default=3,
             help="Number of validation loops to run in order to collect inference"
             + " timing stats",
+        )
+        self.parser.add_argument(
+            "--noisy_nodes",
+            type=bool,
+            default=False,
+            help="If True, noise the input positions and add a position decoding" 
+            +"head to the output block and add auxiliary position denoising loss",
         )
 
 

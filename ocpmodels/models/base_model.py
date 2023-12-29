@@ -64,6 +64,10 @@ class BaseModel(nn.Module):
     def forces_forward(self, preds):
         """Forward pass for force prediction."""
         raise NotImplementedError
+    
+    def positions_forward(self, preds):
+        """Forward pass for force prediction."""
+        raise NotImplementedError
 
     def forward(self, data, mode="train", regress_forces=None, q=None):
         grad_forces = forces = None
@@ -101,6 +105,9 @@ class BaseModel(nn.Module):
                 raise ValueError(
                     f"Unknown forces regression mode {self.regress_forces}"
                 )
+        if self.config["noisy_nodes"]:
+            # predict positions
+            forces = self.positions_forward(preds)
 
         return preds
 
