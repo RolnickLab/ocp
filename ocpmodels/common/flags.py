@@ -87,12 +87,14 @@ class Flags:
             "--checkpoint", type=str, help="Model checkpoint to load"
         )
         self.parser.add_argument(
-            "--continue_from_dir", type=str, help="Run to continue, loading its config"
+            "--continue_from_dir",
+            type=str,
+            help="Continue an existing run, loading its config and overwriting desired arguments",
         )
         self.parser.add_argument(
             "--restart_from_dir",
             type=str,
-            help="Run to restart, loading its config and overwriting "
+            help="Restart training from an existing run, loading its config and overwriting args"
             + "from the command-line",
         )
         self.parser.add_argument(
