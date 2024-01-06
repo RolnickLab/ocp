@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 """
 
 import bisect
+import json
 import logging
 import pickle
 import time
@@ -16,7 +17,7 @@ import lmdb
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torch_geometric.data import Batch, HeteroData, Data
+from torch_geometric.data import Batch
 
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import pyg2_data_transform
@@ -36,15 +37,35 @@ class LmdbDataset(Dataset):
             config (dict): Dataset configuration
             transform (callable, optional): Data transform function.
                     (default: :obj:`None`)
+            fa_frames (str, optional): type of frame averaging method applied, if any.
+            adsorbates (str, optional): comma-separated list of adsorbates to filter.
+                    If None or "all", no filtering is applied.
+                    (default: None)
+            adsorbates_ref_dir: where metadata files for adsorbates are stored.
+                    (default: "/network/scratch/s/schmidtv/ocp/datasets/ocp/per_ads")
     """
 
-    def __init__(self, config, transform=None, fa_frames=None):
-        super(LmdbDataset, self).__init__()
+    def __init__(
+        self,
+        config,
+        transform=None,
+        fa_frames=None,
+        lmdb_glob=None,
+        adsorbates=None,
+        adsorbates_ref_dir=None,
+    ):
+        super().__init__()
         self.config = config
+        self.adsorbates = adsorbates
+        self.adsorbates_ref_dir = adsorbates_ref_dir
 
         self.path = Path(self.config["src"])
         if not self.path.is_file():
             db_paths = sorted(self.path.glob("*.lmdb"))
+            if lmdb_glob:
+                db_paths = [
+                    p for p in db_paths if any(lg in p.stem for lg in lmdb_glob)
+                ]
             assert len(db_paths) > 0, f"No LMDBs found in '{self.path}'"
 
             self.metadata_path = self.path / "metadata.npz"
@@ -58,7 +79,7 @@ class LmdbDataset(Dataset):
                 else:
                     length = self.envs[-1].stat()["entries"]
                 assert length is not None, f"Could not find length of LMDB {db_path}"
-                self._keys.append(list(range(length)))
+                self._keys.append([str(i).encode("ascii") for i in range(length)])
 
             keylens = [len(k) for k in self._keys]
             self._keylen_cumulative = np.cumsum(keylens).tolist()
@@ -71,14 +92,78 @@ class LmdbDataset(Dataset):
             ]
             self.num_samples = len(self._keys)
 
+        self.filter_per_adsorbates()
         self.transform = transform
-        self.fa_frames = fa_frames
+        self.fa_method = fa_frames
+
+    def filter_per_adsorbates(self):
+        """Filter the dataset to only include structures with a specific
+        adsorbate.
+        """
+        # no adsorbates specified, or asked for all: return
+        if not self.adsorbates or self.adsorbates == "all":
+            return
+
+        # val_ood_ads and val_ood_both don't have targeted adsorbates
+        if self.config["src"].split("/")[-2] in {"val_ood_ads", "val_ood_both"}:
+            return
+
+        # make set of adsorbates from a list or a string. If a string, split on comma.
+        ads = []
+        if isinstance(self.adsorbates, str):
+            if "," in self.adsorbates:
+                ads = [a.strip() for a in self.adsorbates.split(",")]
+            else:
+                ads = [self.adsorbates]
+        else:
+            ads = self.adsorbates
+        ads = set(ads)
+
+        # find reference file for this dataset
+        ref_path = self.adsorbates_ref_dir
+        if not ref_path:
+            print("No adsorbate reference directory provided as `adsorbate_ref_dir`.")
+            return
+        ref_path = Path(ref_path)
+        if not ref_path.is_dir():
+            print(f"Adsorbate reference directory {ref_path} does not exist.")
+            return
+        pattern = "-".join(self.path.parts[-3:])
+        candidates = list(ref_path.glob(f"*{pattern}*.json"))
+        if not candidates:
+            print(f"No adsorbate reference files found for {self.path.name}.")
+            return
+        if len(candidates) > 1:
+            print(
+                f"Multiple adsorbate reference files found for {self.path.name}."
+                "Using the first one."
+            )
+        ref = json.loads(candidates[0].read_text())
+
+        # find dataset indices with the appropriate adsorbates
+        allowed_idxs = set(
+            str(i).encode("ascii")
+            for i, a in zip(ref["ds_idx"], ref["ads_symbols"])
+            if a in ads
+        )
+
+        # filter the dataset indices
+        if isinstance(self._keys[0], bytes):
+            self._keys = [i for i in self._keys if i in allowed_idxs]
+            self.num_samples = len(self._keys)
+        else:
+            assert isinstance(self._keys[0], list)
+            self._keys = [[i for i in k if i in allowed_idxs] for k in self._keys]
+            keylens = [len(k) for k in self._keys]
+            self._keylen_cumulative = np.cumsum(keylens).tolist()
+            self.num_samples = sum(keylens)
+
+        assert self.num_samples > 0, f"No samples found for adsorbates {ads}."
 
     def __len__(self):
         return self.num_samples
 
-    def __getitem__(self, idx):
-        t0 = time.time_ns()
+    def get_pickled_from_db(self, idx):
         if not self.path.is_file():
             # Figure out which db this should be indexed from.
             db_idx = bisect.bisect(self._keylen_cumulative, idx)
@@ -89,16 +174,20 @@ class LmdbDataset(Dataset):
             assert el_idx >= 0
 
             # Return features.
-            datapoint_pickled = (
-                self.envs[db_idx]
-                .begin()
-                .get(f"{self._keys[db_idx][el_idx]}".encode("ascii"))
+            return (
+                f"{db_idx}_{el_idx}",
+                self.envs[db_idx].begin().get(self._keys[db_idx][el_idx]),
             )
-            data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
-            data_object.id = f"{db_idx}_{el_idx}"
-        else:
-            datapoint_pickled = self.env.begin().get(self._keys[idx])
-            data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
+
+        return None, self.env.begin().get(self._keys[idx])
+
+    def __getitem__(self, idx):
+        t0 = time.time_ns()
+
+        el_id, datapoint_pickled = self.get_pickled_from_db(idx)
+        data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
+        if el_id:
+            data_object.id = el_id
 
         t1 = time.time_ns()
         if self.transform is not None:
@@ -112,6 +201,7 @@ class LmdbDataset(Dataset):
         data_object.load_time = load_time
         data_object.transform_time = transform_time
         data_object.total_get_time = total_get_time
+        data_object.idx_in_dataset = idx
 
         return data_object
 
@@ -137,6 +227,27 @@ class LmdbDataset(Dataset):
             self.env.close()
 
 
+@registry.register_dataset("deup_lmdb")
+class DeupDataset(LmdbDataset):
+    def __init__(self, all_datasets_configs, deup_split, transform=None):
+        super().__init__(
+            all_datasets_configs[deup_split],
+            lmdb_glob=deup_split.replace("deup-", "").split("-"),
+        )
+        ocp_splits = deup_split.split("-")[1:]
+        self.ocp_datasets = {
+            d: LmdbDataset(all_datasets_configs[d], transform) for d in ocp_splits
+        }
+
+    def __getitem__(self, idx):
+        _, datapoint_pickled = self.get_pickled_from_db(idx)
+        deup_sample = pickle.loads(datapoint_pickled)
+        ocp_sample = self.ocp_datasets[deup_sample["ds"]][deup_sample["idx_in_dataset"]]
+        for k, v in deup_sample.items():
+            setattr(ocp_sample, f"deup_{k}", v)
+        return ocp_sample
+
+
 class SinglePointLmdbDataset(LmdbDataset):
     def __init__(self, config, transform=None):
         super(SinglePointLmdbDataset, self).__init__(config, transform)
@@ -157,24 +268,8 @@ class TrajectoryLmdbDataset(LmdbDataset):
         )
 
 
-# In this function, we combine a list of samples into a batch. Notice that we first create the batch, then we fix
-# the neighbor problem: that some elements in the batch don't have edges, which pytorch geometric doesn't handle well
-# and which leads to errors in the forward step.
-def data_list_collater(data_list, otf_graph=False):  # Check if len(batch) is ever used
-    # FIRST, MAKE BATCH
-
-    if (  # This is for indfaenet
-        type(data_list[0]) is tuple and type(data_list[0][0]) is Data
-    ):
-        adsorbates = [system[0] for system in data_list]
-        catalysts = [system[1] for system in data_list]
-
-        ads_batch = Batch.from_data_list(adsorbates)
-        cat_batch = Batch.from_data_list(catalysts)
-    else:
-        batch = Batch.from_data_list(data_list)
-
-    # THEN, FIX NEIGHBOR PROBLEM
+def data_list_collater(data_list, otf_graph=False):
+    batch = Batch.from_data_list(data_list)
 
     if (
         not otf_graph
@@ -191,41 +286,5 @@ def data_list_collater(data_list, otf_graph=False):  # Check if len(batch) is ev
             logging.warning(
                 "LMDB does not contain edge index information, set otf_graph=True"
             )
-
-    elif (  # This is for indfaenet
-        not otf_graph and type(data_list[0]) is tuple and type(data_list[0][0]) is Data
-    ):
-        batches = [ads_batch, cat_batch]
-        lists = [adsorbates, catalysts]
-        for batch, list_type in zip(batches, lists):
-            n_neighbors = []
-            for i, data in enumerate(list_type):
-                n_index = data.edge_index[1, :]
-                n_neighbors.append(n_index.shape[0])
-            batch.neighbors = torch.tensor(n_neighbors)
-
-        return batches
-
-    elif not otf_graph and type(data_list[0]) is HeteroData:  # This is for afaenet
-        # First, fix the neighborhood dimension.
-        n_neighbors_ads = []
-        n_neighbors_cat = []
-        for i, data in enumerate(data_list):
-            n_index_ads = data["adsorbate", "is_close", "adsorbate"].edge_index
-            n_index_cat = data["catalyst", "is_close", "catalyst"].edge_index
-            n_neighbors_ads.append(n_index_ads[1, :].shape[0])
-            n_neighbors_cat.append(n_index_cat[1, :].shape[0])
-        batch["adsorbate"].neighbors = torch.tensor(n_neighbors_ads)
-        batch["catalyst"].neighbors = torch.tensor(n_neighbors_cat)
-
-        # Then, fix the edge index between ads and cats.
-        sender, receiver = batch["is_disc"].edge_index
-        ads_to_cat = torch.stack([sender, receiver + batch["adsorbate"].num_nodes])
-        cat_to_ads = torch.stack([ads_to_cat[1], ads_to_cat[0]])
-        batch["is_disc"].edge_index = torch.concat([ads_to_cat, cat_to_ads], dim=1)
-
-        batch["is_disc"].edge_weight = torch.concat(
-            [batch["is_disc"].edge_weight, -batch["is_disc"].edge_weight], dim=0
-        )
 
     return batch
