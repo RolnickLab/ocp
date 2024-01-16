@@ -42,7 +42,7 @@ default:
     eval_every: 0.4
 
 runs:
- 
+
   - config: faenet-is2re-all
     note: baseline faenet
 
@@ -51,7 +51,7 @@ runs:
 
   - config: depfaenet-is2re-all
     note: depfaenet per-adsorbate
-    adsorbates: {'*O', '*OH', '*OH2', '*H'}
+    adsorbates: '*O, *OH, *OH2, *H'
 
   - config: depfaenet-is2re-all
     note: To be used for continue from dir
