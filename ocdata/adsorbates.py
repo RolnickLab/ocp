@@ -1,6 +1,7 @@
-import numpy as np
-import pickle
 import os
+import pickle
+
+import numpy as np
 
 
 class Adsorbate:
