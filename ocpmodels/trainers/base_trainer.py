@@ -302,6 +302,7 @@ class BaseTrainer(ABC):
                     transform=transform,
                     adsorbates=self.config.get("adsorbates"),
                     adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
+                    silent=self.silent,
                 )
 
             elif self.data_mode == "heterogeneous":
@@ -1134,7 +1135,7 @@ class BaseTrainer(ABC):
             self.config["model"].get("regress_forces") == "from_energy"
         )
         self.model.eval()
-        timer = Times(gpu=True)
+        timer = Times(gpu=torch.cuda.is_available())
 
         # average inference over multiple loops
         for _ in range(loops):
