@@ -16,7 +16,7 @@ from ocpmodels.trainers import SingleTrainer
 if __name__ == "__main__":
     config = {}
     # Customize args
-    config["graph_rewiring"] = "remove-tag-0"
+    # config["graph_rewiring"] = "remove-tag-0"
     config["frame_averaging"] = "2D"
     config["fa_method"] = "random"  # "random"
     config["test_ri"] = False
@@ -30,8 +30,9 @@ if __name__ == "__main__":
     if all("config" not in arg for arg in str_args):
         str_args.append("--is_debug")
         # str_args.append("--config=faenet-is2re-all")
+        str_args.append("--adsorbates='*O, *OH, *OH2, *H'")
         str_args.append("--config=depfaenet-is2re-10k")
-        str_args.append("--is_disconnected=True")
+        # str_args.append("--is_disconnected=True")
         # str_args.append("--silent=0")
         warnings.warn(
             "No model / mode is given; chosen as default" + f"Using: {str_args[-1]}"
