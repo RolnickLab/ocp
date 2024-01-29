@@ -67,9 +67,11 @@ def wrap_up(args, start_time, error=None, signal=None, trainer=None):
         dist_utils.cleanup()
         print("Done!")
 
-    if "interactive" not in os.popen(f"squeue -hj {JOB_ID}").read():
-        print("\nSelf-canceling SLURM job in 32s", JOB_ID)
-        os.popen(f"sleep 32 && scancel {JOB_ID}")
+# -----Comment if want to debug----
+    # if "interactive" not in os.popen(f"squeue -hj {JOB_ID}").read():
+        # print("\nSelf-canceling SLURM job in 32s", JOB_ID)
+        # os.popen(f"sleep 32 && scancel {JOB_ID}")
+# ---------------------------------
 
     if trainer and trainer.logger:
         trainer.logger.finish(error or signal)

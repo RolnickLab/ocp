@@ -295,7 +295,7 @@ class Flags:
         )
         self.parser.add_argument(
             "--noisy_nodes",
-            type=bool,
+            action="store_true",
             default=False,
             help="If True, noise the input positions and add a position decoding" 
             +"head to the output block and add auxiliary position denoising loss",

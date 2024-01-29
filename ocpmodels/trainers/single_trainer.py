@@ -30,6 +30,9 @@ from ocpmodels.trainers.base_trainer import BaseTrainer
 
 is_test_env = os.environ.get("ocp_test_env", False)
 
+def mask_input(inputs: torch.Tensor, mask: torch.Tensor):
+    masked = inputs[mask]
+    return masked
 
 @registry.register_trainer("single")
 class SingleTrainer(BaseTrainer):
@@ -194,6 +197,53 @@ class SingleTrainer(BaseTrainer):
             self.ema.restore()
 
         return predictions
+    
+    def interpolate_init_relaxed_pos(self, batch):
+        _interpolate_threshold = 0.5
+        _min_interpolate_factor = 0.0 #0.1
+        _gaussian_noise_std = 0.3
+        
+        batch_index = batch.batch
+        batch_size = batch_index.max() + 1
+        
+        threshold_tensor = torch.rand((batch_size, 1), dtype=batch.pos.dtype, device=batch.pos.device)
+        threshold_tensor = threshold_tensor + (1 - _interpolate_threshold)
+        threshold_tensor = threshold_tensor.floor_() # 1: has interpolation, 0: no interpolation
+        threshold_tensor = threshold_tensor[batch_index]
+        
+        interpolate_factor = torch.zeros((batch_index.shape[0], 1), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        interpolate_factor = interpolate_factor.uniform_(_min_interpolate_factor, 1)
+        
+        noise_vec = torch.zeros((batch_index.shape[0], 3), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        noise_vec = noise_vec.uniform_(-1, 1)
+        noise_vec_norm = noise_vec.norm(dim=1, keepdim=True)
+        noise_vec = noise_vec / (noise_vec_norm + 1e-6)
+        noise_scale = torch.zeros((batch_index.shape[0], 1), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        noise_scale = noise_scale.normal_(mean=0, std=_gaussian_noise_std)
+        noise_vec = noise_vec * noise_scale
+        
+        noise_vec = noise_vec.normal_(mean=0, std=_gaussian_noise_std)
+        
+        #interpolate_factor = interpolate_factor * threshold_tensor
+        #interpolate_factor = 1 - interpolate_factor
+        #assert torch.all(interpolate_factor >= 0.0)
+        #assert torch.all(interpolate_factor <= 1.0)
+        #interpolate_factor = interpolate_factor[batch_index]
+        #batch.pos = batch.pos * interpolate_factor + (1 - interpolate_factor) * batch.pos_relaxed
+        
+        tags = batch.tags
+        tags = (tags > 0)
+        pos = batch.pos
+        pos_relaxed = batch.pos_relaxed
+        pos_interpolated = pos * interpolate_factor + (1 - interpolate_factor) * pos_relaxed
+        pos_noise = pos_interpolated + noise_vec
+        new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor) 
+        batch.pos[tags] = new_pos[tags]
+        
+        return batch
 
     def train(
         self, disable_eval_tqdm=True, debug_batches=-1, save_best_ckpt_only=False
@@ -280,8 +330,12 @@ class SingleTrainer(BaseTrainer):
                     batch = next(train_loader_iter)
 
                 # Optionally apply noise to node features
-                if self.config["noisy_nodes"]:
-                    batch = self.noised_nodes(batch.node_features, noise_std=noise_std)
+                # if self.config["model"]["noisy_nodes"]:
+                    # batch = self.noised_nodes(batch.node_features)
+                
+                # Interpolate between initial and relaxed pos
+                if self.use_interpolate_init_relaxed_pos:
+                    batch = [interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
         
                 # Forward, loss, backward.
                 if epoch_int == 1:
@@ -582,7 +636,7 @@ class SingleTrainer(BaseTrainer):
 
         return preds
 
-    def noised_nodes(self, x, noise_std: float):
+    def noised_nodes(self, x, noise_std=0.01):
         """Noise nodes with Gaussian noise."""
         noise = torch.randn_like(x, device=x.device) * noise_std
         noised_nodes = x + noise
@@ -618,22 +672,22 @@ class SingleTrainer(BaseTrainer):
         loss["total_loss"].append(energy_mult * loss["energy_loss"])
 
         # Node features auxiliary loss.
-        if self.config["noisy_nodes"]:
-            node_target = torch.cat(
-                [batch.node_features.to(self.device) for batch in batch_list],
-                dim=0,
-            )
-            # TODO: check whether a normalization is needed
-            if self.normalizer.get("normalize_labels", False):
-                hofs = None
-                # Adjust normalization if needed based on your specific requirements
-                target_normed = self.normalizers["target"].norm(node_target, hofs=hofs)
-            else:
-                target_normed = node_target
-            # TODO: add node_loss_coefficients
-            node_loss_coefficient = self.config["optim"].get("node_loss_coefficient", 1)
-            loss["node_loss"] = self.loss_fn["node"](preds["node_features"], target_normed)
-            loss["total_loss"].append(node_loss_coefficient * loss["node_loss"])
+        if self.config["model"]["noisy_nodes"]:
+            pos = torch.cat([batch.pos.to(self.device) for batch in batch_list], dim=0)
+            pos_relaxed = torch.cat([batch.pos_relaxed.to(self.device) for batch in batch_list], dim=0)
+            delta_pos = pos_relaxed - pos
+            # normalize delta_pos
+            # for 1e, we divide by L2-norm only
+            if self.normalizer.get("normalize_positions", False):
+                delta_pos = self.normalizers["positions"].norm(delta_pos)
+            # mask out fixed atoms
+            tag_mask = torch.cat([batch.tags.to(self.device) for batch in batch_list], dim=0)
+            tag_mask = (tag_mask > 0)
+            
+            self._compute_auxiliary_task_weight()
+            loss["auxiliary"] = self.loss_fn['auxiliary'](mask_input(preds['positions'], tag_mask), 
+                mask_input(delta_pos, tag_mask))
+            loss["total_loss"].append(self.current_auxiliary_task_weight * loss["auxiliary"])
 
 
         # Force loss.
@@ -829,6 +883,16 @@ class SingleTrainer(BaseTrainer):
                 step=self.step,
                 split="train",
             )
+    
+    def _compute_auxiliary_task_weight(self):
+        # linearly decay self.auxiliary_task_weight to 1 
+        # throughout the whole training procedure
+        _min_weight = 1
+        weight = self.auxiliary_task_weight
+        weight_range = max(0.0, weight - _min_weight)
+        weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.total_steps))
+        self.current_auxiliary_task_weight = weight
+        return
 
     @torch.no_grad()
     def test_model_symmetries(self, debug_batches=-1):

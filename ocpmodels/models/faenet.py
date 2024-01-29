@@ -439,6 +439,7 @@ class FAENet(BaseModel):
         regress_forces: Optional[str] = None,
         force_decoder_type: Optional[str] = "mlp",
         force_decoder_model_config: Optional[dict] = {"hidden_channels": 128},
+        noisy_nodes: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -460,6 +461,7 @@ class FAENet(BaseModel):
         self.phys_embeds = phys_embeds
         self.phys_hidden_channels = phys_hidden_channels
         self.regress_forces = regress_forces
+        self.regress_positions=noisy_nodes
         self.second_layer_MLP = second_layer_MLP
         self.skip_co = skip_co
         self.tag_hidden_channels = tag_hidden_channels
@@ -552,7 +554,7 @@ class FAENet(BaseModel):
             self.w_lin = Linear(self.hidden_channels, 1)
 
         # Force head
-        self.decoder = (
+        self.force_decoder = (
             ForceDecoder(
                 self.force_decoder_type,
                 self.hidden_channels,
@@ -571,7 +573,7 @@ class FAENet(BaseModel):
                 self.force_decoder_model_config,
                 self.act,
             )
-            if self.config["noisy_nodes"]
+            if noisy_nodes
             else None
         )
 
@@ -658,8 +660,8 @@ class FAENet(BaseModel):
         Returns:
             dict: additional predicted properties, at an atom-level (e.g. forces)
         """
-        if self.decoder:
-            return self.decoder(preds["hidden_state"])
+        if self.force_decoder:
+            return self.force_decoder(preds["hidden_state"])
 
     @conditional_grad(torch.enable_grad())
     def positions_forward(self, preds):

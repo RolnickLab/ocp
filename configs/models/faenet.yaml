@@ -260,6 +260,9 @@ qm7x:
       energy_coefficient: 1
       loss_energy: "mae"
       loss_force: "mse"
+      loss_position: "mse"
+      auxiliary_task_weight: 0.1
+      use_interpolate_init_relaxed_pos: True
 
   all: {}
   1k: {}

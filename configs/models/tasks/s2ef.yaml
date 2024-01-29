@@ -16,6 +16,7 @@ default:
   optim:
     optimizer: AdamW
   model:
+    noisy_nodes: False
     otf_graph: False
     max_num_neighbors: 40
     regress_forces: from_energy # can be in{ "from_energy", "direct", "direct_with_gradient_target" }
