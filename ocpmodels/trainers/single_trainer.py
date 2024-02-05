@@ -335,7 +335,7 @@ class SingleTrainer(BaseTrainer):
                 
                 # Interpolate between initial and relaxed pos
                 if self.use_interpolate_init_relaxed_pos:
-                    batch = [interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
+                    batch = [self.interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
         
                 # Forward, loss, backward.
                 if epoch_int == 1:
@@ -649,7 +649,7 @@ class SingleTrainer(BaseTrainer):
         energy_target = torch.cat(
             [
                 batch.y_relaxed.to(self.device)
-                if self.task_name == "is2re"
+                if self.task_name == "is2re" or self.task_name == "is2re_aux" 
                 else batch.deup_loss.to(self.device)
                 if self.task_name == "deup_is2re"
                 else batch.y.to(self.device)
@@ -785,7 +785,7 @@ class SingleTrainer(BaseTrainer):
             "energy": torch.cat(
                 [
                     batch.y_relaxed.to(self.device)
-                    if self.task_name == "is2re"
+                    if self.task_name == "is2re" or self.task_name == "is2re_aux"
                     else batch.deup_loss.to(self.device)
                     if self.task_name == "deup_is2re"
                     else batch.y.to(self.device)
@@ -958,7 +958,7 @@ class SingleTrainer(BaseTrainer):
                     torch.tensor([0.0]),
                     atol=1e-05,
                 )
-            elif self.task_name == "is2re":
+            elif self.task_name == "is2re" or self.task_name == "is2re_aux":
                 energy_diff_z_percentage += (
                     torch.abs(preds1["energy"] - preds2["energy"])
                     / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
@@ -1056,9 +1056,14 @@ class SingleTrainer(BaseTrainer):
             task="is2re",
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
+        evaluator_is2re_aux = Evaluator(
+            task="is2re_aux",
+            model_regresses_forces=self.config["model"].get("regress_forces", ""),
+        )
 
         metrics_is2rs = {}
         metrics_is2re = {}
+        metrics_is2re_aux = {}
 
         if hasattr(self.relax_dataset[0], "pos_relaxed") and hasattr(
             self.relax_dataset[0], "y_relaxed"
@@ -1137,6 +1142,11 @@ class SingleTrainer(BaseTrainer):
                     {"energy": target["energy"]},
                     metrics_is2re,
                 )
+                metrics_is2re_aux = evaluator_is2re_aux.eval(
+                    {"energy": prediction["energy"]},
+                    {"energy": target["energy"]},
+                    metrics_is2re_aux,
+                )
 
         if self.config["task"].get("write_pos", False):
             rank = dist_utils.get_rank()
@@ -1186,7 +1196,7 @@ class SingleTrainer(BaseTrainer):
                 np.savez_compressed(full_path, **gather_results)
 
         if split == "val":
-            for task in ["is2rs", "is2re"]:
+            for task in ["is2rs", "is2re","is2re_aux"]:
                 metrics = eval(f"metrics_{task}")
                 aggregated_metrics = {}
                 for k in metrics:

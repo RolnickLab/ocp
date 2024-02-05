@@ -28,6 +28,7 @@ default:
     mp_type: base # Message Passing type {'base', 'simple', 'updownscale', 'updownscale_base'}
     graph_norm: True # graph normalization layer
     force_decoder_type: "mlp" # force head (`"simple"`, `"mlp"`, `"res"`, `"res_updown"`)
+    noisy_nodes: False
     force_decoder_model_config:
       simple:
         hidden_channels: 128
@@ -70,6 +71,50 @@ is2re:
     graph_rewiring: remove-tag-0
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
     fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  # *** Important note ***
+  #   The total number of gpus used for this run was 1.
+  #   If the global batch size (num_gpus * batch_size) is modified
+  #   the lr_milestones and warmup_steps need to be adjusted accordingly.
+  10k:
+    optim:
+      lr_initial: 0.005
+      lr_milestones:
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  100k:
+    model:
+      hidden_channels: 256
+    optim:
+      lr_initial: 0.005
+      lr_milestones:
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  all: {}
+
+# -------------------------------------------------
+# --- OC20 IS2RE with Node-level auxiliary task ---
+# -------------------------------------------------
+
+is2re_aux:
+  default:
+    graph_rewiring: remove-tag-0
+    frame_averaging: "2D" # {"2D", "3D", "DA", ""}
+    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    optim:
+      loss_position: "mse"
+      auxiliary_task_weight: 15
+      use_interpolate_init_relaxed_pos: True
+    model:
+      num_interactions: 18
+      noisy_nodes: True
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified
@@ -260,9 +305,6 @@ qm7x:
       energy_coefficient: 1
       loss_energy: "mae"
       loss_force: "mse"
-      loss_position: "mse"
-      auxiliary_task_weight: 0.1
-      use_interpolate_init_relaxed_pos: True
 
   all: {}
   1k: {}

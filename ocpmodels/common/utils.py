@@ -63,7 +63,7 @@ class Cluster:
 
 
 CLUSTER = Cluster()
-OCP_AND_DEUP_TASKS = {"s2ef", "is2re", "is2es", "deup_is2re"}
+OCP_AND_DEUP_TASKS = {"s2ef", "is2re","is2re_aux", "is2es", "deup_is2re"}
 ROOT = Path(__file__).resolve().parent.parent.parent
 JOB_ID = os.environ.get("SLURM_JOB_ID")
 RUNS_DIR = Path(os.environ["SCRATCH"]) / "ocp" / "runs"

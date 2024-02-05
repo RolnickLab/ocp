@@ -173,14 +173,19 @@ class BaseTrainer(ABC):
             task=self.task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
+
         # variables related to auxiliary_task_loss scheduling
-        if self.config["model"]["noisy_nodes"]:
-            print('config["model"]["noisy_nodes"]=True')
-            self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 0.0)
-            self.use_interpolate_init_relaxed_pos = self.config['optim'].get('use_interpolate_init_relaxed_pos', False)
-            # self.loaders should have been defined in self.load() above
-            self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
-            self.current_auxiliary_task_weight = self.auxiliary_task_weight
+        self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 0.0)
+        print('self.auxiliary_task_weight:',self.auxiliary_task_weight)
+        self.use_interpolate_init_relaxed_pos = self.config['optim'].get('use_interpolate_init_relaxed_pos', False)
+        print('self.use_interpolate_init_relaxed_pos:',self.use_interpolate_init_relaxed_pos)
+        # if self.config["model"]["noisy_nodes"]:
+        print('config["model"]["noisy_nodes"]=True')            
+        # self.loaders should have been defined in self.load() above
+        self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
+        print('self.total_steps:',self.total_steps)
+        self.current_auxiliary_task_weight = self.auxiliary_task_weight
+        print('self.current_auxiliary_task_weight:',self.current_auxiliary_task_weight)
 
     def load(self):
         self.load_seed_from_config()
