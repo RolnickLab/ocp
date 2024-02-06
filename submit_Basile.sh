@@ -8,4 +8,4 @@
 #--model.regress_forces='direct'
 # job_name=jmlr 
 
-python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 py_args="--cp_data_to_tmp_dir=True --optim.force_coefficient=50 --config=faenet-is2re-10k --mode=train --is_debug --logger=dummy --note='Debugging Noisy nodes experiment' "
+python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 py_args=" --config=faenet-is2re_aux-10k --model.num_interactions=10 --mode=train --note='is2re_aux with 10 interactions' "
