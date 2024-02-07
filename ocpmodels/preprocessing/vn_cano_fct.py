@@ -34,7 +34,6 @@ class VNShallowNet(nn.Module):
     def forward(self, loc, edges):
         # edges : [2, 93]
         nb_atoms = loc.shape[0]
-        # loc = loc[None, :]
 
         batch_indices = torch.arange(self.batch_size).reshape(-1, 1)
         batch_indices = batch_indices.repeat(1, nb_atoms).reshape(-1) # [31]
@@ -42,11 +41,9 @@ class VNShallowNet(nn.Module):
         mean_loc = ts.scatter(loc, batch_indices, 0, reduce=self.layer_pooling)
         mean_loc = mean_loc.repeat(nb_atoms, 1, 1).transpose(0, 1).reshape(-1, 3)
         mean_loc = torch.mean(loc, dim=0)
-        # mean_loc = mean_loc[None, :]
 
         canonical_loc = loc - mean_loc # [31, 3]
         features = torch.stack([canonical_loc], dim=2) # [31, 3, 1]
-        # features = features[None, :]
 
         x, _ = self.layer_1(features, edges)
         x, _ = self.layer_2(x, edges)
