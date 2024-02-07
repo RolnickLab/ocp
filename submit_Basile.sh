@@ -8,4 +8,11 @@
 #--model.regress_forces='direct'
 # job_name=jmlr 
 
-python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 py_args=" --config=faenet-is2re_aux-10k --model.num_interactions=10 --mode=train --note='is2re_aux with 10 interactions' "
+# 6th February
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-10k --model.num_interactions=10 --mode=train --note='is2re_aux with 10 interactions'"
+
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re-all --model.num_interactions=5 --mode=train --note='is2re-all with 5 interactions'"
+
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=5 --mode=train --note='is2re_aux-all with 5 interactions'"
+
+python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=10 --mode=train --note='is2re_aux-all with 10 interactions'"
