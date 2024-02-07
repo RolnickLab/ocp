@@ -53,13 +53,14 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
     edges = knn_graph(pos_tensor, k, batch=None, loop=False)
     # edges = torch.tensor([])
 
-    vn_rot, vn_trans = vn_model(vn_pos, edges)
+    with torch.no_grad():
+        vn_rot, vn_trans = vn_model(vn_pos, edges)
     
     vn_cell = vn_cell @ vn_rot
     vn_pos = vn_pos @ vn_rot
     # breakpoint()
     
-    return [vn_pos], [vn_cell], [vn_rot]
+    return [vn_pos.squeeze()], [vn_cell], [vn_rot]
 
     all_fa_pos = []
     all_cell = []
