@@ -4,7 +4,9 @@ from itertools import product
 from ocpmodels.common.graph_transforms import RandomRotate
 
 import torch
-
+from ocpmodels.preprocessing.vn_cano_fct import VNDeepSets, VNShallowNet
+import torch
+from torch_geometric.nn import knn_graph
 
 def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
     """Compute all frames for a given graph.
@@ -22,11 +24,7 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
         list: 3D position tensors of projected representation
     """
     dim = pos.shape[1]  # to differentiate between 2D or 3D case
-    plus_minus_list = list(product([1, -1], repeat=dim))
-    plus_minus_list = [torch.tensor(x) for x in plus_minus_list]
-    all_fa_pos = []
-    all_cell = []
-    all_rots = []
+
     assert fa_method in {
         "all",
         "random",
@@ -40,7 +38,35 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
         "se3-random",
         "se3-det",
     }
-    fa_cell = deepcopy(cell)
+
+    vn_cell = deepcopy(cell)
+    vn_pos = deepcopy(pos)
+
+    vn_model = VNShallowNet(
+        in_dim=1, # Only positions
+        out_dim=4, # rotation (3) + translation (1)
+    )
+
+    # Compute k-nearest neighbors graph ==> Temporary
+    k = 2  # Number of neighbors
+    pos_tensor = vn_pos.clone().detach()
+    edges = knn_graph(pos_tensor, k, batch=None, loop=False)
+    # edges = torch.tensor([])
+
+    vn_rot, vn_trans = vn_model(vn_pos, edges)
+    
+    vn_cell = vn_cell @ vn_rot
+    vn_pos = vn_pos @ vn_rot
+    # breakpoint()
+    
+    return [vn_pos], [vn_cell], [vn_rot]
+
+    all_fa_pos = []
+    all_cell = []
+    all_rots = []
+
+    plus_minus_list = list(product([1, -1], repeat=dim))
+    plus_minus_list = [torch.tensor(x) for x in plus_minus_list]
 
     if fa_method == "det" or fa_method == "se3-det":
         sum_eigenvec = torch.sum(eigenvec, axis=0)
@@ -88,6 +114,88 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
     index = random.randint(0, len(all_fa_pos) - 1)
     return [all_fa_pos[index]], [all_cell[index]], [all_rots[index]]
 
+# def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
+#     """Compute all frames for a given graph.
+
+#     Args:
+#         eigenvec (tensor): eigenvectors matrix
+#         pos (tensor): centered position vector
+#         cell (tensor): cell direction (dxd)
+#         fa_method (str): the Frame Averaging (FA) inspired technique
+#             chosen to select frames: stochastic-FA (random), deterministic-FA (det),
+#             Full-FA (all) or SE(3)-FA (se3).
+#         pos_3D: for 2D FA, pass atoms' 3rd position coordinate.
+
+#     Returns:
+#         list: 3D position tensors of projected representation
+#     """
+#     dim = pos.shape[1]  # to differentiate between 2D or 3D case
+#     plus_minus_list = list(product([1, -1], repeat=dim))
+#     plus_minus_list = [torch.tensor(x) for x in plus_minus_list]
+#     all_fa_pos = []
+#     all_cell = []
+#     all_rots = []
+#     assert fa_method in {
+#         "all",
+#         "random",
+#         "det",
+#         "se3-all",
+#         "se3-random",
+#         "se3-det",
+#     }
+#     se3 = fa_method in {
+#         "se3-all",
+#         "se3-random",
+#         "se3-det",
+#     }
+#     fa_cell = deepcopy(cell)
+
+#     if fa_method == "det" or fa_method == "se3-det":
+#         sum_eigenvec = torch.sum(eigenvec, axis=0)
+#         plus_minus_list = [torch.where(sum_eigenvec >= 0, 1.0, -1.0)]
+
+#     for pm in plus_minus_list:
+#         # Append new graph positions to list
+#         new_eigenvec = pm * eigenvec
+
+#         # Consider frame if it passes above check
+#         fa_pos = pos @ new_eigenvec
+
+#         if pos_3D is not None:
+#             full_eigenvec = torch.eye(3)
+#             fa_pos = torch.cat((fa_pos, pos_3D.unsqueeze(1)), dim=1)
+#             full_eigenvec[:2, :2] = new_eigenvec
+#             new_eigenvec = full_eigenvec
+
+#         if cell is not None:
+#             fa_cell = cell @ new_eigenvec
+
+#         # Check if determinant is 1 for SE(3) case
+#         if se3 and not torch.allclose(
+#             torch.linalg.det(new_eigenvec), torch.tensor(1.0), atol=1e-03
+#         ):
+#             continue
+
+#         all_fa_pos.append(fa_pos)
+#         all_cell.append(fa_cell)
+#         all_rots.append(new_eigenvec.unsqueeze(0))
+
+#     # Handle rare case where no R is positive orthogonal
+#     if all_fa_pos == []:
+#         all_fa_pos.append(fa_pos)
+#         all_cell.append(fa_cell)
+#         all_rots.append(new_eigenvec.unsqueeze(0))
+
+#     # Return frame(s) depending on method fa_method
+#     if fa_method == "all" or fa_method == "se3-all":
+#         # import pdb; pdb.set_trace()
+#         return all_fa_pos, all_cell, all_rots
+
+#     elif fa_method == "det" or fa_method == "se3-det":
+#         return [all_fa_pos[det_index]], [all_cell[det_index]], [all_rots[det_index]]
+
+#     index = random.randint(0, len(all_fa_pos) - 1)
+#     return [all_fa_pos[index]], [all_cell[index]], [all_rots[index]]
 
 def check_constraints(eigenval, eigenvec, dim=3):
     """Check requirements for frame averaging are satisfied
@@ -129,7 +237,7 @@ def frame_averaging_3D(pos, cell=None, fa_method="random", check=False):
         tensor: updated unit cell
         tensor: the rotation matrix used (PCA)
     """
-
+    
     # Compute centroid and covariance
     pos = pos - pos.mean(dim=0, keepdim=True)
     C = torch.matmul(pos.t(), pos)
@@ -145,12 +253,11 @@ def frame_averaging_3D(pos, cell=None, fa_method="random", check=False):
     # Check if constraints are satisfied
     if check:
         check_constraints(eigenval, eigenvec, 3)
-
+    
     # Compute fa_pos
     fa_pos, fa_cell, fa_rot = compute_frames(eigenvec, pos, cell, fa_method)
-
     # No need to update distances, they are preserved.
-
+    # breakpoint()
     return fa_pos, fa_cell, fa_rot
 
 
@@ -190,7 +297,7 @@ def frame_averaging_2D(pos, cell=None, fa_method="random", check=False):
         eigenvec, pos_2D, cell, fa_method, pos[:, 2]
     )
     # No need to update distances, they are preserved.
-
+    # breakpoint()
     return fa_pos, fa_cell, fa_rot
 
 
