@@ -247,7 +247,6 @@ class BaseTrainer(ABC):
 
         transform = get_transforms(self.config)  # TODO: train/val/test behavior
         batch_size = self.config["optim"]["batch_size"]
-
         max_epochs = self.config["optim"].get("max_epochs", -1)
         max_steps = self.config["optim"].get("max_steps", -1)
         max_samples = self.config["optim"].get("max_samples", -1)
@@ -1011,6 +1010,8 @@ class BaseTrainer(ABC):
             delattr(batch_rotated, "fa_rot")  # delete it otherwise can't iterate
 
             g_list = batch_rotated.to_data_list()
+            # nn = NN()
+            # self.model.canonical = nn
             fa_transform = FrameAveraging(
                 self.config["frame_averaging"], self.config["fa_method"]
             )

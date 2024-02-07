@@ -200,7 +200,7 @@ class SingleTrainer(BaseTrainer):
     ):
         if not torch.is_grad_enabled():
             print("\nWarning: torch grad is disabled. Enabling.\n")
-            torch.set_grad_enabled(True)
+            torch.set_grad_enabled(True) # ----------------------------------------------------------
         n_train = min(
             len(self.loaders[self.train_dataset_name]),
             self.config["optim"]["max_steps"],
@@ -516,7 +516,7 @@ class SingleTrainer(BaseTrainer):
             for i in range(len(batch_list[0].fa_pos)):
                 batch_list[0].pos = batch_list[0].fa_pos[i]
                 if self.task_name in OCP_AND_DEUP_TASKS:
-                    batch_list[0].cell = batch_list[0].fa_cell[i]
+                    batch_list[0].cell = batch_list[0].fa_cell[i] # ------------------------ REPLACE WITH FUNCTION THAT COMPUTES THE NN
 
                 # forward pass
                 preds = self.model(
@@ -530,7 +530,7 @@ class SingleTrainer(BaseTrainer):
                 fa_rot = None
 
                 if preds.get("forces") is not None:
-                    # Transform forces to guarantee equivariance of FA method
+                    # Transform forces to guarantee equivariance of FA method ------------------------ MODIF
                     fa_rot = torch.repeat_interleave(
                         batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
                     )
@@ -559,7 +559,7 @@ class SingleTrainer(BaseTrainer):
                     )
                     gt_all.append(g_grad_target)
 
-            batch_list[0].pos = original_pos
+            batch_list[0].pos = original_pos # MODIFY HERE ---------------------------------
             if self.task_name in OCP_AND_DEUP_TASKS:
                 batch_list[0].cell = original_cell
 
@@ -574,7 +574,7 @@ class SingleTrainer(BaseTrainer):
 
         if preds["energy"].shape[-1] == 1:
             preds["energy"] = preds["energy"].view(-1)
-
+        # import pdb; pdb.set_trace()
         return preds
 
     def compute_loss(self, preds, batch_list):
