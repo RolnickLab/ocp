@@ -33,12 +33,12 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from torch_geometric.data import Data
 from torch_geometric.utils import remove_self_loops
-from torch_scatter import segment_coo, segment_csr, scatter
+from torch_scatter import scatter, segment_coo, segment_csr
 
 import ocpmodels
-from ocpmodels.common.flags import flags, Flags
-from ocpmodels.common.registry import registry
 import ocpmodels.common.dist_utils as dist_utils
+from ocpmodels.common.flags import Flags, flags
+from ocpmodels.common.registry import registry
 
 
 class Cluster:
@@ -948,6 +948,37 @@ def set_cpus_to_workers(config, silent=None):
     return config
 
 
+def set_dataset_split(config):
+    """
+    Set the split for all datasets in the config to the one specified in the
+    config's name.
+
+    Resulting dict:
+    {
+        "dataset": {
+            "train": {
+                "split": "all"
+                ...
+            },
+            ...
+        }
+    }
+
+    Args:
+        config (dict): The full trainer config dict
+
+    Returns:
+        dict: The updated config dict
+    """
+    split = config["config"].split("-")[-1]
+    for d, dataset in config["dataset"].items():
+        if d == "default_val":
+            continue
+        assert isinstance(dataset, dict)
+        config["dataset"][d]["split"] = split
+    return config
+
+
 def check_regress_forces(config):
     if "regress_forces" in config["model"]:
         if config["model"]["regress_forces"] == "":
@@ -1023,7 +1054,7 @@ def load_config(config_str):
     return config
 
 
-def build_config(args, args_override=[], silent=None):
+def build_config(args, args_override=[], dict_overrides={}, silent=None):
     config, overrides, loaded_config = {}, {}, {}
 
     if hasattr(args, "config_yml") and args.config_yml:
@@ -1034,6 +1065,7 @@ def build_config(args, args_override=[], silent=None):
     args_dict_with_defaults = {k: v for k, v in vars(args).items() if v is not None}
     if args_override != []:
         overrides = create_dict_from_args(args_override)
+    overrides = merge_dicts(overrides, dict_overrides)
 
     if args.continue_from_dir or args.restart_from_dir:
         # make sure it's either continue xor restart
@@ -1230,6 +1262,7 @@ def build_config(args, args_override=[], silent=None):
     config = override_drac_paths(config)
     config = continue_from_slurm_job_id(config)
     config = read_slurm_env(config)
+    config = set_dataset_split(config)
     config["optim"]["eval_batch_size"] = config["optim"]["batch_size"]
     dist_utils.setup(config)
 
@@ -1825,17 +1858,17 @@ def make_trainer_from_dir(path, mode, overrides={}, silent=None):
     return registry.get_trainer_class(config["trainer"])(**config)
 
 
-def make_trainer_from_conf_str(conf_str, overrides={}):
+def make_trainer_from_conf_str(conf_str, overrides={}, silent=None):
     assert isinstance(
         overrides, dict
     ), f"Overrides must be a dict. Received {overrides}"
 
-    config = make_config_from_conf_str(conf_str)
+    config = make_config_from_conf_str(conf_str, overrides, silent)
     config = merge_dicts(config, overrides)
     return registry.get_trainer_class(config["trainer"])(**config)
 
 
-def make_config_from_conf_str(conf_str):
+def make_config_from_conf_str(conf_str, overrides={}, silent=None):
     argv = deepcopy(sys.argv)
     sys.argv[1:] = []
     default_args = Flags().get_parser().parse_args()
@@ -1843,7 +1876,7 @@ def make_config_from_conf_str(conf_str):
 
     default_args.config = conf_str
 
-    config = build_config(default_args)
+    config = build_config(default_args, dict_overrides=overrides, silent=silent)
 
     setup_imports()
     return config
