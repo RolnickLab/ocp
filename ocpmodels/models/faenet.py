@@ -1,24 +1,29 @@
 """
 Code of the Scalable Frame Averaging (Rotation Invariant) GNN
 """
+
 from typing import Dict, Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import Embedding, Linear
-from torch_geometric.utils import dropout_edge
 from torch_geometric.nn import MessagePassing, radius_graph
 from torch_geometric.nn.norm import GraphNorm
+from torch_geometric.utils import dropout_edge
 from torch_scatter import scatter
 
 from ocpmodels.common.registry import registry
+from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.activations import swish
+from ocpmodels.modules.ewald_block import (
+    EwaldBlock,
+    get_ewald_params,
+    x_to_k_cell,
+)
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
-from ocpmodels.common.utils import get_pbc_distances, conditional_grad
-from ocpmodels.modules.ewald_block import get_ewald_params, EwaldBlock, x_to_k_cell
 
 
 class GaussianSmearing(nn.Module):
@@ -525,15 +530,17 @@ class FAENet(BaseModel):
                     self.complex_mp,
                     self.graph_norm,
                     (
-                        print(
-                            f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
-                            f"{i} / {self.num_interactions}",
+                        (
+                            print(
+                                f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
+                                f"{i} / {self.num_interactions}",
+                            )
+                            or self.dropout_lin
                         )
-                        or self.dropout_lin
-                    )
-                    if "inter" in self.dropout_lowest_layer
-                    and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
-                    else 0,
+                        if "inter" in self.dropout_lowest_layer
+                        and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
+                        else 0
+                    ),
                 )
                 for i in range(self.num_interactions)
             ]
@@ -564,14 +571,18 @@ class FAENet(BaseModel):
             self.hidden_channels,
             self.act,
             (
-                print(f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}")
-                or self.dropout_lin
-            )
-            if (
-                "inter" in self.dropout_lowest_layer
-                or "output" in self.dropout_lowest_layer
-            )
-            else 0,
+                (
+                    print(
+                        f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}"
+                    )
+                    or self.dropout_lin
+                )
+                if (
+                    "inter" in self.dropout_lowest_layer
+                    or "output" in self.dropout_lowest_layer
+                )
+                else 0
+            ),
         )
 
         # Energy head
@@ -741,16 +752,19 @@ class FAENet(BaseModel):
 
         if self.use_ewald:
             if self.use_pbc:
+                if self.ewald_params["k_index_product_set"].device != pos.device:
+                    self.ewald_params["k_index_product_set"] = self.ewald_params[
+                        "k_index_product_set"
+                    ].to(pos.device)
                 # Compute reciprocal lattice basis of structure
                 k_cell, _ = x_to_k_cell(data.cell)
                 # Translate lattice indices to k-vectors
-                k_grid = torch.matmul(
-                    self.ewald_params["k_index_product_set"].to(batch.device), k_cell
-                )
+                k_grid = torch.matmul(self.ewald_params["k_index_product_set"], k_cell)
             else:
+                if self.ewald_params["k_grid"].device != pos.device:
+                    self.ewald_params["k_grid"] = self.ewald_params["k_grid"].to(pos.device)
                 k_grid = (
                     self.ewald_params["k_grid"]
-                    .to(batch.device)
                     .unsqueeze(0)
                     .expand(batch_size, -1, -1)
                 )

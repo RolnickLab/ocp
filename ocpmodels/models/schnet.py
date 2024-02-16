@@ -203,6 +203,7 @@ class SchNet(BaseModel):
             self.ewald_params = get_ewald_params(
                 kwargs["ewald_hyperparams"], self.use_pbc, self.hidden_channels
             )
+            self.skip_connection_factor = (3.0) ** (-0.5)
 
         self.register_buffer(
             "initial_atomref",
@@ -354,7 +355,7 @@ class SchNet(BaseModel):
         return self.decoder(preds["hidden_state"])
 
     @conditional_grad(torch.enable_grad())
-    def energy_forward(self, data):
+    def energy_forward(self, data, q=None):
         """"""
         # Re-compute on the fly the graph
         if self.otf_graph:
@@ -369,6 +370,7 @@ class SchNet(BaseModel):
         z = data.atomic_numbers.long()
         pos = data.pos
         batch = data.batch
+        batch_size = batch.max().item() + 1
 
         if self.use_ewald:
             if self.use_pbc:
@@ -449,7 +451,6 @@ class SchNet(BaseModel):
         for ib, interaction in enumerate(self.interactions):
             if self.use_ewald:
                 dot, sinc_damping = None, None  # avoid redundant computation
-            if self.use_ewald:
                 h_ewald, dot, sinc_damping = self.ewald_blocks[ib](
                     h,
                     pos,
@@ -459,9 +460,11 @@ class SchNet(BaseModel):
                     dot,
                     sinc_damping,
                 )
-            h = h + interaction(h, edge_index, edge_weight, edge_attr)
-            if self.use_ewald:
-                h = (1 / 2) ** 0.5 * (h + h_ewald)
+                h = self.skip_connection_factor * (
+                    h + interaction(h, edge_index, edge_weight, edge_attr) + h_ewald
+                )
+            else:
+                h = h + interaction(h, edge_index, edge_weight, edge_attr)
 
         hidden_state = h  # store hidden rep for force head
 
