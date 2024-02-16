@@ -44,7 +44,7 @@ def ml_relax(
     # Run ML-based relaxation
     traj_dir = relax_opt.get("traj_dir", None)
     optimizer = LBFGS(
-        batch,
+        batch.to(device),
         calc,
         maxstep=relax_opt.get("maxstep", 0.04),
         memory=relax_opt["memory"],

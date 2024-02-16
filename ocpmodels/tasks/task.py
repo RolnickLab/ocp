@@ -13,6 +13,9 @@ import torch
 
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import set_deup_samples_path
+from ocpmodels.modules.evaluator import Evaluator
+from ocpmodels.common.utils import build_config
+from ocpmodels.common.flags import flags
 from ocpmodels.datasets.deup_dataset_creator import DeupDatasetCreator
 
 
@@ -102,6 +105,136 @@ class TrainTask(BaseTask):
 
             if self.config.get("deup_dataset", {}).get("create") == "after":
                 self.create_deup_dataset()
+
+        except RuntimeError as e:
+            self._process_error(e)
+            raise e
+
+
+@registry.register_task("run-relaxations")
+class RelaxationTask(BaseTask):
+    def _process_error(self, e: RuntimeError):
+        e_str = str(e)
+        if (
+            "find_unused_parameters" in e_str
+            and "torch.nn.parallel.DistributedDataParallel" in e_str
+        ):
+            for name, parameter in self.trainer.model.named_parameters():
+                if parameter.requires_grad and parameter.grad is None:
+                    logging.warning(
+                        f"Parameter {name} has no gradient. "
+                        + "Consider removing it from the model."
+                    )
+
+    def run(self):
+        self.config = self.trainer.config
+        try:
+            if "relax_dataset" in self.config["task"]:
+                results = self.trainer.run_relaxations()
+                print(results)
+            else:
+                raise ValueError(
+                    "Relaxation task requires 'relax_dataset' in the config file"
+                )
+
+        except RuntimeError as e:
+            self._process_error(e)
+            raise e
+
+
+# In order to improve this task, create specific configs for this
+@registry.register_task("s2ef-to-is2re")
+class S2EFtoIS2RE(BaseTask):
+    def _process_error(self, e: RuntimeError):
+        e_str = str(e)
+        if (
+            "find_unused_parameters" in e_str
+            and "torch.nn.parallel.DistributedDataParallel" in e_str
+        ):
+            for name, parameter in self.trainer.model.named_parameters():
+                if parameter.requires_grad and parameter.grad is None:
+                    logging.warning(
+                        f"Parameter {name} has no gradient. "
+                        + "Consider removing it from the model."
+                    )
+
+    def run(self):
+        self.config = self.trainer.config
+        try:
+            if "ft_dataset" in self.config["task"]:
+                # Load is2re default config:
+
+                trainer_args = flags.parser.parse_args(["--config=faenet-is2re-10k"])
+                config_is2re = build_config(trainer_args)
+
+                self.trainer.config["optim"] = config_is2re["optim"]
+                self.trainer.config["dataset"] = config_is2re["dataset"]
+
+                self.trainer.task_name = "is2re"
+
+                # Make that cleaner:
+                if not (self.trainer.config.get("is_debug", False)):
+                    self.trainer.config["logger"] = "wandb"
+                    self.trainer.config["wandb_name"] = (
+                        self.trainer.config["config"] + "-ft-is2re"
+                    )
+                    self.trainer.config["wandb_id"] = "-ft-is2re"
+                    self.trainer.load_logger()
+
+                self.trainer.load_seed_from_config()
+                self.trainer.load_datasets()
+                self.trainer.load_optimizer()
+                self.trainer.load_loss()
+                self.trainer.load_extras()
+
+                # del self.trainer.datasets
+                # del self.trainer.samplers
+                # del self.trainer.loaders
+
+                # self.trainer.datasets, self.trainer.samplers, self.trainer.loaders = (
+                #     {},
+                #     {},
+                #     {},
+                # )
+
+                # self.trainer.datasets["train"] = self.trainer.ft_dataset
+                # self.trainer.samplers["train"] = self.trainer.ft_sampler
+                # self.trainer.loaders["train"] = self.trainer.ft_loader
+
+                # self.trainer.datasets[self.config["dataset"]["default_val"]] = (
+                #     self.trainer.relax_dataset
+                # )
+
+                # self.trainer.samplers[self.config["dataset"]["default_val"]] = (
+                #     self.trainer.relax_sampler
+                # )
+                # self.trainer.loaders[self.config["dataset"]["default_val"]] = (
+                #     self.trainer.relax_loader
+                # )
+
+                self.trainer.config["model"]["regress_forces"] = ""
+
+                self.trainer.evaluator = Evaluator(
+                    task="is2re",
+                    model_regresses_forces=self.trainer.config["model"].get(
+                        "regress_forces", ""
+                    ),
+                )
+
+                torch.cuda.empty_cache()
+
+                training_signal = self.trainer.train(
+                    disable_eval_tqdm=self.config.get("show_eval_progressbar", True),
+                    debug_batches=self.config.get("debug_batches", -1),
+                )
+
+            else:
+                raise ValueError(
+                    "Relaxation task requires 'ft_dataset' in the config file"
+                )
+
+            if training_signal == "SIGTERM":
+                return
 
         except RuntimeError as e:
             self._process_error(e)

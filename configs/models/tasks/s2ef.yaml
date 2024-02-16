@@ -11,6 +11,19 @@ default:
     grad_input: atomic forces
     train_on_free_atoms: True
     eval_on_free_atoms: True
+    relax_dataset:
+      # path to lmdb of systems to be relaxed (uses same lmdbs as is2re)
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/
+    ft_dataset:
+      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/10k/train/
+    write_pos: True
+    relaxation_steps: 300
+    relax_opt:
+      maxstep: 0.04
+      memory: 50
+      damping: 1.0
+      alpha: 70.0
+      traj_dir: "trajectories" # specify directory you wish to log the entire relaxations, suppress otherwise
   normalizer: null
   mode: train
   optim:

@@ -24,7 +24,13 @@ class Flags:
         self.parser.add_argument_group("Core Arguments")
         self.parser.add_argument(
             "--mode",
-            choices=["train", "predict", "run-relaxations", "validate"],
+            choices=[
+                "train",
+                "predict",
+                "run-relaxations",
+                "validate",
+                "s2ef-to-is2re",
+            ],
             default="train",
             help="Whether to train the model, make predictions, or to run relaxations",
         )
