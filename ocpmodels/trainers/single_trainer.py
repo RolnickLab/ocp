@@ -28,6 +28,7 @@ from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.trainers.base_trainer import BaseTrainer
+from ocpmodels.common.scaling.util import ensure_fitted
 
 is_test_env = os.environ.get("ocp_test_env", False)
 
@@ -960,27 +961,33 @@ class SingleTrainer(BaseTrainer):
         return symmetry
 
     def run_relaxations(self, split="val"):
-        assert self.task_name == "s2ef"
+        ensure_fitted(self._unwrapped_model)
+
+        # When set to true, uses deterministic CUDA scatter ops, if available.
+        # https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html#torch.use_deterministic_algorithms
+        # Only implemented for GemNet-OC currently.
+        registry.register(
+            "set_deterministic_scatter",
+            self.config["task"].get("set_deterministic_scatter", False),
+        )
+
         logging.info("Running ML-relaxations")
         self.model.eval()
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
 
-        evaluator_is2rs = Evaluator(
-            task="is2rs",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
-        evaluator_is2re = Evaluator(
-            task="is2re",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
+        evaluator_is2rs, metrics_is2rs = Evaluator(task="is2rs"), {}
+        evaluator_is2re, metrics_is2re = Evaluator(task="is2re"), {}
 
-        metrics_is2rs = {}
-        metrics_is2re = {}
-
-        if hasattr(self.relax_dataset[0], "pos_relaxed") and hasattr(
-            self.relax_dataset[0], "y_relaxed"
+        # Need both `pos_relaxed` and `y_relaxed` to compute val IS2R* metrics.
+        # Else just generate predictions.
+        if (
+            hasattr(self.relax_dataset[0], "pos_relaxed")
+            and self.relax_dataset[0].pos_relaxed is not None
+        ) and (
+            hasattr(self.relax_dataset[0], "y_relaxed")
+            and self.relax_dataset[0].y_relaxed is not None
         ):
             split = "val"
         else:
@@ -1008,6 +1015,7 @@ class SingleTrainer(BaseTrainer):
                 steps=self.config["task"].get("relaxation_steps", 200),
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
+                save_full_traj=self.config["task"].get("save_full_traj", True),
                 device=self.device,
                 transform=None,
             )
@@ -1060,7 +1068,7 @@ class SingleTrainer(BaseTrainer):
         if self.config["task"].get("write_pos", False):
             rank = dist_utils.get_rank()
             pos_filename = os.path.join(
-                self.config["results_dir"], f"relaxed_pos_{rank}.npz"
+                self.config["cmd"]["results_dir"], f"relaxed_pos_{rank}.npz"
             )
             np.savez_compressed(
                 pos_filename,
@@ -1073,13 +1081,13 @@ class SingleTrainer(BaseTrainer):
             if dist_utils.is_master():
                 gather_results = defaultdict(list)
                 full_path = os.path.join(
-                    self.config["results_dir"],
+                    self.config["cmd"]["results_dir"],
                     "relaxed_positions.npz",
                 )
 
                 for i in range(dist_utils.get_world_size()):
                     rank_path = os.path.join(
-                        self.config["results_dir"],
+                        self.config["cmd"]["results_dir"],
                         f"relaxed_pos_{i}.npz",
                     )
                     rank_results = np.load(rank_path, allow_pickle=True)
@@ -1140,3 +1148,5 @@ class SingleTrainer(BaseTrainer):
 
         if self.ema:
             self.ema.restore()
+
+        registry.unregister("set_deterministic_scatter")
