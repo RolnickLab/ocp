@@ -96,13 +96,13 @@ class BaseTrainer(ABC):
         )
         self.config["commit"] = self.config.get("commit", get_commit_hash())
 
-        if self.is_debug:
-            del self.config["checkpoint_dir"]
-            del self.config["results_dir"]
-            del self.config["logdir"]
-            del self.config["logs_dir"]
-            del self.config["run_dir"]
-            del self.config["early_stopping_file"]
+        # if self.is_debug:
+        #     del self.config["checkpoint_dir"]
+        #     del self.config["results_dir"]
+        #     del self.config["logdir"]
+        #     del self.config["logs_dir"]
+        #     del self.config["run_dir"]
+        #     del self.config["early_stopping_file"]
 
         if torch.cuda.is_available() and not self.cpu:
             self.device = torch.device("cuda:0")

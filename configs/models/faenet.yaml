@@ -5,6 +5,7 @@ default:
     name: faenet
     act: swish
     hidden_channels: 384
+    # hidden_channels: 512
     num_filters: 480
     num_interactions: 5
     num_gaussians: 104
