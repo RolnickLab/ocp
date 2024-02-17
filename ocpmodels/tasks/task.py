@@ -158,80 +158,62 @@ class S2EFtoIS2RE(BaseTask):
                         + "Consider removing it from the model."
                     )
 
+    def setup(self, trainer, config_name):
+        self.trainer = trainer
+        if self.config.get("checkpoint") is not None:
+            print("\n🔵 Resuming:\n  • ", end="", flush=True)
+            self.trainer.load_checkpoint(self.config["checkpoint"])
+            print()
+
+        # save checkpoint path to runner state for slurm resubmissions
+        self.chkpt_path = os.path.join(
+            self.trainer.config["checkpoint_dir"], "checkpoint.pt"
+        )
+
+        trainer_args = flags.parser.parse_args([f"--config={config_name}"])
+        config_is2re = build_config(trainer_args)
+
+        self.trainer.config["optim"] = config_is2re["optim"]
+        self.trainer.config["dataset"] = config_is2re["dataset"]
+
+        self.trainer.task_name = "is2re"
+
+        # Make that cleaner:
+        if not (self.trainer.config.get("is_debug", False)):
+            self.trainer.config["logger"] = "wandb"
+            self.trainer.config["wandb_name"] = (
+                self.trainer.config["job_id"]
+                + self.trainer.config["config"]
+                + "-ft-is2re"
+            )
+            self.trainer.config["wandb_id"] = "-ft-is2re"
+            self.trainer.load_logger()
+
+        self.trainer.step = 0
+        self.trainer.load_seed_from_config()
+        self.trainer.load_datasets()
+        self.trainer.load_optimizer()
+        self.trainer.load_loss()
+        self.trainer.load_extras()
+
+        self.trainer.config["model"]["regress_forces"] = ""
+
+        self.trainer.evaluator = Evaluator(
+            task="is2re",
+            model_regresses_forces=self.trainer.config["model"].get(
+                "regress_forces", ""
+            ),
+        )
+
     def run(self):
         self.config = self.trainer.config
         try:
-            if "ft_dataset" in self.config["task"]:
-                # Load is2re default config:
+            torch.cuda.empty_cache()
 
-                trainer_args = flags.parser.parse_args(["--config=faenet-is2re-10k"])
-                config_is2re = build_config(trainer_args)
-
-                self.trainer.config["optim"] = config_is2re["optim"]
-                self.trainer.config["dataset"] = config_is2re["dataset"]
-
-                self.trainer.task_name = "is2re"
-
-                # Make that cleaner:
-                if not (self.trainer.config.get("is_debug", False)):
-                    self.trainer.config["logger"] = "wandb"
-                    self.trainer.config["wandb_name"] = (
-                        self.trainer.config["config"] + "-ft-is2re"
-                    )
-                    self.trainer.config["wandb_id"] = "-ft-is2re"
-                    self.trainer.load_logger()
-
-                self.trainer.load_seed_from_config()
-                self.trainer.load_datasets()
-                self.trainer.load_optimizer()
-                self.trainer.load_loss()
-                self.trainer.load_extras()
-
-                # del self.trainer.datasets
-                # del self.trainer.samplers
-                # del self.trainer.loaders
-
-                # self.trainer.datasets, self.trainer.samplers, self.trainer.loaders = (
-                #     {},
-                #     {},
-                #     {},
-                # )
-
-                # self.trainer.datasets["train"] = self.trainer.ft_dataset
-                # self.trainer.samplers["train"] = self.trainer.ft_sampler
-                # self.trainer.loaders["train"] = self.trainer.ft_loader
-
-                # self.trainer.datasets[self.config["dataset"]["default_val"]] = (
-                #     self.trainer.relax_dataset
-                # )
-
-                # self.trainer.samplers[self.config["dataset"]["default_val"]] = (
-                #     self.trainer.relax_sampler
-                # )
-                # self.trainer.loaders[self.config["dataset"]["default_val"]] = (
-                #     self.trainer.relax_loader
-                # )
-
-                self.trainer.config["model"]["regress_forces"] = ""
-
-                self.trainer.evaluator = Evaluator(
-                    task="is2re",
-                    model_regresses_forces=self.trainer.config["model"].get(
-                        "regress_forces", ""
-                    ),
-                )
-
-                torch.cuda.empty_cache()
-
-                training_signal = self.trainer.train(
-                    disable_eval_tqdm=self.config.get("show_eval_progressbar", True),
-                    debug_batches=self.config.get("debug_batches", -1),
-                )
-
-            else:
-                raise ValueError(
-                    "Relaxation task requires 'ft_dataset' in the config file"
-                )
+            training_signal = self.trainer.train(
+                disable_eval_tqdm=self.config.get("show_eval_progressbar", True),
+                debug_batches=self.config.get("debug_batches", -1),
+            )
 
             if training_signal == "SIGTERM":
                 return
