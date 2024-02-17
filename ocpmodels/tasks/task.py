@@ -183,7 +183,7 @@ class S2EFtoIS2RE(BaseTask):
             self.trainer.config["logger"] = "wandb"
             self.trainer.config["wandb_name"] = (
                 self.trainer.config["job_id"]
-                + self.trainer.config["config"]
+                + "-" + self.trainer.config["config"]
                 + "-ft-is2re"
             )
             self.trainer.config["wandb_id"] = "-ft-is2re"

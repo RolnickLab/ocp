@@ -14,8 +14,6 @@ default:
     relax_dataset:
       # path to lmdb of systems to be relaxed (uses same lmdbs as is2re)
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/
-    ft_dataset:
-      src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/10k/train/
     write_pos: True
     relaxation_steps: 300
     relax_opt:
