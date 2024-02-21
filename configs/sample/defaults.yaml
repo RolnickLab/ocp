@@ -10,10 +10,10 @@ paths:
   bulk_db_flat: /network/projects/_groups/ocp/oc20/dataset-creation/bulk_db_flat_2021sep20.pkl
 
   # path to the adsorbate_db pickle file
-  adsorbate_db: /network/projects/_groups/ocp/oc20/dataset-creation/adsorbate_db_2021apr28.pkl
+  adsorbate_db: /network/projects/_groups/ocp/oc20/dataset-creation/adsorbate_db_2021apr28_ase3.22.pkl
 
   # path to the precomputed_structures pickle file with all surfaces
-  precomputed_structures: /network/projects/_groups/ocp/oc20/dataset-creation/precomputed_surfaces_2021Sep20
+  precomputed_structures: /network/projects/_groups/ocp/oc20/dataset-creation/precomputed_surfaces_2021Sep20_pymatgen2024.2.8
 # ------------------------------------
 # -----  Adslab parametrization  -----
 # ------------------------------------
