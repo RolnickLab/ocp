@@ -1068,7 +1068,7 @@ class SingleTrainer(BaseTrainer):
         if self.config["task"].get("write_pos", False):
             rank = dist_utils.get_rank()
             pos_filename = os.path.join(
-                self.config["cmd"]["results_dir"], f"relaxed_pos_{rank}.npz"
+                self.config["results_dir"], f"relaxed_pos_{rank}.npz"
             )
             np.savez_compressed(
                 pos_filename,
@@ -1081,13 +1081,13 @@ class SingleTrainer(BaseTrainer):
             if dist_utils.is_master():
                 gather_results = defaultdict(list)
                 full_path = os.path.join(
-                    self.config["cmd"]["results_dir"],
+                    self.config["results_dir"],
                     "relaxed_positions.npz",
                 )
 
                 for i in range(dist_utils.get_world_size()):
                     rank_path = os.path.join(
-                        self.config["cmd"]["results_dir"],
+                        self.config["results_dir"],
                         f"relaxed_pos_{i}.npz",
                     )
                     rank_results = np.load(rank_path, allow_pickle=True)
