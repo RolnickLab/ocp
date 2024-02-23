@@ -1,6 +1,7 @@
 """
 Code of the Scalable Frame Averaging (Rotation Invariant) GNN
 """
+
 from typing import Dict, Optional
 
 import torch
@@ -464,6 +465,7 @@ class FAENet(BaseModel):
         self.skip_co = skip_co
         self.tag_hidden_channels = tag_hidden_channels
         self.use_pbc = use_pbc
+        self.otf_graph = kwargs.get("otf_graph", False)
 
         self.dropout_edge = float(kwargs.get("dropout_edge") or 0)
         self.dropout_lin = float(kwargs.get("dropout_lin") or 0)
@@ -517,15 +519,17 @@ class FAENet(BaseModel):
                     self.complex_mp,
                     self.graph_norm,
                     (
-                        print(
-                            f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
-                            f"{i} / {self.num_interactions}",
+                        (
+                            print(
+                                f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
+                                f"{i} / {self.num_interactions}",
+                            )
+                            or self.dropout_lin
                         )
-                        or self.dropout_lin
-                    )
-                    if "inter" in self.dropout_lowest_layer
-                    and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
-                    else 0,
+                        if "inter" in self.dropout_lowest_layer
+                        and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
+                        else 0
+                    ),
                 )
                 for i in range(self.num_interactions)
             ]
@@ -537,14 +541,18 @@ class FAENet(BaseModel):
             self.hidden_channels,
             self.act,
             (
-                print(f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}")
-                or self.dropout_lin
-            )
-            if (
-                "inter" in self.dropout_lowest_layer
-                or "output" in self.dropout_lowest_layer
-            )
-            else 0,
+                (
+                    print(
+                        f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}"
+                    )
+                    or self.dropout_lin
+                )
+                if (
+                    "inter" in self.dropout_lowest_layer
+                    or "output" in self.dropout_lowest_layer
+                )
+                else 0
+            ),
         )
 
         # Energy head
