@@ -191,8 +191,8 @@ class BaseTrainer(ABC):
         # print('self.constant_noise:',self.constant_noise)
         if self.config["model"]["noisy_nodes"]:
             print('config["model"]["noisy_nodes"]=True')         
-        nn_config = self.config["dataset"].get("noisy_nodes")
-        if not isinstance(nn_config, dict):
+        # nn_config = self.config["dataset"].get("noisy_nodes")
+        # if not isinstance(nn_config, dict):
 
         # self.loaders should have been defined in self.load() above
         self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer

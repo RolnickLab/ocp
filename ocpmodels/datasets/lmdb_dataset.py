@@ -261,12 +261,32 @@ class LmdbDataset(Dataset):
 
 @registry.register_dataset("lmdb_noisy")
 class NoisyLmdbDataset(Dataset):
+    def __init__(
+        self,
+        config,
+        transform=None,
+        fa_frames=None,
+        lmdb_glob=None,
+        adsorbates=None,
+        adsorbates_ref_dir=None,
+        silent=False,
+    ):
+        super().__init__()
+        self.config = config
+        self.adsorbates = adsorbates
+        self.adsorbates_ref_dir = adsorbates_ref_dir
+        self.silent = silent
+        self.fixed_noised_done=False
+
+
     def noise_graph(self, graph, idx):
         nn_config = self.config.get("noisy_nodes")
         # Except for train set, nn_config is None, so return graph, i.e. no noising
         if not isinstance(nn_config, dict): return graph
 
         # TODO: mettre fonction noising de equiformer en adaptant code ci-dessous
+
+        # Add new attribute to the graph
         graph.original_pos = graph.pos.clone()
 
         assert (
@@ -277,9 +297,13 @@ class NoisyLmdbDataset(Dataset):
 
         if nn_config["type"] == "constant":
             # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
-            
+            if not self.fixed_noised_done:
+                self.interpolate_init_relaxed_pos(graph)
+                self.fixed_noised_done=True
+
         elif nn_config["type"] == "rand":
-            graph.pos = graph.pos + torch.rand_like(graph.pos) * nn_config["value"]
+            # graph.pos = graph.pos + torch.rand_like(graph.pos) * nn_config["value"]
+            self.interpolate_init_relaxed_pos(graph)
         elif nn_config["type"] == "rand_deter":
             graph.pos = graph.pos + (1 / torch.log(idx + 2))
 
@@ -289,6 +313,8 @@ class NoisyLmdbDataset(Dataset):
         graph_data = super().__getitem__(idx)
         return self.noise_graph(graph_data, idx)
     
+    # TODO: make a graph version of the below function. Automatically, the collater will 
+    # collate the noised graphs accessed via the __getitem__ of the current class.
     def interpolate_init_relaxed_pos(self, batch):#Mettre dans le dataloader
         # rien de cette fonction n'a besoin d'autre info que le batch de data
         # We keep the name batch for the argument of the method, although it is very 

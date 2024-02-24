@@ -294,9 +294,11 @@ class SingleTrainer(BaseTrainer):
             # 2) oversample/ignorer des sample
             # 3) Multi-GPU: 
             skip_steps = self.step % n_train
-            if self.loaders[self.train_dataset_name].dataset.nn_config==
+            # I need a 
+            # if self.loaders[self.train_dataset_name].dataset.nn_config["type"] == "constant":
+
+            # this will use the get_item function that returns the noised graph
             train_loader_iter = iter(self.loaders[self.train_dataset_name])
-            
 
             self.model.train()
             i_for_epoch = 0
@@ -320,10 +322,11 @@ class SingleTrainer(BaseTrainer):
                 # if self.config["model"]["noisy_nodes"]:
                     # batch = self.noised_nodes(batch.node_features)
                 
+                # ---------No need if noising done in get_item of Dataloader----
                 # Interpolate between initial and relaxed pos
-                if not self.constant_noise:
-                    if self.use_interpolate_init_relaxed_pos:
-                        batch = [self.interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
+                # if not self.constant_noise:
+                    # if self.use_interpolate_init_relaxed_pos:
+                        # batch = [self.interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
                 # faire une fonction interpolate_init_relaxed_pos_constant
         
                 # Forward, loss, backward.
