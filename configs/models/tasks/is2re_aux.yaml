@@ -3,7 +3,7 @@ default:
   logger: wandb
 
   task:
-    dataset: single_point_lmdb
+    dataset: lmdb_noisy #single_point_lmdb
     description: "Relaxed state energy prediction from initial structure."
     type: regression
     metric: mae
@@ -16,6 +16,8 @@ default:
     otf_graph: False
     max_num_neighbors: 40
     noisy_nodes: True
+    # constant_noise: False
+
   mode: train
   adsorbates: all   # {"*O", "*OH", "*OH2", "*H"}
   adsorbates_ref_dir: /network/scratch/s/schmidtv/ocp/datasets/ocp/per_ads
@@ -26,6 +28,9 @@ default:
       normalize_labels: True
       target_mean: -1.525913953781128
       target_std: 2.279365062713623
+      noisy_nodes:
+        type: rand #or rand_deter or constant
+        value: 0.1
     val_id:
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/
     val_ood_cat:

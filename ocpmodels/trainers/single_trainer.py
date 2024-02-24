@@ -198,53 +198,6 @@ class SingleTrainer(BaseTrainer):
 
         return predictions
     
-    def interpolate_init_relaxed_pos(self, batch):
-        _interpolate_threshold = 0.5
-        _min_interpolate_factor = 0.0 #0.1
-        _gaussian_noise_std = 0.3
-        
-        batch_index = batch.batch
-        batch_size = batch_index.max() + 1
-        
-        threshold_tensor = torch.rand((batch_size, 1), dtype=batch.pos.dtype, device=batch.pos.device)
-        threshold_tensor = threshold_tensor + (1 - _interpolate_threshold)
-        threshold_tensor = threshold_tensor.floor_() # 1: has interpolation, 0: no interpolation
-        threshold_tensor = threshold_tensor[batch_index]
-        
-        interpolate_factor = torch.zeros((batch_index.shape[0], 1), 
-            dtype=batch.pos.dtype, device=batch.pos.device)
-        interpolate_factor = interpolate_factor.uniform_(_min_interpolate_factor, 1)
-        
-        noise_vec = torch.zeros((batch_index.shape[0], 3), 
-            dtype=batch.pos.dtype, device=batch.pos.device)
-        noise_vec = noise_vec.uniform_(-1, 1)
-        noise_vec_norm = noise_vec.norm(dim=1, keepdim=True)
-        noise_vec = noise_vec / (noise_vec_norm + 1e-6)
-        noise_scale = torch.zeros((batch_index.shape[0], 1), 
-            dtype=batch.pos.dtype, device=batch.pos.device)
-        noise_scale = noise_scale.normal_(mean=0, std=_gaussian_noise_std)
-        noise_vec = noise_vec * noise_scale
-        
-        noise_vec = noise_vec.normal_(mean=0, std=_gaussian_noise_std)
-        
-        #interpolate_factor = interpolate_factor * threshold_tensor
-        #interpolate_factor = 1 - interpolate_factor
-        #assert torch.all(interpolate_factor >= 0.0)
-        #assert torch.all(interpolate_factor <= 1.0)
-        #interpolate_factor = interpolate_factor[batch_index]
-        #batch.pos = batch.pos * interpolate_factor + (1 - interpolate_factor) * batch.pos_relaxed
-        
-        tags = batch.tags
-        tags = (tags > 0)
-        pos = batch.pos
-        pos_relaxed = batch.pos_relaxed
-        pos_interpolated = pos * interpolate_factor + (1 - interpolate_factor) * pos_relaxed
-        pos_noise = pos_interpolated + noise_vec
-        new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor) 
-        batch.pos[tags] = new_pos[tags]
-        
-        return batch
-
     def train(
         self, disable_eval_tqdm=True, debug_batches=-1, save_best_ckpt_only=False
     ):
@@ -291,6 +244,25 @@ class SingleTrainer(BaseTrainer):
             print(f"Printing train metrics every {self.config['print_every']} steps")
             print(f"Evaluating every {eval_every} steps\n")
 
+        
+
+        # -------------------Autre option---------------
+            # Je peux mettre transformation déterministe que j'applique à 
+                
+            # ---------------
+            # pour chaque batch, forward, loss, backward
+            # construction du batch se fait sur CPU au lieu de sur GPU
+            # temps de construction du batch, le GPU attend. Au lieu de faire ça, on a des sous-process
+            # en charge de construire les batch. Chacun des 3 loaders se fait sur CPU en parallèle du GPU.
+            # on mobilise plusieurs CPU en parallèle car moins chers que GPUs. Une fois qu'un worker a donné son batch au GPU, il 
+            # prépare le prochain batch. Pendant que GPU fait loss, backward, les workers préparent batches.
+            # Quand on construit dataloader, mettre num_workers = n
+            # c'est pas parce qu'on utilise plus de dataloaders (workers) que ça va plus vite -> heuristique = avoir autant de CPU
+            # que de dataloader. On peut tester en timant le passage à travers le dataset le bon nombre de CPU.
+            # 
+            # Si le GPU est à 100% tout le temps, pas besoin d'augmenter le nb de dataloader. Diminution d'utilisation
+            # du GPU a lieu quand on charge batch size. Avoir au moins 75% d'utilisation du GPU.
+
         for epoch_int in range(start_epoch, self.config["optim"]["max_epochs"]):
             if self.config["grad_fine_tune"]:
                 if epoch_int < self.config["optim"].get("epoch_fine_tune", 1):
@@ -312,8 +284,20 @@ class SingleTrainer(BaseTrainer):
                 logging.info(f"Epoch: {epoch_int}")
 
             self.samplers[self.train_dataset_name].set_epoch(epoch_int)
+            # classe dataset a une fonction sampler qui associe à un index un élément
+            # par défaut la distribution est uniforme mais on peut vouloir oversample
+            # une classe, par ex si classes sous-représentée. 
+            # Quand on fait du multi-GPU, on peut demander pas sample sur plusieurs GPUs en même temps
+            # pour ça besoin classe inter GPU pour dispatcher
+            # en résumé:
+            # 1) par défaut: sampler uniforme
+            # 2) oversample/ignorer des sample
+            # 3) Multi-GPU: 
             skip_steps = self.step % n_train
+            if self.loaders[self.train_dataset_name].dataset.nn_config==
             train_loader_iter = iter(self.loaders[self.train_dataset_name])
+            
+
             self.model.train()
             i_for_epoch = 0
 
@@ -329,13 +313,18 @@ class SingleTrainer(BaseTrainer):
                 with timer.next("get_batch"):
                     batch = next(train_loader_iter)
 
+                assert len(batch) == 1
+                assert isinstance(batch[0], torch_geometric.data.Batch)
+
                 # Optionally apply noise to node features
                 # if self.config["model"]["noisy_nodes"]:
                     # batch = self.noised_nodes(batch.node_features)
                 
                 # Interpolate between initial and relaxed pos
-                if self.use_interpolate_init_relaxed_pos:
-                    batch = [self.interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
+                if not self.constant_noise:
+                    if self.use_interpolate_init_relaxed_pos:
+                        batch = [self.interpolate_init_relaxed_pos(batch_data) for batch_data in batch]
+                # faire une fonction interpolate_init_relaxed_pos_constant
         
                 # Forward, loss, backward.
                 if epoch_int == 1:

@@ -206,6 +206,9 @@ class LmdbDataset(Dataset):
 
     def __getitem__(self, idx):
         t0 = time.time_ns()
+        # je peux noise les positions ici et rajouter des attributs
+        # si on veut débugguer, il faut un seul worker, donc il faut utiliser
+        # --no_cpus_to_workers et optim.num_workers =0.
 
         el_id, datapoint_pickled = self.get_pickled_from_db(idx)
         data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
@@ -225,6 +228,13 @@ class LmdbDataset(Dataset):
         data_object.transform_time = transform_time
         data_object.total_get_time = total_get_time
         data_object.idx_in_dataset = idx
+        # data_object.noised_version=
+        # si je veux stocker n'importe quoi associé à ma data, le stocker ici
+        # par ex une target, une magnitude de noise.
+        # Quand on débuggue, mettre num_workers à 0 (pas de subprocess, tout est dans le main process). 
+        # Sinon l'erreur sur les différents CPU peut ê dans un subworker, asynchrone par rapp au main process.
+        # Raison de set les seeds dans les workers si on fait appel à des fonctions aléatoires dedans, de 
+        # façon à ce que l'erreur ait toujours lieu au même endroit.
 
         return data_object
 
@@ -248,6 +258,88 @@ class LmdbDataset(Dataset):
                 env.close()
         else:
             self.env.close()
+
+@registry.register_dataset("lmdb_noisy")
+class NoisyLmdbDataset(Dataset):
+    def noise_graph(self, graph, idx):
+        nn_config = self.config.get("noisy_nodes")
+        # Except for train set, nn_config is None, so return graph, i.e. no noising
+        if not isinstance(nn_config, dict): return graph
+
+        # TODO: mettre fonction noising de equiformer en adaptant code ci-dessous
+        graph.original_pos = graph.pos.clone()
+
+        assert (
+            nn_config.get("type") in ["constant", "rand", "rand_deter"], 
+            f"Unknown noisy node type in {nn_config}",
+        )
+        assert isinstance(nn_config.get("value"), float), f"Unknown noisy node value in {nn_config}"
+
+        if nn_config["type"] == "constant":
+            # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
+            
+        elif nn_config["type"] == "rand":
+            graph.pos = graph.pos + torch.rand_like(graph.pos) * nn_config["value"]
+        elif nn_config["type"] == "rand_deter":
+            graph.pos = graph.pos + (1 / torch.log(idx + 2))
+
+        return graph
+    
+    def __getitem__(self, idx):
+        graph_data = super().__getitem__(idx)
+        return self.noise_graph(graph_data, idx)
+    
+    def interpolate_init_relaxed_pos(self, batch):#Mettre dans le dataloader
+        # rien de cette fonction n'a besoin d'autre info que le batch de data
+        # We keep the name batch for the argument of the method, although it is very 
+        
+        # The method acts on a batch, i.e. an instance of torch_geometric.data.Batch
+        # see explore.ipynb
+        _interpolate_threshold = 0.5
+        _min_interpolate_factor = 0.0 #0.1
+        _gaussian_noise_std = 0.3
+        
+        batch_index = batch.batch
+        batch_size = batch_index.max() + 1
+        
+        threshold_tensor = torch.rand((batch_size, 1), dtype=batch.pos.dtype, device=batch.pos.device)
+        threshold_tensor = threshold_tensor + (1 - _interpolate_threshold)
+        threshold_tensor = threshold_tensor.floor_() # 1: has interpolation, 0: no interpolation
+        threshold_tensor = threshold_tensor[batch_index]
+        
+        interpolate_factor = torch.zeros((batch_index.shape[0], 1), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        interpolate_factor = interpolate_factor.uniform_(_min_interpolate_factor, 1)
+        
+        noise_vec = torch.zeros((batch_index.shape[0], 3), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        noise_vec = noise_vec.uniform_(-1, 1)
+        noise_vec_norm = noise_vec.norm(dim=1, keepdim=True)
+        noise_vec = noise_vec / (noise_vec_norm + 1e-6)
+        noise_scale = torch.zeros((batch_index.shape[0], 1), 
+            dtype=batch.pos.dtype, device=batch.pos.device)
+        noise_scale = noise_scale.normal_(mean=0, std=_gaussian_noise_std)
+        noise_vec = noise_vec * noise_scale
+        
+        noise_vec = noise_vec.normal_(mean=0, std=_gaussian_noise_std)
+        
+        #interpolate_factor = interpolate_factor * threshold_tensor
+        #interpolate_factor = 1 - interpolate_factor
+        #assert torch.all(interpolate_factor >= 0.0)
+        #assert torch.all(interpolate_factor <= 1.0)
+        #interpolate_factor = interpolate_factor[batch_index]
+        #batch.pos = batch.pos * interpolate_factor + (1 - interpolate_factor) * batch.pos_relaxed
+        
+        tags = batch.tags
+        tags = (tags > 0)
+        pos = batch.pos
+        pos_relaxed = batch.pos_relaxed
+        pos_interpolated = pos * interpolate_factor + (1 - interpolate_factor) * pos_relaxed
+        pos_noise = pos_interpolated + noise_vec
+        new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor) 
+        batch.pos[tags] = new_pos[tags]
+        
+        return batch
 
 
 @registry.register_dataset("deup_lmdb")
