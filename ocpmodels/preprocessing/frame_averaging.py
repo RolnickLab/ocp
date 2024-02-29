@@ -8,6 +8,24 @@ from ocpmodels.preprocessing.vn_cano_fct import VNDeepSets, VNShallowNet
 import torch
 from torch_geometric.nn import knn_graph
 
+def modified_gram_schmidt(vectors): # From Kaba et al. 2023
+    v1 = vectors[:, 0]
+    v1 = v1 / torch.norm(v1, dim=1, keepdim=True)
+    v2 = vectors[:, 1] - torch.sum(vectors[:, 1] * v1, dim=1, keepdim=True) * v1
+    v2 = v2 / torch.norm(v2, dim=1, keepdim=True)
+    v3 = vectors[:, 2] - torch.sum(vectors[:, 2] * v1, dim=1, keepdim=True) * v1
+    v3 = v3 - torch.sum(v3 * v2, dim=1, keepdim=True) * v2
+    v3 = v3 / torch.norm(v3, dim=1, keepdim=True)
+    # if any of the vectors are nan, breakpoint
+    if torch.isnan(v1).any() or torch.isnan(v2).any() or torch.isnan(v3).any():
+        # breakpoint()
+        # Modify the original vectors, perturbate, and call again the function
+        # Perturbation must only affect some of the vectors
+        vectors = vectors + 1e-6 * torch.randn_like(vectors)
+        return modified_gram_schmidt(vectors)
+
+    return torch.stack([v1, v2, v3], dim=1)
+
 def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
     """Compute all frames for a given graph.
 
@@ -56,6 +74,8 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
     with torch.no_grad():
         vn_rot, vn_trans = vn_model(vn_pos, edges)
     
+    vn_rot = modified_gram_schmidt(vn_rot)
+
     vn_cell = vn_cell @ vn_rot
     vn_pos = vn_pos @ vn_rot
     # breakpoint()
