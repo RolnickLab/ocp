@@ -12,6 +12,7 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -999,6 +1000,8 @@ class SingleTrainer(BaseTrainer):
         for i, batch in tqdm(
             enumerate(self.relax_loader), total=len(self.relax_loader)
         ):
+            if i >= 5:
+                break
             if i >= self.config["task"].get("num_relaxation_batches", 1e9):
                 break
 
@@ -1012,7 +1015,8 @@ class SingleTrainer(BaseTrainer):
             relaxed_batch = ml_relax(
                 batch=batch,
                 model=self,
-                steps=self.config["task"].get("relaxation_steps", 200),
+                # steps=self.config["task"].get("relaxation_steps", 200),
+                steps=10,
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
                 save_full_traj=self.config["task"].get("save_full_traj", True),
@@ -1070,6 +1074,8 @@ class SingleTrainer(BaseTrainer):
             pos_filename = os.path.join(
                 self.config["results_dir"], f"relaxed_pos_{rank}.npz"
             )
+            if not os.path.exists(pos_filename):
+                os.makedirs(Path(pos_filename).parent, exist_ok=True)
             np.savez_compressed(
                 pos_filename,
                 ids=ids,
@@ -1101,7 +1107,7 @@ class SingleTrainer(BaseTrainer):
                 _, idx = np.unique(gather_results["ids"], return_index=True)
                 gather_results["ids"] = np.array(gather_results["ids"])[idx]
                 gather_results["pos"] = np.concatenate(
-                    np.array(gather_results["pos"])[idx]
+                    np.array(gather_results["pos"], dtype=object)[idx]
                 )
                 gather_results["chunk_idx"] = np.cumsum(
                     np.array(gather_results["chunk_idx"])[idx]
