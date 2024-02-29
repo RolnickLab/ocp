@@ -150,6 +150,20 @@ class VNDeepSetLayer(nn.Module):
         pooled_set = ts.scatter(nodes_1, edges_2, 0, reduce=self.pooling) # [31, 3, 1]
         pooling = self.pooling_linear(pooled_set) # [31, 3, 64]
 
+        # Breakpoint if dimensions are not matching
+        if identity.shape[0] != pooling.shape[0]:
+            breakpoint()
+            # Rewire the node that is not connected, and recompute the pooling
+
+            # # !! Not working !!
+            # unconnected_node = torch.tensor([i for i in range(x.shape[0]) if i not in edges_1])
+            # nearest_neighbor = torch.argmin(torch.sum((x[unconnected_node] - x[edges_1[0]]) ** 2, 1))
+
+            # edges_1 = torch.cat([edges_1, unconnected_node[nearest_neighbor].unsqueeze(0)])
+            # edges_2 = torch.cat([edges_2, edges_1[0].unsqueeze(0)])
+            # edges = [edges_1, edges_2]
+            # return self.forward(x, edges)
+        
         embedding = identity + pooling # [31, 3, 64]
         embedding = embedding.transpose(1, -1) # [31, 64, 3]
         
