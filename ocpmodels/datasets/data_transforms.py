@@ -12,6 +12,12 @@ from ocpmodels.preprocessing.graph_rewiring import (
     remove_tag0_nodes,
 )
 
+from ocpmodels.preprocessing.untrained_cano import (
+    data_augmentation,
+    cano_fct_2D,
+    cano_fct_3D,
+)
+
 
 class Transform:
     def __call__(self, data):
@@ -28,6 +34,57 @@ class Transform:
         if self.inactive:
             s = f"[inactive] {s}"
         return s
+
+
+class UntrainedCanonicalisation(Transform):
+    r"""Untrained canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
+    Args:
+        canonicalisation (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted 
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        cano_method (str): currently not used, in case several canonicalisation methods are
+        implemented.
+
+    Returns:
+        (data.Data): updated data object with new positions (+ unit cell) attributes
+        and the rotation matrices used for the frame averaging transform.
+    """
+    def __init__(self, canonicalisation=None, cano_method=None):
+        self.cano_method = (
+            "default" if (cano_method is None or cano_method == "") else cano_method
+        )
+        self.canonicalisation = "" if canonicalisation is None else canonicalisation
+        self.inactive = not self.canonicalisation
+        assert self.canonicalisation in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+
+        if self.canonicalisation:
+            if self.canonicalisation == "2D":
+                self.cano_func = cano_fct_2D
+            elif self.canonicalisation == "3D":
+                self.cano_func = cano_fct_3D
+            elif self.canonicalisation == "DA":
+                self.cano_func = data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.canonicalisation}")
+
+    def __call__(self, data):
+        if self.inactive:
+            return data
+        elif self.canonicalisation == "DA":
+            return self.cano_func(data, self.cano_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
+                data.pos, 
+                data.cell if hasattr(data, "cell") else None, 
+                self.cano_method, 
+                data.edge_index if hasattr(data, "edge_index") else None
+            )
+            return data
 
 
 class FrameAveraging(Transform):
@@ -167,5 +224,8 @@ def get_transforms(trainer_config):
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
         FrameAveraging(trainer_config["frame_averaging"], trainer_config["fa_method"]),
+        UntrainedCanonicalisation(
+            trainer_config["canonicalisation"], trainer_config["cano_method"]
+        ),
     ]
     return Compose(transforms)
