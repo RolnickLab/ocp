@@ -1000,8 +1000,6 @@ class SingleTrainer(BaseTrainer):
         for i, batch in tqdm(
             enumerate(self.relax_loader), total=len(self.relax_loader)
         ):
-            if i >= 5:
-                break
             if i >= self.config["task"].get("num_relaxation_batches", 1e9):
                 break
 
@@ -1015,8 +1013,7 @@ class SingleTrainer(BaseTrainer):
             relaxed_batch = ml_relax(
                 batch=batch,
                 model=self,
-                # steps=self.config["task"].get("relaxation_steps", 200),
-                steps=10,
+                steps=self.config["task"].get("relaxation_steps", 200),
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
                 save_full_traj=self.config["task"].get("save_full_traj", True),
