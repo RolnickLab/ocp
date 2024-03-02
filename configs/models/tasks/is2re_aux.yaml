@@ -29,8 +29,10 @@ default:
       target_mean: -1.525913953781128
       target_std: 2.279365062713623
       noisy_nodes:
-        type: rand #or rand_deter or constant
-        value: 0.1
+        type: rand #rand or rand_deter or constant
+        interpolate_threshold: 0.5
+        min_interpolate_factor: 0.0
+        gaussian_noise_std: 0.3
     val_id:
       src: /network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/
     val_ood_cat:

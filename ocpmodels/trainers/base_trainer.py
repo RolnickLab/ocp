@@ -53,16 +53,30 @@ from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
 
 
+def dict2str(d, level=0, spaces=4, margin=30):
+    s = ""
+    for k, v in d.items():
+        s += f"{' ' *spaces * level}{k:{margin-spaces*level}}: "
+        if not isinstance(v, dict):
+            s += str(v)
+        else:
+            s += "\n" + dict2str(v, level + 1, spaces, margin)
+        s += "\n"
+    return s
+
+
+
 @registry.register_trainer("base")
 class BaseTrainer(ABC):
     def __init__(self, load=True, **kwargs):
+        # print("kwargs:",dict2str(kwargs))
         run_dir = kwargs["run_dir"]
         model_name = kwargs["model"].pop(
             "name", kwargs.get("model_name", "Unknown - base_trainer issue")
         )
         self.early_stopping_file = resolve(run_dir) / f"{str(uuid4())}.stop"
         kwargs["model"]["graph_rewiring"] = kwargs.get("graph_rewiring")
-
+        
         self.config = {
             **kwargs,
             "model_name": model_name,
@@ -72,7 +86,7 @@ class BaseTrainer(ABC):
             "logs_dir": str(resolve(run_dir) / "logs"),
             "early_stopping_file": str(self.early_stopping_file),
         }
-
+        # print("Config:", "\n" + dict2str(self.config))
         self.sigterm = False
         self.objective = None
         self.epoch = 0
@@ -448,10 +462,14 @@ class BaseTrainer(ABC):
             },
             **self.config["model"],
         }
-
+        # print("self.config['model_name']:",self.config["model_name"])
+        # print("registry.mapping:",registry.mapping)
+        # print("registry.get_model_class(self.config['model_name']):",registry.get_model_class(self.config["model_name"]))
         self.model = registry.get_model_class(self.config["model_name"])(
             **model_config
-        ).to(self.device)
+        )
+        # print("type(self.model):",type(self.model))
+        self.model.to(self.device)
         self.model.reset_parameters()
         self.model.set_deup_inference(False)
 

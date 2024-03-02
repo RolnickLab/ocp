@@ -628,12 +628,6 @@ class SingleTrainer(BaseTrainer):
 
         return preds
 
-    def noised_nodes(self, x, noise_std=0.01):
-        """Noise nodes with Gaussian noise."""
-        noise = torch.randn_like(x, device=x.device) * noise_std
-        noised_nodes = x + noise
-        return noised_nodes
-
     def compute_loss(self, preds, batch_list):
         loss = {"total_loss": []}
 

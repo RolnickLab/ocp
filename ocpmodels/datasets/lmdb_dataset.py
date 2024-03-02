@@ -260,7 +260,8 @@ class LmdbDataset(Dataset):
             self.env.close()
 
 @registry.register_dataset("lmdb_noisy")
-class NoisyLmdbDataset(Dataset):
+class NoisyLmdbDataset(LmdbDataset):
+    # Hériter de lmdb_dataset
     def __init__(
         self,
         config,
@@ -270,54 +271,91 @@ class NoisyLmdbDataset(Dataset):
         adsorbates=None,
         adsorbates_ref_dir=None,
         silent=False,
+        **kwargs  # To capture additional arguments
     ):
-        super().__init__()
-        self.config = config
-        self.adsorbates = adsorbates
-        self.adsorbates_ref_dir = adsorbates_ref_dir
-        self.silent = silent
-        self.fixed_noised_done=False
-
+        # Call parent class constructor with appropriate arguments
+        super().__init__(
+            config=config,
+            transform=transform,
+            fa_frames=fa_frames,
+            lmdb_glob=lmdb_glob,
+            adsorbates=adsorbates,
+            adsorbates_ref_dir=adsorbates_ref_dir,
+            silent=silent,
+            **kwargs  # Pass additional arguments to parent class constructor
+        )
+        self.fixed_noised_done = False
+        self.nn_config=self.config.get("noisy_nodes")
+        if isinstance(self.nn_config, dict):
+            self.interpolate_threshold=self.nn_config["interpolate_threshold"]
+            self.min_interpolate_factor=self.nn_config["min_interpolate_factor"]
+            self.gaussian_noise_std=self.nn_config["gaussian_noise_std"]
+    
+        #Rajouter dans l'init que les attributs qui ne sont pas dans la config.
 
     def noise_graph(self, graph, idx):
-        nn_config = self.config.get("noisy_nodes")
         # Except for train set, nn_config is None, so return graph, i.e. no noising
-        if not isinstance(nn_config, dict): return graph
-
-        # TODO: mettre fonction noising de equiformer en adaptant code ci-dessous
+        if not isinstance(self.nn_config, dict): return graph
 
         # Add new attribute to the graph
         graph.original_pos = graph.pos.clone()
+        
+        # Assert the correctness of the configuration
+        assert self.nn_config.get("type") in ["constant", "rand", "rand_deter"], \
+            f"Unknown noisy node type in {self.nn_config}"
+        # assert isinstance(nn_config.get("value"), float), \
+            # f"Unknown noisy node value in {nn_config}"
 
-        assert (
-            nn_config.get("type") in ["constant", "rand", "rand_deter"], 
-            f"Unknown noisy node type in {nn_config}",
-        )
-        assert isinstance(nn_config.get("value"), float), f"Unknown noisy node value in {nn_config}"
-
-        if nn_config["type"] == "constant":
+        if self.nn_config["type"] == "constant":
             # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
             if not self.fixed_noised_done:
                 self.interpolate_init_relaxed_pos(graph)
                 self.fixed_noised_done=True
 
-        elif nn_config["type"] == "rand":
+        elif self.nn_config["type"] == "rand":
             # graph.pos = graph.pos + torch.rand_like(graph.pos) * nn_config["value"]
             self.interpolate_init_relaxed_pos(graph)
-        elif nn_config["type"] == "rand_deter":
+        elif self.nn_config["type"] == "rand_deter":
             graph.pos = graph.pos + (1 / torch.log(idx + 2))
 
         return graph
     
     def __getitem__(self, idx):
+        # call __getitem__ function of parent LmdbDataset class
         graph_data = super().__getitem__(idx)
+        # return noised version
         return self.noise_graph(graph_data, idx)
     
-    # TODO: make a graph version of the below function. Automatically, the collater will 
+    def interpolate_init_relaxed_pos(self, graph):
+        threshold_tensor = torch.rand((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
+        threshold_tensor = threshold_tensor + (1 - self.interpolate_threshold)
+        threshold_tensor = threshold_tensor.floor_()  # 1: has interpolation, 0: no interpolation
+
+        interpolate_factor = torch.rand((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
+        interpolate_factor = interpolate_factor * (1 - self.min_interpolate_factor) + self.min_interpolate_factor
+
+        noise_vec = torch.randn((graph.num_nodes, 3), dtype=graph.pos.dtype, device=graph.pos.device)
+        noise_vec_norm = noise_vec.norm(dim=1, keepdim=True)
+        noise_vec = noise_vec / (noise_vec_norm + 1e-6)
+        noise_scale = torch.randn((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
+        noise_vec = noise_vec * noise_scale * self.gaussian_noise_std
+        noise_vec = noise_vec.normal_(mean=0, std=self.gaussian_noise_std)
+
+        tags = graph.tags
+        tags = (tags > 0)
+        pos = graph.pos.clone()
+        pos_relaxed = graph.pos_relaxed.clone()
+        pos_interpolated = pos * interpolate_factor + pos_relaxed * (1 - interpolate_factor)
+        pos_noise = pos_interpolated + noise_vec
+        new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor)
+        graph.pos[tags] = new_pos[tags]
+        
+        return graph
+    
+    # Make a graph version of the below function. Automatically, the collater will 
     # collate the noised graphs accessed via the __getitem__ of the current class.
-    def interpolate_init_relaxed_pos(self, batch):#Mettre dans le dataloader
+    """def interpolate_init_relaxed_pos(self, batch):#Mettre dans le dataloader
         # rien de cette fonction n'a besoin d'autre info que le batch de data
-        # We keep the name batch for the argument of the method, although it is very 
         
         # The method acts on a batch, i.e. an instance of torch_geometric.data.Batch
         # see explore.ipynb
@@ -345,17 +383,9 @@ class NoisyLmdbDataset(Dataset):
         noise_scale = torch.zeros((batch_index.shape[0], 1), 
             dtype=batch.pos.dtype, device=batch.pos.device)
         noise_scale = noise_scale.normal_(mean=0, std=_gaussian_noise_std)
-        noise_vec = noise_vec * noise_scale
-        
+        noise_vec = noise_vec * noise_scale   
         noise_vec = noise_vec.normal_(mean=0, std=_gaussian_noise_std)
-        
-        #interpolate_factor = interpolate_factor * threshold_tensor
-        #interpolate_factor = 1 - interpolate_factor
-        #assert torch.all(interpolate_factor >= 0.0)
-        #assert torch.all(interpolate_factor <= 1.0)
-        #interpolate_factor = interpolate_factor[batch_index]
-        #batch.pos = batch.pos * interpolate_factor + (1 - interpolate_factor) * batch.pos_relaxed
-        
+
         tags = batch.tags
         tags = (tags > 0)
         pos = batch.pos
@@ -365,8 +395,7 @@ class NoisyLmdbDataset(Dataset):
         new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor) 
         batch.pos[tags] = new_pos[tags]
         
-        return batch
-
+        return batch"""
 
 @registry.register_dataset("deup_lmdb")
 class DeupDataset(LmdbDataset):
