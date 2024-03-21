@@ -506,13 +506,12 @@ class SingleTrainer(BaseTrainer):
             (dict): model predictions tensor for "energy" and "forces".
         """
         # Canonicalisation case.
-        if self.config["canonicalisation"] and self.config["canonicalisation"] != "DA":
+        if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
             e_all, f_all, gt_all = [], [], []
 
-            breakpoint()
             # Compute model prediction after canonicalisation
             for i in range(len(batch_list[0].cano_pos)):
                 batch_list[0].pos = batch_list[0].cano_pos[0]

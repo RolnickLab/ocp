@@ -38,17 +38,17 @@ class BaseCanonicalisation(Transform):
         cano_method (str): currently not used, in case several canonicalisation methods are
         implemented.
     """
-        def __init__(self, cano_args=None):
-            self.equivariance_module = cano_args.get("equivariance_module", "fa")
-            self.cano_type = cano_args.get("cano_type", "")
+    def __init__(self, cano_args=None):
+        self.equivariance_module = cano_args.get("equivariance_module", "fa")
+        self.cano_type = cano_args.get("cano_type", "")
 
-            if self.equivariance_module == "fa":
-                self.equivariance_module = FrameAveraging(**cano_args)
-            elif self.equivariance_module == "untrained_cano":
-                self.equivariance_module = UntrainedCanonicalisation(**cano_args)
+        if self.equivariance_module == "fa":
+            self.equivariance_module = FrameAveraging(**cano_args)
+        elif self.equivariance_module == "untrained_cano":
+            self.equivariance_module = UntrainedCanonicalisation(**cano_args)
 
-        def __call__(self, data):
-            self.equivariance_module.call(data)
+    def __call__(self, data):
+        return self.equivariance_module.call(data)
 
 
 
@@ -157,7 +157,7 @@ class FrameAveraging():
             else:
                 raise ValueError(f"Unknown frame averaging: {self.cano_type}")
 
-    def __call__(self, data):
+    def call(self, data):
         if self.inactive:
             return data
         elif self.cano_type == "DA":
@@ -239,6 +239,6 @@ def get_transforms(trainer_config):
     transforms = [
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
-        BaseCanonicalisation(**trainer_config["cano_args"]),
+        BaseCanonicalisation(trainer_config["cano_args"]),
     ]
     return Compose(transforms)
