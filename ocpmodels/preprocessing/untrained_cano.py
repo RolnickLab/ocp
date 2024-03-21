@@ -3,7 +3,8 @@ from ocpmodels.common.graph_transforms import RandomRotate
 
 import torch
 from ocpmodels.preprocessing.vn_cano_fct import VNShallowNet
-from torch_geometric.nn import knn_graph
+from torch_geometric.nn import knn_graph, radius_graph
+from ocpmodels.common.utils import get_pbc_distances, radius_graph_pbc, compute_neighbors
 
 def modified_gram_schmidt(vectors): # From Kaba et al. 2023
     v1 = vectors[:, 0]
@@ -54,10 +55,13 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
         out_dim=4, # rotation (3) + translation (1)
     )
 
-    if edges is None: # Compute k-nearest neighbors graph
-        k = 2  # Number of neighbors
-        pos_tensor = vn_pos.clone().detach()
-        edges = knn_graph(pos_tensor, k, batch=None, loop=False)
+    # Compute the edge index based on pbc
+
+
+    # if edges is None: # Compute k-nearest neighbors graph
+    #     k = 2  # Number of neighbors
+    #     pos_tensor = vn_pos.clone().detach()
+    #     edges = knn_graph(pos_tensor, k, batch=None, loop=False)
     # edges = torch.tensor([])
     
     with torch.no_grad():
@@ -89,7 +93,7 @@ def cano_fct_2D(pos, cell, cano_method, edges=None):
         tensor: the rotation matrix used (PCA)
     """
     # Exit with error because not implemented
-    raise NotImplementedError("2D Frame Averaging is not implemented yet.")
+    raise NotImplementedError("2D LCF is not implemented yet.")
 
     if cano_method is not None:
         pass
@@ -123,3 +127,69 @@ def data_augmentation(g, d=3, *args):
     graph_rotated, _, _ = transform(g)
 
     return graph_rotated
+
+
+def generate_graph(
+        data,
+        cutoff=6.0,
+        max_neighbors=30,
+        use_pbc=True,
+        # otf_graph=None,
+    ):
+        # from https://github.com/Open-Catalyst-Project/ocp/blob/main/ocpmodels/models/base.py
+        # after importing gemnet_oc
+
+        # if not otf_graph:
+        #     edge_index = data.edge_index
+
+        #     if use_pbc:
+        #         cell_offsets = data.cell_offsets
+        #         neighbors = data.neighbors
+
+        if use_pbc:
+            # if otf_graph:
+            edge_index, cell_offsets, neighbors = radius_graph_pbc(
+                data, cutoff, max_neighbors
+            )
+
+            out = get_pbc_distances(
+                data.pos,
+                edge_index,
+                data.cell,
+                cell_offsets,
+                neighbors,
+                return_offsets=True,
+                return_distance_vec=True,
+            )
+
+            edge_index = out["edge_index"]
+            edge_dist = out["distances"]
+            cell_offset_distances = out["offsets"]
+            distance_vec = out["distance_vec"]
+        else:
+            # if otf_graph:
+            edge_index = radius_graph(
+                data.pos,
+                r=cutoff,
+                batch=data.batch,
+                max_num_neighbors=max_neighbors,
+            )
+
+            j, i = edge_index
+            distance_vec = data.pos[j] - data.pos[i]
+
+            edge_dist = distance_vec.norm(dim=-1)
+            cell_offsets = torch.zeros(edge_index.shape[1], 3, device=data.pos.device)
+            cell_offset_distances = torch.zeros_like(
+                cell_offsets, device=data.pos.device
+            )
+            neighbors = compute_neighbors(data, edge_index)
+
+        return (
+            edge_index,
+            edge_dist,
+            distance_vec,
+            cell_offsets,
+            cell_offset_distances,
+            neighbors,
+        )
