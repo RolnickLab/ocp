@@ -32,11 +32,8 @@ class BaseCanonicalisation(Transform):
     r"""
     Base Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
     Args:
-        canonicalisation (str):
-            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted 
-            by (`"2D"`, `"3D"`, `"DA"`, `""`)
-        cano_method (str): currently not used, in case several canonicalisation methods are
-        implemented.
+        equivariance_module: which equivariance module to use, can be "fa" or "untrained_cano"
+        cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
     """
     def __init__(self, cano_args=None):
         self.equivariance_module = cano_args.get("equivariance_module", "fa")
@@ -55,7 +52,7 @@ class BaseCanonicalisation(Transform):
 class UntrainedCanonicalisation():
     r"""Untrained canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
     Args:
-        canonicalisation (str):
+        cano_type (str):
             Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted 
             by (`"2D"`, `"3D"`, `"DA"`, `""`)
         cano_method (str): currently not used, in case several canonicalisation methods are
@@ -110,7 +107,7 @@ class FrameAveraging():
     matrix (`fa_rot`) used for the frame averaging is also stored.
 
     Args:
-        frame_averaging (str): Transform method used.
+        cano_type (str): Transform method used.
             Can be 2D FA, 3D FA, Data Augmentation or no FA, respectively denoted by
             (`"2D"`, `"3D"`, `"DA"`, `""`)
         fa_method (str): the actual frame averaging technique used.

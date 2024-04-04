@@ -3,7 +3,8 @@ default:
     equivariance_module: "untrained_cano" # untrained_cano, fa
     cano_type: "3D"
     # Frame averaging specific arguments
-    fa_method: ""
+    fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  # Legacy FA arguments:
   frame_averaging: "" # {"2D", "3D", "DA", ""}
   fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
   model:

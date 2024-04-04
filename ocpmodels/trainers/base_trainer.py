@@ -36,7 +36,7 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import FrameAveraging, UntrainedCanonicalisation, get_transforms
+from ocpmodels.datasets.data_transforms import FrameAveraging, UntrainedCanonicalisation, get_transforms, BaseCanonicalisation
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -1002,22 +1002,6 @@ class BaseTrainer(ABC):
         # Rotate graph
         batch_rotated, rot, inv_rot = transform(deepcopy(batch))
         assert not torch.allclose(batch.pos, batch_rotated.pos, atol=1e-05)
-
-        # Recompute fa-pos for batch_rotated
-        if hasattr(batch, "fa_pos"):
-            delattr(batch_rotated, "fa_pos")  # delete it otherwise can't iterate
-            delattr(batch_rotated, "fa_cell")  # delete it otherwise can't iterate
-            delattr(batch_rotated, "fa_rot")  # delete it otherwise can't iterate
-
-            g_list = batch_rotated.to_data_list()
-            fa_transform = FrameAveraging(
-                self.config["frame_averaging"], self.config["fa_method"]
-            )
-            for g in g_list:
-                g = fa_transform(g)
-            batch_rotated = Batch.from_data_list(g_list)
-            if hasattr(batch, "neighbors"):
-                batch_rotated.neighbors = batch.neighbors
         
         # Recompute cano-pos for batch_rotated
         if hasattr(batch, "cano_pos"):
@@ -1026,9 +1010,7 @@ class BaseTrainer(ABC):
             delattr(batch_rotated, "cano_rot")
 
             g_list = batch_rotated.to_data_list()
-            cano_transform = UntrainedCanonicalisation(
-                self.config["canonicalisation"], self.config["cano_method"]
-            )
+            cano_transform = BaseCanonicalisation(self.config["cano_args"])
             for g in g_list:
                 g = cano_transform(g)
             batch_rotated = Batch.from_data_list(g_list)
@@ -1057,30 +1039,13 @@ class BaseTrainer(ABC):
         batch_reflected, rot, inv_rot = transform(deepcopy(batch))
         assert not torch.allclose(batch.pos, batch_reflected.pos, atol=1e-05)
 
-        # Recompute fa-pos for batch_rotated
-        if hasattr(batch, "fa_pos"):
-            delattr(batch_reflected, "fa_pos")  # delete it otherwise can't iterate
-            delattr(batch_reflected, "fa_cell")  # delete it otherwise can't iterate
-            delattr(batch_reflected, "fa_rot")  # delete it otherwise can't iterate
-            g_list = batch_reflected.to_data_list()
-            fa_transform = FrameAveraging(
-                self.config["frame_averaging"], self.config["fa_method"]
-            )
-            for g in g_list:
-                g = fa_transform(g)
-            batch_reflected = Batch.from_data_list(g_list)
-            if hasattr(batch, "neighbors"):
-                batch_reflected.neighbors = batch.neighbors
-
         # Recompute cano-pos for batch_rotated
         if hasattr(batch, "cano_pos"):
             delattr(batch_reflected, "cano_pos")
             delattr(batch_reflected, "cano_cell")
             delattr(batch_reflected, "cano_rot")
             g_list = batch_reflected.to_data_list()
-            cano_transform = UntrainedCanonicalisation(
-                self.config["canonicalisation"], self.config["cano_method"]
-            )
+            cano_transform = BaseCanonicalisation(self.config["cano_args"])
             for g in g_list:
                 g = cano_transform(g)
             batch_reflected = Batch.from_data_list(g_list)
