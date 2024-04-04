@@ -53,7 +53,6 @@ class VNShallowNet(nn.Module):
         output = self.output_layer(x)
         
         output = output.reshape(-1, 3, 4)
-        # breakpoint()
         
         rotation_vectors = output[:, :, :3]
         translation_vectors = output[:, :, 3:] if self.canon_translation else 0.0
@@ -61,60 +60,7 @@ class VNShallowNet(nn.Module):
 
         return rotation_vectors, translation_vectors.squeeze()
 
-# class VNShallowNet(nn.Module):
-#     def __init__(self, in_dim, out_dim, hidden_dim=64, nonlinearity='leakyrelu', num_layers=2, dropout=0.0):
-#         self.layer_pooling = "sum"
-#         self.final_pooling = "sum"
-#         self.num_layers = num_layers 
-#         self.nonlinearity = nonlinearity
-#         self.dropout = dropout
 
-#         self.out_dim = out_dim
-#         self.hidden_dim = hidden_dim
-#         self.in_dim = in_dim
-
-#         self.first_set_layer = VNDeepSetLayer(
-#             self.in_dim, self.hidden_dim, self.nonlinearity, self.layer_pooling, False, dropout=self.dropout
-#         )
-#         self.set_layers = SequentialMultiple(
-#             *[
-#                 VNDeepSetLayer(
-#                     self.hidden_dim, self.hidden_dim, self.nonlinearity, self.layer_pooling, dropout=self.dropout
-#                 )
-#                 for i in range(self.num_layers - 1)
-#             ]
-#         )
-#         self.output_layer = (
-#             nn.Linear(self.hidden_dim, self.out_dim)
-#         )
-#         self.batch_size = 1
-
-#     def forward(self, loc, edges):
-#         nb_particles = loc.shape[0]
-
-#         batch_indices = torch.arange(self.batch_size, device=self.device).reshape(-1, 1)
-#         batch_indices = batch_indices.repeat(1, nb_particles).reshape(-1)
-
-#         mean_loc = ts.scatter(loc, batch_indices, 0, reduce=self.layer_pooling)
-#         mean_loc = mean_loc.repeat(nb_particles, 1, 1).transpose(0, 1).reshape(-1, 3)
-#         canonical_loc = loc - mean_loc
-#         features = torch.stack([canonical_loc], dim=2) 
-
-#         x, _ = self.first_set_layer(features, edges)
-#         x, _ = self.set_layers(x, edges)
-        
-#         x = ts.scatter(x, batch_indices, 0, reduce=self.final_pooling)
-#         output = self.output_layer(x)
-
-#         output = output.repeat(nb_particles, 1, 1, 1).transpose(0, 1)
-#         output = output.reshape(-1, 3, 4)
-
-#         rotation_vectors = output[:, :, :3]
-#         translation_vectors = output[:, :, 3:] if self.canon_translation else 0.0
-#         translation_vectors = translation_vectors + mean_loc[:, :, None]
-# 
-#         return rotation_vectors, translation_vectors.squeeze()
-    
 
 class VNDeepSetLayer(nn.Module):
     def __init__(self, in_channels, out_channels, nonlinearity, pooling="sum", residual=True, dropout=0.0):
