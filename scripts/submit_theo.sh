@@ -17,4 +17,4 @@ cd /home/mila/t/theo.saulus/code/ocp # replace: location of the code
 
 # python main.py --test_ri=True --cp_data_to_tmp_dir=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --optim.force_coefficient=50 --config=faenet-is2re-all --note="FAENet with LCF" --fa_method=all --frame_averaging=3D
 
-python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Untrained Canonicalisation" --cano_args.equivariance_module=untrained_cano --cano_args.cano_type=3D 
+python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Trained Canonicalisation" --cano_args.equivariance_module=trained_cano --cano_args.cano_type=3D 

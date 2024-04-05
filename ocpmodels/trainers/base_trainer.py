@@ -36,7 +36,7 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import FrameAveraging, UntrainedCanonicalisation, get_transforms, BaseCanonicalisation
+from ocpmodels.datasets.data_transforms import get_transforms
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,

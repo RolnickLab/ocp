@@ -12,6 +12,7 @@ from ocpmodels.preprocessing.graph_rewiring import (
 import ocpmodels.preprocessing.untrained_cano as untrained_cano
 import ocpmodels.preprocessing.trained_cano as trained_cano
 
+
 class Transform:
     def __call__(self, data):
         raise NotImplementedError
@@ -28,11 +29,9 @@ class Transform:
             s = f"[inactive] {s}"
         return s
 
-
-
-class BaseUntrainableCanonicalisation(Transform):
+class BaseUntrainedCanonicalisation(Transform):
     r"""
-    Base Untrainable Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
+    Base Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
     Args:
         equivariance_module: which equivariance module to use, can be "fa" or "untrained_cano"
         cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
@@ -45,31 +44,9 @@ class BaseUntrainableCanonicalisation(Transform):
             self.equivariance_module = FrameAveraging(**cano_args)
         elif self.equivariance_module == "untrained_cano":
             self.equivariance_module = UntrainedCanonicalisation(**cano_args)
-        else: # No untrained canonicalisation used
-            self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
     def __call__(self, data):
         return self.equivariance_module.call(data)
-
-class BaseTrainableCanonicalisation(Transform):
-    r"""
-    Base Trainable Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
-    Args:
-        equivariance_module: which equivariance module to use, can be "trained_cano"
-        cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
-    """
-    def __init__(self, cano_args=None):
-        self.equivariance_module = cano_args.get("equivariance_module", "fa")
-        self.cano_type = cano_args.get("cano_type", "")
-
-        if self.equivariance_module == "trained_cano":
-            self.equivariance_module = TrainedCanonicalisation(**cano_args)
-        else: # No trainable canonicalisation used
-            self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
-
-    def __call__(self, data):
-        return self.equivariance_module.call(data)
-
 
 
 
@@ -123,56 +100,6 @@ class UntrainedCanonicalisation():
             )
             return data
 
-
-class TrainedCanonicalisation():
-    r"""Trained canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
-    Args:
-        cano_type (str):
-            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted 
-            by (`"2D"`, `"3D"`, `"DA"`, `""`)
-        cano_method (str): currently not used, in case several canonicalisation methods are
-        implemented.
-
-    Returns:
-        (data.Data): updated data object with new positions (+ unit cell) attributes
-        and the rotation matrices used for the frame averaging transform.
-    """
-    def __init__(self, cano_type=None, cano_method=None, **kwargs):
-        self.cano_method = (
-            "default" if (cano_method is None or cano_method == "") else cano_method
-        )
-        self.cano_type = "" if cano_type is None else cano_type
-        self.inactive = not self.cano_type
-        assert self.cano_type in {
-            "",
-            "2D",
-            "3D",
-            "DA",
-        }
-
-        if self.cano_type:
-            if self.cano_type == "2D":
-                self.cano_func = trained_cano.cano_fct_2D
-            elif self.cano_type == "3D":
-                self.cano_func = trained_cano.cano_fct_3D
-            elif self.cano_type == "DA":
-                self.cano_func = trained_cano.data_augmentation
-            else:
-                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
-
-    def call(self, data):
-        if self.inactive:
-            return data
-        elif self.cano_type == "DA":
-            return self.cano_func(data, self.cano_method)
-        else:
-            data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
-                data.pos, 
-                data.cell if hasattr(data, "cell") else None, 
-                self.cano_method, 
-                data.edge_index if hasattr(data, "edge_index") else None
-            )
-            return data
 
 class FrameAveraging():
     r"""Frame Averaging (FA) Transform for (PyG) Data objects (e.g. 3D atomic graphs).
@@ -306,17 +233,18 @@ class AddAttributes:
         return data
 
 
-# Both will be called, but in different places
 def get_transforms(trainer_config):
     transforms = [
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
-        BaseUntrainableCanonicalisation(trainer_config["cano_args"]),
+        BaseUntrainedCanonicalisation(trainer_config["cano_args"]),
     ]
     return Compose(transforms)
 
-def get_learnable_transforms(trainer_config):
+def get_learnt_transforms(trainer_config):
     transforms = [
-        BaseTrainableCanonicalisation(trainer_config["cano_args"]),
+        AddAttributes(),
+        GraphRewiring(trainer_config.get("graph_rewiring")),
+        BaseTrainedCanonicalisation(trainer_config["cano_args"]),
     ]
     return Compose(transforms)

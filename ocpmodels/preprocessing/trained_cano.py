@@ -58,9 +58,12 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
     # edges = torch.tensor([])
 
     vn_model = VNSmall()
-    with torch.no_grad(): 
-        vn_rot = vn_model(vn_pos)
 
+    if not torch.is_grad_enabled():
+        print("\nWarning: enabling in preprocessing.\n")
+        torch.set_grad_enabled(True) 
+    vn_rot = vn_model(vn_pos)
+    
     vn_rot = modified_gram_schmidt(vn_rot)
 
     vn_cell = vn_cell @ vn_rot

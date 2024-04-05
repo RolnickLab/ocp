@@ -28,6 +28,8 @@ from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.trainers.base_trainer import BaseTrainer
 
+from ocpmodels.datasets.data_transforms import get_learnable_transforms
+
 is_test_env = os.environ.get("ocp_test_env", False)
 
 
@@ -200,7 +202,7 @@ class SingleTrainer(BaseTrainer):
     ):
         if not torch.is_grad_enabled():
             print("\nWarning: torch grad is disabled. Enabling.\n")
-            torch.set_grad_enabled(True) # ----------------------------------------------------------
+            torch.set_grad_enabled(True)
         n_train = min(
             len(self.loaders[self.train_dataset_name]),
             self.config["optim"]["max_steps"],
@@ -505,6 +507,11 @@ class SingleTrainer(BaseTrainer):
         Returns:
             (dict): model predictions tensor for "energy" and "forces".
         """
+        # Apply the learnable canonicalization method
+        # (default behaviour is to do nothing, if no learnable transform is picked)
+        learnable_transform = get_learnable_transforms(self.config)
+        batch_list[0] = learnable_transform(batch_list[0])
+
         # Canonicalisation case.
         if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
             original_pos = batch_list[0].pos
@@ -520,7 +527,10 @@ class SingleTrainer(BaseTrainer):
                 
                 # forward pass
                 preds = self.model(
-                    deepcopy(batch_list),
+                    # deepcopy(batch_list),
+                    # [t.clone() for t in batch_list],
+                    [t.detach() for t in batch_list],
+                    # batch_list,
                     mode=mode,
                     regress_forces=self.config["model"]["regress_forces"],
                     q=q,
@@ -530,7 +540,7 @@ class SingleTrainer(BaseTrainer):
                 cano_rot = None
 
                 if preds.get("forces") is not None:
-                    # Transform forces to guarantee equivariance of canonicalisation method ------------------------ MODIF
+                    # Transform forces to guarantee equivariance of canonicalisation method
                     cano_rot = torch.repeat_interleave(
                         batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
@@ -559,7 +569,7 @@ class SingleTrainer(BaseTrainer):
                     )
                     gt_all.append(g_grad_target)
 
-            batch_list[0].pos = original_pos # MODIFY HERE ---------------------------------
+            batch_list[0].pos = original_pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 batch_list[0].cell = original_cell
 

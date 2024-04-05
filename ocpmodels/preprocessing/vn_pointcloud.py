@@ -153,7 +153,10 @@ class VNSmall(torch.nn.Module):
             torch.Tensor: Output tensor of shape (batch_size, 3, 3).
 
         """
-        point_cloud = point_cloud.unsqueeze(0).transpose(2,1)
+        if len(point_cloud.size()) == 2:
+            point_cloud = point_cloud.unsqueeze(0).transpose(2,1)
+        else:
+            point_cloud = point_cloud.transpose(2, 1)
 
         batch_size, num_points, _ = point_cloud.size()
         n_knn = min(self.n_knn, num_points - 1)
