@@ -17,4 +17,9 @@
 
 # python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=10 --mode=train --note='is2re_aux-all with 10 interactions'"
 
-python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=10 --mode=train --note='noising in dataloader: is2re_aux-all with 10 interactions'"
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=10 --mode=train --note='noising in dataloader: is2re_aux-all with 10 interactions'"
+
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-all --model.num_interactions=10 --dataset.train.noisy_nodes.type=constant --mode=train --note='noising in dataloader, constant noise: is2re_aux-all with 10 interactions'"
+
+# python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long py_args="--config=faenet-is2re_aux-10k --model.num_interactions=5 --optim.max_epochs=50 --dataset.train.noisy_nodes.type=constant --mode=train --note='constant noise, more epochs'"
+python mila/sbatch.py mem=32GB cpus=4 gres=gpu:1 partition=long time=16:00:00 py_args="--config=faenet-is2re_aux-10k --model.num_interactions=5 --optim.max_epochs=50 --dataset.train.noisy_nodes.type=constant --mode=train --note='constant noise, more epochs'"

@@ -380,6 +380,9 @@ class BaseTrainer(ABC):
                             f"({n_train}), and batch_size ({batch_size})\n",
                         )
 
+            print("split:",split)
+            print("shuffle:",shuffle)
+            print("batch_size:",batch_size)
             self.samplers[split] = self.get_sampler(
                 self.datasets[split], batch_size, shuffle=shuffle
             )

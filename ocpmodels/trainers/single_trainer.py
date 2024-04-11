@@ -208,6 +208,7 @@ class SingleTrainer(BaseTrainer):
             len(self.loaders[self.train_dataset_name]),
             self.config["optim"]["max_steps"],
         )
+        print("n_train=",n_train)
         epoch_int = 0
         eval_every = self.config["optim"].get("eval_every", n_train) or n_train
         if eval_every < 1:
