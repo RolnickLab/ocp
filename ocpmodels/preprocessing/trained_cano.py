@@ -47,16 +47,6 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
     vn_cell = deepcopy(cell)
     vn_pos = deepcopy(pos)
 
-    # vn_model = VNShallowNet(
-    #     in_dim=1, # Only positions
-    #     out_dim=4, # rotation (3) + translation (1)
-    # )
-    # if edges is None: # Compute k-nearest neighbors graph
-    #     k = 2  # Number of neighbors
-    #     pos_tensor = vn_pos.clone().detach()
-    #     edges = knn_graph(pos_tensor, k, batch=None, loop=False)
-    # edges = torch.tensor([])
-
     vn_model = VNSmall()
 
     if not torch.is_grad_enabled():
@@ -68,9 +58,8 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
 
     vn_cell = vn_cell @ vn_rot
     vn_pos = vn_pos @ vn_rot
-    
-    return [vn_pos.squeeze()], [vn_cell], [vn_rot]
 
+    return [vn_pos.squeeze()], [vn_cell], [vn_rot]
 
 
 def cano_fct_2D(pos, cell, cano_method, edges=None):
