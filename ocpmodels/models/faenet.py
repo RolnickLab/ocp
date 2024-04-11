@@ -675,6 +675,7 @@ class FAENet(BaseModel):
         pos = data.pos
         batch = data.batch
         energy_skip_co = []
+        # breakpoint()
 
         # cutoff = self.cutoff
         # max_neighbors = self.max_num_neighbors
@@ -749,7 +750,9 @@ class FAENet(BaseModel):
             use_pbc=self.use_pbc,
             otf_graph=True,
         )
+        # edge_attr = edge_weight.view(-1, 1)
         edge_attr = self.distance_expansion(edge_weight)
+        # breakpoint()
 
         # # Use periodic boundary conditions
         # if self.use_pbc and hasattr(data, "cell"):
