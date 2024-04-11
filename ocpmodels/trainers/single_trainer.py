@@ -18,6 +18,8 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 from tqdm import tqdm
+from torch_geometric.data import Batch
+
 
 from ocpmodels.common import dist_utils
 from ocpmodels.common.registry import registry
@@ -510,7 +512,13 @@ class SingleTrainer(BaseTrainer):
         # Apply the learnable canonicalization method
         # (default behaviour is to do nothing, if no learnable transform is picked)
         learnable_transform = get_learnable_transforms(self.config)
-        batch_list[0] = learnable_transform(batch_list[0])
+        batch_list_list = batch_list[0].to_data_list()
+        for b in batch_list_list:
+            b = learnable_transform(b)
+        batch_list[0] = Batch.from_data_list(batch_list_list)
+        # batch_list[0].cano_pos = batch_list[0].cano_pos[0]
+        # batch_list[0].cano_cell = batch_list[0].cano_cell[0]
+        # batch_list[0].cano_rot = batch_list[0].cano_rot[0]
 
         # Canonicalisation case.
         if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
@@ -521,16 +529,16 @@ class SingleTrainer(BaseTrainer):
 
             # Compute model prediction after canonicalisation
             for i in range(len(batch_list[0].cano_pos)):
-                batch_list[0].pos = batch_list[0].cano_pos[0]
+                batch_list[0].pos = batch_list[0].cano_pos[i]
                 if self.task_name in OCP_AND_DEUP_TASKS:
-                    batch_list[0].cell = batch_list[0].cano_cell[0]
+                    batch_list[0].cell = batch_list[0].cano_cell[i]
                 
                 # forward pass
                 preds = self.model(
                     # deepcopy(batch_list),
                     # [t.clone() for t in batch_list],
-                    [t.detach() for t in batch_list],
-                    # batch_list,
+                    # [t.detach() for t in batch_list],
+                    batch_list,
                     mode=mode,
                     regress_forces=self.config["model"]["regress_forces"],
                     q=q,
@@ -541,6 +549,7 @@ class SingleTrainer(BaseTrainer):
 
                 if preds.get("forces") is not None:
                     # Transform forces to guarantee equivariance of canonicalisation method
+                    # breakpoint()
                     cano_rot = torch.repeat_interleave(
                         batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
@@ -846,12 +855,18 @@ class SingleTrainer(BaseTrainer):
             n_atoms += batch[0].natoms.sum()
 
             # Compute model prediction
-            preds1 = self.model_forward(deepcopy(batch), mode="inference")
+            preds1 = self.model_forward(
+                # [t.detach() for t in batch], 
+                batch,
+                mode="inference"
+            )
 
             # Compute prediction on rotated graph
             rotated = self.rotate_graph(batch, rotation="z")
             preds2 = self.model_forward(
-                deepcopy(rotated["batch_list"]), mode="inference"
+                # [t.detach() for t in rotated["batch_list"]],
+                rotated["batch_list"],
+                mode="inference"
             )
 
             # Difference in predictions, for energy and forces
@@ -898,7 +913,11 @@ class SingleTrainer(BaseTrainer):
 
             # Reflect graph and compute diff in prediction
             reflected = self.reflect_graph(batch)
-            preds3 = self.model_forward(reflected["batch_list"], mode="inference")
+            preds3 = self.model_forward(
+                # [t.detach() for t in reflected["batch_list"]], 
+                reflected["batch_list"],
+                mode="inference"
+            )
             energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
             if self.task_name == "s2ef":
                 forces_diff_refl += torch.abs(
@@ -916,7 +935,11 @@ class SingleTrainer(BaseTrainer):
 
             # 3D Rotation and compute diff in prediction
             rotated = self.rotate_graph(batch)
-            preds4 = self.model_forward(rotated["batch_list"], mode="inference")
+            preds4 = self.model_forward(
+                # [t.detach() for t in rotated["batch_list"]], 
+                rotated["batch_list"],
+                mode="inference"
+            )
             energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
             if self.task_name == "s2ef":
                 forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
