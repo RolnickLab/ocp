@@ -34,6 +34,7 @@ from ocpmodels.common.orion_utils import (
     sample_orion_hparams,
 )
 from ocpmodels.trainers import BaseTrainer
+from utils import dict2str
 
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -92,9 +93,13 @@ if __name__ == "__main__":
         args.logdir = resolve(args.logdir)
 
     # -- Build config
+    # print("args:",args)
+    # print("override_args:",override_args)
 
     trainer_config = build_config(args, override_args)
 
+    # if "log_train_every" in trainer_config.keys():
+        # print("trainer_config['log_train_every']",trainer_config["log_train_every"])
     if dist_utils.is_master():
         trainer_config = move_lmdb_data_to_slurm_tmpdir(trainer_config)
     dist_utils.synchronize()
@@ -128,7 +133,6 @@ if __name__ == "__main__":
             trainer_config = merge_dicts(trainer_config, hparams)
 
         # -- Setup trainer
-
         trainer_config = continue_orion_exp(trainer_config)
         trainer_config = auto_note(trainer_config)
         trainer_config = set_min_hidden_channels(trainer_config)

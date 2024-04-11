@@ -307,7 +307,6 @@ class NoisyLmdbDataset(LmdbDataset):
             # f"Unknown noisy node value in {nn_config}"
 
         if self.nn_config["type"] == "constant":
-            print("self.fixed_noised_done:",self.fixed_noised_done)
             # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
             if not self.fixed_noised_done:
                 self.interpolate_init_relaxed_pos(graph)
@@ -325,7 +324,6 @@ class NoisyLmdbDataset(LmdbDataset):
         # call __getitem__ function of parent LmdbDataset class
         graph_data = super().__getitem__(idx)
         # return noised version
-        print("__getitem__")
         return self.noise_graph(graph_data, idx)
     
     def interpolate_init_relaxed_pos(self, graph):

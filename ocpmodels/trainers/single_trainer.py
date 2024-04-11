@@ -228,6 +228,8 @@ class SingleTrainer(BaseTrainer):
         log_train_every = self.config["log_train_every"]
         if log_train_every < 0:
             log_train_every = n_train
+        if log_train_every > n_train:
+            log_train_every = n_train
 
         # Calculate start_epoch from step instead of loading the epoch number
         # to prevent inconsistencies due to different batch size in checkpoint.
@@ -372,7 +374,8 @@ class SingleTrainer(BaseTrainer):
                     metrics={},
                 )
                 scale = self.scaler.get_scale() if self.scaler else 1.0
-
+                print("i_for_epoch:",i_for_epoch)
+                print("i_for_epoch % log_train_every == 0:",i_for_epoch % log_train_every == 0)
                 if i_for_epoch % log_train_every == 0:
                     for k, v in loss.items():
                         self.metrics = self.evaluator.update(
@@ -380,6 +383,8 @@ class SingleTrainer(BaseTrainer):
                         )
 
                     # Log metrics.
+                    self.metrics["current_auxiliary_task_weight"] = {"metric": self.current_auxiliary_task_weight}
+
                     gbm, gbs = timer.prepare_for_logging()
                     self.metrics["get_batch_time_mean"] = {"metric": gbm["get_batch"]}
                     self.metrics["get_batch_time_std"] = {"metric": gbs["get_batch"]}
