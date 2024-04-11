@@ -1,6 +1,7 @@
 """
 Code of the Scalable Frame Averaging (Rotation Invariant) GNN
 """
+
 from typing import Dict, Optional
 
 import torch
@@ -17,7 +18,12 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.activations import swish
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
-from ocpmodels.common.utils import get_pbc_distances, conditional_grad
+from ocpmodels.common.utils import (
+    get_pbc_distances,
+    conditional_grad,
+    radius_graph_pbc,
+    compute_neighbors,
+)
 
 
 class GaussianSmearing(nn.Module):
@@ -286,7 +292,7 @@ class InteractionBlock(MessagePassing):
             )
             h = self.lin_up(h)
 
-        elif self.mp_type in {"base", "simple"}:
+        elif self.mp_type in {"base", "simple", "triplet_attention", "edge_attention"}:
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
                 h = self.act(self.graph_norm(h))
@@ -517,15 +523,17 @@ class FAENet(BaseModel):
                     self.complex_mp,
                     self.graph_norm,
                     (
-                        print(
-                            f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
-                            f"{i} / {self.num_interactions}",
+                        (
+                            print(
+                                f"🗑️ Setting dropout_lin for interaction block to {self.dropout_lin} ",
+                                f"{i} / {self.num_interactions}",
+                            )
+                            or self.dropout_lin
                         )
-                        or self.dropout_lin
-                    )
-                    if "inter" in self.dropout_lowest_layer
-                    and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
-                    else 0,
+                        if "inter" in self.dropout_lowest_layer
+                        and (i >= int(self.dropout_lowest_layer.split("-")[-1]))
+                        else 0
+                    ),
                 )
                 for i in range(self.num_interactions)
             ]
@@ -537,14 +545,18 @@ class FAENet(BaseModel):
             self.hidden_channels,
             self.act,
             (
-                print(f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}")
-                or self.dropout_lin
-            )
-            if (
-                "inter" in self.dropout_lowest_layer
-                or "output" in self.dropout_lowest_layer
-            )
-            else 0,
+                (
+                    print(
+                        f"🗑️ Setting dropout_lin for output block to {self.dropout_lin}"
+                    )
+                    or self.dropout_lin
+                )
+                if (
+                    "inter" in self.dropout_lowest_layer
+                    or "output" in self.dropout_lowest_layer
+                )
+                else 0
+            ),
         )
 
         # Energy head
@@ -664,52 +676,127 @@ class FAENet(BaseModel):
         batch = data.batch
         energy_skip_co = []
 
-        # Use periodic boundary conditions
-        if self.use_pbc and hasattr(data, "cell"):
-            assert z.dim() == 1 and z.dtype == torch.long
+        # cutoff = self.cutoff
+        # max_neighbors = self.max_num_neighbors
+        # use_pbc = self.use_pbc
+        # otf_graph = self.otf_graph
 
-            if self.dropout_edge > 0:
-                edge_index, edge_mask = dropout_edge(
-                    data.edge_index,
-                    p=self.dropout_edge,
-                    force_undirected=True,
-                    training=self.training or self.deup_inference,
-                )
+        # if not otf_graph:
+        #     try:
+        #         edge_index = data.edge_index
 
-            out = get_pbc_distances(
-                pos,
-                data.edge_index,
-                data.cell,
-                data.cell_offsets,
-                data.neighbors,
-                return_distance_vec=True,
-            )
+        #         if use_pbc:
+        #             cell_offsets = data.cell_offsets
+        #             neighbors = data.neighbors
 
-            edge_index = out["edge_index"]
-            edge_weight = out["distances"]
-            rel_pos = out["distance_vec"]
-            edge_attr = self.distance_expansion(edge_weight)
-        else:
-            edge_index = radius_graph(
-                pos,
-                r=self.cutoff,
-                batch=batch,
-                max_num_neighbors=self.max_num_neighbors,
-            )
-            # edge_index = data.edge_index
-            rel_pos = pos[edge_index[0]] - pos[edge_index[1]]
-            edge_weight = rel_pos.norm(dim=-1)
-            edge_attr = self.distance_expansion(edge_weight)
-            if self.dropout_edge > 0:
-                edge_index, edge_mask = dropout_edge(
-                    edge_index,
-                    p=self.dropout_edge,
-                    force_undirected=True,
-                    training=self.training or self.deup_inference,
-                )
-                edge_weight = edge_weight[edge_mask]
-                edge_attr = edge_attr[edge_mask]
-                rel_pos = rel_pos[edge_mask]
+        #     except AttributeError:
+        #         logging.warning(
+        #             "Turning otf_graph=True as required attributes not present "
+        #             + "in data object"
+        #         )
+        #         otf_graph = True
+
+        # if use_pbc:
+        #     if otf_graph:
+        #         edge_index, cell_offsets, neighbors = radius_graph_pbc(
+        #             data, cutoff, max_neighbors
+        #         )
+
+        #     out = get_pbc_distances(
+        #         pos
+        #         edge_index,
+        #         data.cell
+        #         data.cell_offsets,
+        #         data.neighbors,
+        #         return_offsets=True,
+        #         return_distance_vec=True,
+        #     )
+
+        #     edge_index = out["edge_index"]
+        #     edge_dist = out["distances"]
+        #     cell_offset_distances = out["offsets"]
+        #     distance_vec = out["distance_vec"]
+        # else:
+        #     if otf_graph:
+        #         edge_index = radius_graph(
+        #             data.pos,
+        #             r=cutoff,
+        #             batch=data.batch,
+        #             max_num_neighbors=max_neighbors,
+        #         )
+
+        #     j, i = edge_index
+        #     distance_vec = data.pos[j] - data.pos[i]
+
+        #     edge_dist = distance_vec.norm(dim=-1)
+        #     cell_offsets = torch.zeros(edge_index.shape[1], 3, device=data.pos.device)
+        #     cell_offset_distances = torch.zeros_like(
+        #         cell_offsets, device=data.pos.device
+        #     )
+        #     neighbors = compute_neighbors(data, edge_index)
+
+        (
+            edge_index,
+            edge_weight,
+            rel_pos,
+            cell_offsets,
+            cell_offset_distances,
+            neighbors,
+        ) = self.generate_graph(
+            data,
+            cutoff=self.cutoff,
+            max_neighbors=self.max_num_neighbors,
+            use_pbc=self.use_pbc,
+            otf_graph=True,
+        )
+        edge_attr = self.distance_expansion(edge_weight)
+
+        # # Use periodic boundary conditions
+        # if self.use_pbc and hasattr(data, "cell"):
+        #     assert z.dim() == 1 and z.dtype == torch.long
+
+        #     if self.dropout_edge > 0:
+        #         edge_index, edge_mask = dropout_edge(
+        #             data.edge_index,
+        #             p=self.dropout_edge,
+        #             force_undirected=True,
+        #             training=self.training or self.deup_inference,
+        #         )
+
+        #     out = get_pbc_distances(
+        #         pos,
+        #         data.edge_index,
+        #         data.cell,
+        #         data.cell_offsets,
+        #         data.neighbors,
+        #         return_distance_vec=True,
+        #     )
+
+        #     edge_index = out["edge_index"]
+        #     edge_weight = out["distances"]
+        #     rel_pos = out["distance_vec"]
+        #     edge_attr = self.distance_expansion(edge_weight)
+        # else:
+        #     edge_index = radius_graph(
+        #         pos,
+        #         r=self.cutoff,
+        #         batch=batch,
+        #         max_num_neighbors=self.max_num_neighbors,
+        #     )
+        #     # edge_index = data.edge_index
+        #     rel_pos = pos[edge_index[0]] - pos[edge_index[1]]
+        #     edge_weight = rel_pos.norm(dim=-1)
+        #     edge_attr = self.distance_expansion(edge_weight)
+        #     if self.dropout_edge > 0:
+        #         edge_index, edge_mask = dropout_edge(
+        #             edge_index,
+        #             p=self.dropout_edge,
+        #             force_undirected=True,
+        #             training=self.training or self.deup_inference,
+        #         )
+        #         edge_weight = edge_weight[edge_mask]
+        #         edge_attr = edge_attr[edge_mask]
+        #         rel_pos = rel_pos[edge_mask]
 
         if q is None:
             # Embedding block
