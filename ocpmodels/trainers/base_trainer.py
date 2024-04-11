@@ -36,7 +36,7 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import get_transforms
+from ocpmodels.datasets.data_transforms import get_transforms, BaseTrainableCanonicalisation, BaseUntrainableCanonicalisation
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -1010,7 +1010,14 @@ class BaseTrainer(ABC):
             delattr(batch_rotated, "cano_rot")
 
             g_list = batch_rotated.to_data_list()
-            cano_transform = BaseCanonicalisation(self.config["cano_args"])
+
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
+                cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
+            elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
+                cano_transform = BaseTrainableCanonicalisation(self.config["cano_args"])
+            else:
+                raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
+
             for g in g_list:
                 g = cano_transform(g)
             batch_rotated = Batch.from_data_list(g_list)
@@ -1045,7 +1052,14 @@ class BaseTrainer(ABC):
             delattr(batch_reflected, "cano_cell")
             delattr(batch_reflected, "cano_rot")
             g_list = batch_reflected.to_data_list()
-            cano_transform = BaseCanonicalisation(self.config["cano_args"])
+
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
+                cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
+            elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
+                cano_transform = BaseTrainableCanonicalisation(self.config["cano_args"])
+            else:
+                raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
+            
             for g in g_list:
                 g = cano_transform(g)
             batch_reflected = Batch.from_data_list(g_list)
