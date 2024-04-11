@@ -511,6 +511,9 @@ class SingleTrainer(BaseTrainer):
         """
         # Apply the learnable canonicalization method
         # (default behaviour is to do nothing, if no learnable transform is picked)
+        if not torch.is_grad_enabled() and mode == "train":
+            print("\nWarning: enabling in preprocessing.\n")
+            torch.set_grad_enabled(True) 
         learnable_transform = get_learnable_transforms(self.config)
         batch_list_list = batch_list[0].to_data_list()
         for b in batch_list_list:
@@ -845,104 +848,105 @@ class SingleTrainer(BaseTrainer):
         n_batches = 0
         n_atoms = 0
 
-        for i, batch in enumerate(self.loaders[self.config["dataset"]["default_val"]]):
-            if self.sigterm:
-                return "SIGTERM"
-            if debug_batches > 0 and i == debug_batches:
-                break
+        with torch.no_grad():
+            for i, batch in enumerate(self.loaders[self.config["dataset"]["default_val"]]):
+                if self.sigterm:
+                    return "SIGTERM"
+                if debug_batches > 0 and i == debug_batches:
+                    break
 
-            n_batches += len(batch[0].natoms)
-            n_atoms += batch[0].natoms.sum()
+                n_batches += len(batch[0].natoms)
+                n_atoms += batch[0].natoms.sum()
 
-            # Compute model prediction
-            preds1 = self.model_forward(
-                # [t.detach() for t in batch], 
-                batch,
-                mode="inference"
-            )
-
-            # Compute prediction on rotated graph
-            rotated = self.rotate_graph(batch, rotation="z")
-            preds2 = self.model_forward(
-                # [t.detach() for t in rotated["batch_list"]],
-                rotated["batch_list"],
-                mode="inference"
-            )
-
-            # Difference in predictions, for energy and forces
-            energy_diff_z += torch.abs(preds1["energy"] - preds2["energy"]).sum()
-
-            if self.task_name == "s2ef":
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y).to(preds1["energy"].device)
-                ).sum()
-                forces_diff_z += torch.abs(
-                    preds1["forces"] @ rotated["rot"].to(preds1["forces"].device)
-                    - preds2["forces"]
-                ).sum()
-                assert torch.allclose(
-                    torch.abs(
-                        batch[0].force @ rotated["rot"].to(batch[0].force.device)
-                        - rotated["batch_list"][0].force
-                    ).sum(),
-                    torch.tensor([0.0]),
-                    atol=1e-05,
+                # Compute model prediction
+                preds1 = self.model_forward(
+                    # [t.detach() for t in batch], 
+                    batch,
+                    mode="inference"
                 )
-            elif self.task_name == "is2re":
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
-                ).sum()
-            else:
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y).to(preds1["energy"].device)
-                ).sum()
 
-            # Diff in positions
-            pos_diff = -1
+                # Compute prediction on rotated graph
+                rotated = self.rotate_graph(batch, rotation="z")
+                preds2 = self.model_forward(
+                    # [t.detach() for t in rotated["batch_list"]],
+                    rotated["batch_list"],
+                    mode="inference"
+                )
 
-            if hasattr(batch[0], "cano_pos"):
-                pos_diff = 0
-                # Compute total difference across frames
-                for pos1, pos2 in zip(batch[0].cano_pos, rotated["batch_list"][0].cano_pos):
-                    pos_diff += pos1 - pos2
-                # Manhattan distance of pos matrix wrt 0 matrix.
-                pos_diff_total += torch.abs(pos_diff).sum()
+                # Difference in predictions, for energy and forces
+                energy_diff_z += torch.abs(preds1["energy"] - preds2["energy"]).sum()
 
-            # Reflect graph and compute diff in prediction
-            reflected = self.reflect_graph(batch)
-            preds3 = self.model_forward(
-                # [t.detach() for t in reflected["batch_list"]], 
-                reflected["batch_list"],
-                mode="inference"
-            )
-            energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
-            if self.task_name == "s2ef":
-                forces_diff_refl += torch.abs(
-                    preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
-                    - preds3["forces"]
-                ).sum()
-                # assert torch.allclose(
-                #     torch.abs(
-                #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
-                #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
-                #     ).sum(),
-                #     torch.tensor([0.0]),   # .to(batch[0].force.device)
-                #     atol=1e-05,
-                # )
+                if self.task_name == "s2ef":
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y).to(preds1["energy"].device)
+                    ).sum()
+                    forces_diff_z += torch.abs(
+                        preds1["forces"] @ rotated["rot"].to(preds1["forces"].device)
+                        - preds2["forces"]
+                    ).sum()
+                    assert torch.allclose(
+                        torch.abs(
+                            batch[0].force @ rotated["rot"].to(batch[0].force.device)
+                            - rotated["batch_list"][0].force
+                        ).sum(),
+                        torch.tensor([0.0]),
+                        atol=1e-05,
+                    )
+                elif self.task_name == "is2re":
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
+                    ).sum()
+                else:
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y).to(preds1["energy"].device)
+                    ).sum()
 
-            # 3D Rotation and compute diff in prediction
-            rotated = self.rotate_graph(batch)
-            preds4 = self.model_forward(
-                # [t.detach() for t in rotated["batch_list"]], 
-                rotated["batch_list"],
-                mode="inference"
-            )
-            energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
-            if self.task_name == "s2ef":
-                forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
+                # Diff in positions
+                pos_diff = -1
+
+                if hasattr(batch[0], "cano_pos"):
+                    pos_diff = 0
+                    # Compute total difference across frames
+                    for pos1, pos2 in zip(batch[0].cano_pos, rotated["batch_list"][0].cano_pos):
+                        pos_diff += pos1 - pos2
+                    # Manhattan distance of pos matrix wrt 0 matrix.
+                    pos_diff_total += torch.abs(pos_diff).sum()
+
+                # Reflect graph and compute diff in prediction
+                reflected = self.reflect_graph(batch)
+                preds3 = self.model_forward(
+                    # [t.detach() for t in reflected["batch_list"]], 
+                    reflected["batch_list"],
+                    mode="inference"
+                )
+                energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
+                if self.task_name == "s2ef":
+                    forces_diff_refl += torch.abs(
+                        preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
+                        - preds3["forces"]
+                    ).sum()
+                    # assert torch.allclose(
+                    #     torch.abs(
+                    #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
+                    #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
+                    #     ).sum(),
+                    #     torch.tensor([0.0]),   # .to(batch[0].force.device)
+                    #     atol=1e-05,
+                    # )
+
+                # 3D Rotation and compute diff in prediction
+                rotated = self.rotate_graph(batch)
+                preds4 = self.model_forward(
+                    # [t.detach() for t in rotated["batch_list"]], 
+                    rotated["batch_list"],
+                    mode="inference"
+                )
+                energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
+                if self.task_name == "s2ef":
+                    forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
 
         # Aggregate the results
         energy_diff_z = energy_diff_z / n_batches
