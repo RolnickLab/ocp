@@ -42,6 +42,7 @@ from ocpmodels.common.utils import (
     get_commit_hash,
     resolve,
     save_checkpoint,
+    dict2str
 )
 from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.modules.evaluator import Evaluator
@@ -51,19 +52,6 @@ from ocpmodels.modules.exponential_moving_average import (
 from ocpmodels.modules.loss import DDPLoss, L2MAELoss
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
-
-
-def dict2str(d, level=0, spaces=4, margin=30):
-    s = ""
-    for k, v in d.items():
-        s += f"{' ' *spaces * level}{k:{margin-spaces*level}}: "
-        if not isinstance(v, dict):
-            s += str(v)
-        else:
-            s += "\n" + dict2str(v, level + 1, spaces, margin)
-        s += "\n"
-    return s
-
 
 
 @registry.register_trainer("base")
@@ -198,6 +186,7 @@ class BaseTrainer(ABC):
 
         # variables related to auxiliary_task_loss scheduling
         self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 0.0)
+        self.auxiliary_min_weight = self.config['optim'].get('auxiliary_min_weight', 0.0)
         print('self.auxiliary_task_weight:',self.auxiliary_task_weight)
         self.use_interpolate_init_relaxed_pos = self.config['optim'].get('use_interpolate_init_relaxed_pos', False)
         print('self.use_interpolate_init_relaxed_pos:',self.use_interpolate_init_relaxed_pos)

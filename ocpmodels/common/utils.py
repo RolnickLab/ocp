@@ -1928,3 +1928,15 @@ def scatter_det(*args, **kwargs):
         torch.use_deterministic_algorithms(mode=False)
 
     return out
+
+def dict2str(d, level=0, spaces=4, margin=30):
+    s = ""
+    for k, v in d.items():
+        s += f"{' ' *spaces * level}{k:{margin-spaces*level}}: "
+        if not isinstance(v, dict):
+            s += str(v)
+        else:
+            s += "\n" + dict2str(v, level + 1, spaces, margin)
+        s += "\n"
+    return s
+

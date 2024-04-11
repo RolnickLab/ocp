@@ -10,7 +10,11 @@ default:
     labels:
       - relaxed energy
   optim:
-    optimizer: AdamW
+    optimizer: Adam
+    loss_position: "mse"
+    auxiliary_task_weight: 15
+    auxiliary_min_weight: 1
+    use_interpolate_init_relaxed_pos: True
   normalizer: null
   model:
     otf_graph: False

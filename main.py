@@ -27,6 +27,7 @@ from ocpmodels.common.utils import (
     setup_logging,
     update_from_sbatch_py_vars,
     set_min_hidden_channels,
+    dict2str
 )
 from ocpmodels.common.orion_utils import (
     continue_orion_exp,
@@ -34,7 +35,6 @@ from ocpmodels.common.orion_utils import (
     sample_orion_hparams,
 )
 from ocpmodels.trainers import BaseTrainer
-from utils import dict2str
 
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 torch.multiprocessing.set_sharing_strategy("file_system")

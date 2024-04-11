@@ -23,7 +23,7 @@ from ocpmodels.common import dist_utils
 from ocpmodels.common.registry import registry
 from ocpmodels.common.relaxation.ml_relaxation import ml_relax
 from ocpmodels.common.timer import Times
-from ocpmodels.common.utils import OCP_AND_DEUP_TASKS, check_traj_files
+from ocpmodels.common.utils import OCP_AND_DEUP_TASKS, check_traj_files, dict2str
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.trainers.base_trainer import BaseTrainer
@@ -349,7 +349,7 @@ class SingleTrainer(BaseTrainer):
                     k: self.scaler.scale(v) if self.scaler else v
                     for k, v in loss.items()
                 }
-
+                print("loss",dict2str(loss))
                 if torch.isnan(loss["total_loss"]):
                     print("\n\n >>> 🛑 Loss is NaN. Stopping training.\n\n")
                     self.logger.add_tags(["nan_loss"])
@@ -374,8 +374,8 @@ class SingleTrainer(BaseTrainer):
                     metrics={},
                 )
                 scale = self.scaler.get_scale() if self.scaler else 1.0
-                print("i_for_epoch:",i_for_epoch)
-                print("i_for_epoch % log_train_every == 0:",i_for_epoch % log_train_every == 0)
+                # print("i_for_epoch:",i_for_epoch)
+                # print("i_for_epoch % log_train_every == 0:",i_for_epoch % log_train_every == 0)
                 if i_for_epoch % log_train_every == 0:
                     for k, v in loss.items():
                         self.metrics = self.evaluator.update(
@@ -879,7 +879,7 @@ class SingleTrainer(BaseTrainer):
     def _compute_auxiliary_task_weight(self):
         # linearly decay self.auxiliary_task_weight to 1 
         # throughout the whole training procedure
-        _min_weight = 1
+        _min_weight = self.auxiliary_min_weight
         weight = self.auxiliary_task_weight
         weight_range = max(0.0, weight - _min_weight)
         weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.total_steps))
