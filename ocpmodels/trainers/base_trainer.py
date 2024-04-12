@@ -707,7 +707,7 @@ class BaseTrainer(ABC):
                 # Forward.
                 with torch.cuda.amp.autocast(enabled=self.scaler is not None):
                     with times.next("val_forward", ignore=not is_first):
-                        preds = self.model_forward(batch)
+                        preds = self.model_forward(batch, "inference")
                     loss = self.compute_loss(preds, batch)
 
                 # Compute metrics.
