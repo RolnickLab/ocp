@@ -12,6 +12,9 @@ from ocpmodels.preprocessing.graph_rewiring import (
 import ocpmodels.preprocessing.untrained_cano as untrained_cano
 import ocpmodels.preprocessing.trained_cano as trained_cano
 
+from ocpmodels.preprocessing.vn_pointcloud import VNSmall
+
+
 class Transform:
     def __call__(self, data):
         raise NotImplementedError
@@ -99,6 +102,10 @@ class UntrainedCanonicalisation():
             "DA",
         }
 
+        self.cano_model = VNSmall()
+        for param in self.cano_model.parameters():
+            param.requires_grad = False
+
         if self.cano_type:
             if self.cano_type == "2D":
                 self.cano_func = untrained_cano.cano_fct_2D
@@ -116,6 +123,7 @@ class UntrainedCanonicalisation():
             return self.cano_func(data, self.cano_method)
         else:
             data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
+                self.cano_model,
                 data.pos, 
                 data.cell if hasattr(data, "cell") else None, 
                 self.cano_method, 
@@ -150,6 +158,8 @@ class TrainedCanonicalisation():
             "DA",
         }
 
+        self.cano_model = VNSmall()
+
         if self.cano_type:
             if self.cano_type == "2D":
                 self.cano_func = trained_cano.cano_fct_2D
@@ -167,6 +177,7 @@ class TrainedCanonicalisation():
             return self.cano_func(data, self.cano_method)
         else:
             data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
+                self.cano_model,
                 data.pos, 
                 data.cell if hasattr(data, "cell") else None, 
                 self.cano_method, 

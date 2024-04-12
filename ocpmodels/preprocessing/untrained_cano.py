@@ -27,7 +27,7 @@ def modified_gram_schmidt(vectors): # From Kaba et al. 2023
     return torch.stack([v1, v2, v3], dim=1)
 
 
-def cano_fct_3D(pos, cell, cano_method, edges=None):
+def cano_fct_3D(vn_model, pos, cell, cano_method, edges=None):
     """Computes new positions for the graph atoms using PCA
 
     Args:
@@ -47,20 +47,7 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
     vn_cell = deepcopy(cell)
     vn_pos = deepcopy(pos)
 
-    # vn_model = VNShallowNet(
-    #     in_dim=1, # Only positions
-    #     out_dim=4, # rotation (3) + translation (1)
-    # )
-    # if edges is None: # Compute k-nearest neighbors graph
-    #     k = 2  # Number of neighbors
-    #     pos_tensor = vn_pos.clone().detach()
-    #     edges = knn_graph(pos_tensor, k, batch=None, loop=False)
-    # edges = torch.tensor([])
-
-    vn_model = VNSmall()
-    with torch.no_grad(): 
-        vn_rot = vn_model(vn_pos)
-
+    vn_rot = vn_model(vn_pos)
     vn_rot = modified_gram_schmidt(vn_rot)
 
     vn_cell = vn_cell @ vn_rot
@@ -70,7 +57,7 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
 
 
 
-def cano_fct_2D(pos, cell, cano_method, edges=None):
+def cano_fct_2D(vn_model, pos, cell, cano_method, edges=None):
     """Computes new positions for the graph atoms,
     based on a frame averaging building on PCA.
 

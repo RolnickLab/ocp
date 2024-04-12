@@ -27,7 +27,7 @@ def modified_gram_schmidt(vectors): # From Kaba et al. 2023
     return torch.stack([v1, v2, v3], dim=1)
 
 
-def cano_fct_3D(pos, cell, cano_method, edges=None):
+def cano_fct_3D(vn_model, pos, cell, cano_method, edges=None):
     """Computes new positions for the graph atoms using PCA
 
     Args:
@@ -47,8 +47,6 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
     vn_cell = deepcopy(cell)
     vn_pos = deepcopy(pos)
 
-    vn_model = VNSmall()
-
     vn_rot = vn_model(vn_pos)
     vn_rot = modified_gram_schmidt(vn_rot)
 
@@ -58,7 +56,7 @@ def cano_fct_3D(pos, cell, cano_method, edges=None):
     return [vn_pos.squeeze()], [vn_cell], [vn_rot]
 
 
-def cano_fct_2D(pos, cell, cano_method, edges=None):
+def cano_fct_2D(vn_model, pos, cell, cano_method, edges=None):
     """Computes new positions for the graph atoms,
     based on a frame averaging building on PCA.
 
