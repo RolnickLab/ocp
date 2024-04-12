@@ -12,6 +12,7 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -26,7 +27,9 @@ from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import OCP_AND_DEUP_TASKS, check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
+from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.trainers.base_trainer import BaseTrainer
+from ocpmodels.common.scaling.util import ensure_fitted
 
 is_test_env = os.environ.get("ocp_test_env", False)
 
@@ -53,8 +56,12 @@ class SingleTrainer(BaseTrainer):
         # force_trainer:
 
         if "relax_dataset" in self.config["task"]:
+            transform = get_transforms(self.config)  # TODO: train/val/test behavior
             self.relax_dataset = registry.get_dataset_class("lmdb")(
-                self.config["task"]["relax_dataset"]
+                self.config["task"]["relax_dataset"],
+                transform=transform,
+                adsorbates=self.config.get("adsorbates"),
+                adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
             )
             self.relax_sampler = self.get_sampler(
                 self.relax_dataset,
@@ -583,11 +590,15 @@ class SingleTrainer(BaseTrainer):
         # Energy loss
         energy_target = torch.cat(
             [
-                batch.y_relaxed.to(self.device)
-                if self.task_name == "is2re"
-                else batch.deup_loss.to(self.device)
-                if self.task_name == "deup_is2re"
-                else batch.y.to(self.device)
+                (
+                    batch.y_relaxed.to(self.device)
+                    if self.task_name == "is2re"
+                    else (
+                        batch.deup_loss.to(self.device)
+                        if self.task_name == "deup_is2re"
+                        else batch.y.to(self.device)
+                    )
+                )
                 for batch in batch_list
             ],
             dim=0,
@@ -700,11 +711,15 @@ class SingleTrainer(BaseTrainer):
         target = {
             "energy": torch.cat(
                 [
-                    batch.y_relaxed.to(self.device)
-                    if self.task_name == "is2re"
-                    else batch.deup_loss.to(self.device)
-                    if self.task_name == "deup_is2re"
-                    else batch.y.to(self.device)
+                    (
+                        batch.y_relaxed.to(self.device)
+                        if self.task_name == "is2re"
+                        else (
+                            batch.deup_loss.to(self.device)
+                            if self.task_name == "deup_is2re"
+                            else batch.y.to(self.device)
+                        )
+                    )
                     for batch in batch_list
                 ],
                 dim=0,
@@ -947,27 +962,33 @@ class SingleTrainer(BaseTrainer):
         return symmetry
 
     def run_relaxations(self, split="val"):
-        assert self.task_name == "s2ef"
+        ensure_fitted(self._unwrapped_model)
+
+        # When set to true, uses deterministic CUDA scatter ops, if available.
+        # https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html#torch.use_deterministic_algorithms
+        # Only implemented for GemNet-OC currently.
+        registry.register(
+            "set_deterministic_scatter",
+            self.config["task"].get("set_deterministic_scatter", False),
+        )
+
         logging.info("Running ML-relaxations")
         self.model.eval()
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
 
-        evaluator_is2rs = Evaluator(
-            task="is2rs",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
-        evaluator_is2re = Evaluator(
-            task="is2re",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
+        evaluator_is2rs, metrics_is2rs = Evaluator(task="is2rs"), {}
+        evaluator_is2re, metrics_is2re = Evaluator(task="is2re"), {}
 
-        metrics_is2rs = {}
-        metrics_is2re = {}
-
-        if hasattr(self.relax_dataset[0], "pos_relaxed") and hasattr(
-            self.relax_dataset[0], "y_relaxed"
+        # Need both `pos_relaxed` and `y_relaxed` to compute val IS2R* metrics.
+        # Else just generate predictions.
+        if (
+            hasattr(self.relax_dataset[0], "pos_relaxed")
+            and self.relax_dataset[0].pos_relaxed is not None
+        ) and (
+            hasattr(self.relax_dataset[0], "y_relaxed")
+            and self.relax_dataset[0].y_relaxed is not None
         ):
             split = "val"
         else:
@@ -995,6 +1016,7 @@ class SingleTrainer(BaseTrainer):
                 steps=self.config["task"].get("relaxation_steps", 200),
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
+                save_full_traj=self.config["task"].get("save_full_traj", True),
                 device=self.device,
                 transform=None,
             )
@@ -1049,6 +1071,8 @@ class SingleTrainer(BaseTrainer):
             pos_filename = os.path.join(
                 self.config["results_dir"], f"relaxed_pos_{rank}.npz"
             )
+            if not os.path.exists(pos_filename):
+                os.makedirs(Path(pos_filename).parent, exist_ok=True)
             np.savez_compressed(
                 pos_filename,
                 ids=ids,
@@ -1080,7 +1104,7 @@ class SingleTrainer(BaseTrainer):
                 _, idx = np.unique(gather_results["ids"], return_index=True)
                 gather_results["ids"] = np.array(gather_results["ids"])[idx]
                 gather_results["pos"] = np.concatenate(
-                    np.array(gather_results["pos"])[idx]
+                    np.array(gather_results["pos"], dtype=object)[idx]
                 )
                 gather_results["chunk_idx"] = np.cumsum(
                     np.array(gather_results["chunk_idx"])[idx]
@@ -1127,3 +1151,5 @@ class SingleTrainer(BaseTrainer):
 
         if self.ema:
             self.ema.restore()
+
+        registry.unregister("set_deterministic_scatter")

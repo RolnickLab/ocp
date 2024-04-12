@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
 import datetime
 import errno
 import logging
@@ -96,13 +97,13 @@ class BaseTrainer(ABC):
         )
         self.config["commit"] = self.config.get("commit", get_commit_hash())
 
-        if self.is_debug:
-            del self.config["checkpoint_dir"]
-            del self.config["results_dir"]
-            del self.config["logdir"]
-            del self.config["logs_dir"]
-            del self.config["run_dir"]
-            del self.config["early_stopping_file"]
+        # if self.is_debug:
+        #     del self.config["checkpoint_dir"]
+        #     del self.config["results_dir"]
+        #     del self.config["logdir"]
+        #     del self.config["logs_dir"]
+        #     del self.config["run_dir"]
+        #     del self.config["early_stopping_file"]
 
         if torch.cuda.is_available() and not self.cpu:
             self.device = torch.device("cuda:0")
@@ -580,6 +581,13 @@ class BaseTrainer(ABC):
         else:
             self.ema = None
 
+    @property
+    def _unwrapped_model(self):
+        module = self.model
+        while isinstance(module, DistributedDataParallel):
+            module = module.module
+        return module
+
     def save(
         self,
         metrics=None,
@@ -593,9 +601,11 @@ class BaseTrainer(ABC):
                     "step": self.step,
                     "state_dict": self.model.state_dict(),
                     "optimizer": self.optimizer.state_dict(),
-                    "scheduler": self.scheduler.scheduler.state_dict()
-                    if self.scheduler.scheduler_type != "Null"
-                    else None,
+                    "scheduler": (
+                        self.scheduler.scheduler.state_dict()
+                        if self.scheduler.scheduler_type != "Null"
+                        else None
+                    ),
                     "normalizers": {
                         key: value.state_dict()
                         for key, value in self.normalizers.items()
@@ -606,9 +616,9 @@ class BaseTrainer(ABC):
                     "amp": self.scaler.state_dict() if self.scaler else None,
                 }
                 if self.scheduler.warmup_scheduler is not None:
-                    ckpt_dict[
-                        "warmup_scheduler"
-                    ] = self.scheduler.warmup_scheduler.state_dict()
+                    ckpt_dict["warmup_scheduler"] = (
+                        self.scheduler.warmup_scheduler.state_dict()
+                    )
 
                 save_checkpoint(
                     ckpt_dict,
