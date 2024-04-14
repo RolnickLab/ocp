@@ -36,7 +36,7 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import get_transforms, BaseTrainableCanonicalisation, BaseUntrainableCanonicalisation
+from ocpmodels.datasets.data_transforms import get_transforms, get_learnable_model, BaseTrainableCanonicalisation, BaseUntrainableCanonicalisation
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -392,20 +392,38 @@ class BaseTrainer(ABC):
             **self.config["model"],
         }
 
+        if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+            self.cano_model = get_learnable_model(
+                self.config['cano_args']['cano_method'],
+            ).to(self.device)
+        else:
+            self.cano_model = None
+
         self.model = registry.get_model_class(self.config["model_name"])(
             **model_config
         ).to(self.device)
         self.model.reset_parameters()
         self.model.set_deup_inference(False)
 
+        total_num_params = self.model.num_params
+        if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+            total_num_params += sum(p.numel() for p in self.cano_model.parameters())
+
         if dist_utils.is_master() and not self.silent:
             logging.info(
                 f"Loaded {self.model.__class__.__name__} with "
-                f"{self.model.num_params} parameters."
+                f"{total_num_params} parameters."
             )
 
         # if self.logger is not None:
         #     self.logger.watch(self.model)
+
+        # if self.config['cano_args']['equivariance_module'] == 'trained_cano':        
+        #     self.cano_model = OCPDataParallel(
+        #         self.cano_model,
+        #         output_device=self.device,
+        #         num_gpus=1 if not self.cpu else 0,
+        #     )
 
         self.model = OCPDataParallel(
             self.model,
@@ -413,6 +431,10 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if dist_utils.initialized():
+            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                self.cano_model = DistributedDataParallel(
+                    self.cano_model, device_ids=[self.device], output_device=self.device
+                )
             self.model = DistributedDataParallel(
                 self.model, device_ids=[self.device], output_device=self.device
             )
@@ -534,9 +556,24 @@ class BaseTrainer(ABC):
                     else:
                         params_decay += [param]
 
+            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                for name, param in self.cano_model.named_parameters():
+                    if param.requires_grad:
+                        if "embedding" in name:
+                            params_no_decay += [param]
+                        elif "frequencies" in name:
+                            params_no_decay += [param]
+                        elif "bias" in name:
+                            params_no_decay += [param]
+                        else:
+                            params_decay += [param]
+
             self.optimizer = optimizer(
                 [
-                    {"params": params_no_decay, "weight_decay": 0},
+                    {
+                        "params": params_no_decay, 
+                        "weight_decay": 0
+                    },
                     {
                         "params": params_decay,
                         "weight_decay": self.config["optim"]["weight_decay"],
@@ -546,8 +583,14 @@ class BaseTrainer(ABC):
                 **self.config["optim"].get("optimizer_params", {}),
             )
         else:
+            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                combined_params = \
+                    list(self.model.parameters()) + list(self.cano_model.parameters())
+            else:
+                combined_params = self.model.parameters()
+
             self.optimizer = optimizer(
-                params=self.model.parameters(),
+                params=combined_params,
                 lr=self.config["optim"]["lr_initial"],
                 **self.config["optim"].get("optimizer_params", {}),
             )

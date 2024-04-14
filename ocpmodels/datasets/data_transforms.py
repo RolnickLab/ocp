@@ -61,12 +61,12 @@ class BaseTrainableCanonicalisation(Transform):
         equivariance_module: which equivariance module to use, can be "trained_cano"
         cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
     """
-    def __init__(self, cano_args=None):
+    def __init__(self, cano_model, cano_args=None):
         self.equivariance_module = cano_args.get("equivariance_module", "fa")
         self.cano_type = cano_args.get("cano_type", "")
 
         if self.equivariance_module == "trained_cano":
-            self.equivariance_module = TrainedCanonicalisation(**cano_args)
+            self.equivariance_module = TrainedCanonicalisation(cano_model, **cano_args)
         else: # No trainable canonicalisation used
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
@@ -102,7 +102,8 @@ class UntrainedCanonicalisation():
             "DA",
         }
 
-        self.cano_model = VNSmall()
+        self.cano_model = get_learnable_model(cano_method)
+
         for param in self.cano_model.parameters():
             param.requires_grad = False
 
@@ -145,7 +146,7 @@ class TrainedCanonicalisation():
         (data.Data): updated data object with new positions (+ unit cell) attributes
         and the rotation matrices used for the frame averaging transform.
     """
-    def __init__(self, cano_type=None, cano_method=None, **kwargs):
+    def __init__(self, cano_model, cano_type=None, cano_method=None, **kwargs):
         self.cano_method = (
             "default" if (cano_method is None or cano_method == "") else cano_method
         )
@@ -158,7 +159,7 @@ class TrainedCanonicalisation():
             "DA",
         }
 
-        self.cano_model = VNSmall()
+        self.cano_model = cano_model
 
         if self.cano_type:
             if self.cano_type == "2D":
@@ -317,6 +318,9 @@ class AddAttributes:
         return data
 
 
+def get_learnable_model(cano_method):
+    return VNSmall()
+
 # Both will be called, but in different places
 def get_transforms(trainer_config):
     transforms = [
@@ -326,8 +330,8 @@ def get_transforms(trainer_config):
     ]
     return Compose(transforms)
 
-def get_learnable_transforms(trainer_config):
+def get_learnable_transforms(cano_model, trainer_config):
     transforms = [
-        BaseTrainableCanonicalisation(trainer_config["cano_args"]),
+        BaseTrainableCanonicalisation(cano_model, trainer_config["cano_args"]),
     ]
     return Compose(transforms)

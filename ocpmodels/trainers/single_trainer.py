@@ -514,14 +514,11 @@ class SingleTrainer(BaseTrainer):
         if not torch.is_grad_enabled() and mode == "train":
             print("\nWarning: enabling in preprocessing.\n")
             torch.set_grad_enabled(True) 
-        learnable_transform = get_learnable_transforms(self.config)
+        learnable_transform = get_learnable_transforms(self.cano_model, self.config)
         batch_list_list = batch_list[0].to_data_list()
         for b in batch_list_list:
-            b = learnable_transform(b)
+            b = learnable_transform(b.to(self.device))
         batch_list[0] = Batch.from_data_list(batch_list_list)
-        # batch_list[0].cano_pos = batch_list[0].cano_pos[0]
-        # batch_list[0].cano_cell = batch_list[0].cano_cell[0]
-        # batch_list[0].cano_rot = batch_list[0].cano_rot[0]
 
         # Canonicalisation case.
         if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
@@ -552,7 +549,6 @@ class SingleTrainer(BaseTrainer):
 
                 if preds.get("forces") is not None:
                     # Transform forces to guarantee equivariance of canonicalisation method
-                    # breakpoint()
                     cano_rot = torch.repeat_interleave(
                         batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
