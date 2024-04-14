@@ -20,7 +20,6 @@ def modified_gram_schmidt(vectors): # From Kaba et al. 2023
     # if any of the vectors are nan
     # This is due to the fact that the vectors are not linearly independent
     if torch.isnan(v1).any() or torch.isnan(v2).any() or torch.isnan(v3).any():
-        # breakpoint()
         vectors = vectors + 1e-8 * torch.randn_like(vectors)
         return modified_gram_schmidt(vectors)
 
