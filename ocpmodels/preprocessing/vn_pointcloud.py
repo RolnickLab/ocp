@@ -168,7 +168,7 @@ class VNSmall(torch.nn.Module):
         out = self.bn1(self.conv1(out))
         out = self.conv2(out)
         out = self.dropout(out)
-
+        
         return out.mean(dim=-1)[:, :3]
 
 

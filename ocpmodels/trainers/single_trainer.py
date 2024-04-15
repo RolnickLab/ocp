@@ -851,11 +851,6 @@ class SingleTrainer(BaseTrainer):
                 if debug_batches > 0 and i == debug_batches:
                     break
                 
-                # batch_l = batch[0].to_data_list()
-                # for b in batch:
-                #     b.to(self.device)
-                # batch[0] = Batch.from_data_list(batch_l)
-
                 n_batches += len(batch[0].natoms)
                 n_atoms += batch[0].natoms.sum()
 
