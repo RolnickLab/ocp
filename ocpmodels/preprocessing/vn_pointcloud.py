@@ -136,7 +136,7 @@ class VNSmall(torch.nn.Module):
         if self.pooling == "max":
             self.pool = VNMaxPool(64 // 3)
         elif self.pooling == "mean":
-            self.pool = mean_pool  # type: ignore
+            self.pool = mean_pool
         else:
             raise ValueError(f"Pooling type {self.pooling} not supported")
 
