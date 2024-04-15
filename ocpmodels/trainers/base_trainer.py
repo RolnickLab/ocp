@@ -1057,12 +1057,17 @@ class BaseTrainer(ABC):
             if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
             elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
-                cano_transform = BaseTrainableCanonicalisation(self.config["cano_args"])
+                cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
             else:
                 raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
 
-            for g in g_list:
-                g = cano_transform(g)
+            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                for g in g_list:
+                    g = cano_transform(g.to(self.device))
+            else: 
+                for g in g_list:
+                    g = cano_transform(g.to('cpu'))
+
             batch_rotated = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
                 batch_rotated.neighbors = batch.neighbors
@@ -1099,12 +1104,17 @@ class BaseTrainer(ABC):
             if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
             elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
-                cano_transform = BaseTrainableCanonicalisation(self.config["cano_args"])
+                cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
             else:
                 raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
             
-            for g in g_list:
-                g = cano_transform(g)
+            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                for g in g_list:
+                    g = cano_transform(g.to(self.device))
+            else: 
+                for g in g_list:
+                    g = cano_transform(g.to('cpu'))
+
             batch_reflected = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
                 batch_reflected.neighbors = batch.neighbors
