@@ -214,9 +214,10 @@ class LmdbDataset(Dataset):
         data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
         if el_id:
             data_object.id = el_id
-
+        
         t1 = time.time_ns()
         if self.transform is not None:
+            print(f"transforming data object of idx {idx} with self.transform={self.transform}")
             data_object = self.transform(data_object)
         t2 = time.time_ns()
 
@@ -284,7 +285,6 @@ class NoisyLmdbDataset(LmdbDataset):
             silent=silent,
             **kwargs  # Pass additional arguments to parent class constructor
         )
-        self.fixed_noised_done = False
         self.nn_config=self.config.get("noisy_nodes")
         if isinstance(self.nn_config, dict):
             self.interpolate_threshold=self.nn_config["interpolate_threshold"]
@@ -296,37 +296,39 @@ class NoisyLmdbDataset(LmdbDataset):
     def noise_graph(self, graph, idx):
         # Except for train set, nn_config is None, so return graph, i.e. no noising
         if not isinstance(self.nn_config, dict): return graph
-
-        # Add new attribute to the graph
-        graph.original_pos = graph.pos.clone()
         
         # Assert the correctness of the configuration
         assert self.nn_config.get("type") in ["constant", "rand", "rand_deter"], \
             f"Unknown noisy node type in {self.nn_config}"
-        # assert isinstance(nn_config.get("value"), float), \
-            # f"Unknown noisy node value in {nn_config}"
 
         if self.nn_config["type"] == "constant":
             # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
-            if not self.fixed_noised_done:
+            if not hasattr(graph, 'fixed_noise_done'):
+                graph.fixed_noise_done = False
+            if not graph.fixed_noise_done:
+                print("constant type noise and noising the graph")
                 self.interpolate_init_relaxed_pos(graph)
-                self.fixed_noised_done=True
+                graph.fixed_noise_done = True
 
         elif self.nn_config["type"] == "rand":
-            # graph.pos = graph.pos + torch.rand_like(graph.pos) * nn_config["value"]
+            graph.pos = graph.original_pos.clone()
             self.interpolate_init_relaxed_pos(graph)
+
         elif self.nn_config["type"] == "rand_deter":
             graph.pos = graph.pos + (1 / torch.log(idx + 2))
 
         return graph
     
     def __getitem__(self, idx):
-        # call __getitem__ function of parent LmdbDataset class
         graph_data = super().__getitem__(idx)
-        # return noised version
+        # store original position at first retrieval of each graph
+        if not hasattr(graph_data, 'original_pos'):
+            graph_data.original_pos = graph_data.pos.clone()
+        
         return self.noise_graph(graph_data, idx)
     
     def interpolate_init_relaxed_pos(self, graph):
+        print("graph.pos.device:",graph.pos.device)
         threshold_tensor = torch.rand((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
         threshold_tensor = threshold_tensor + (1 - self.interpolate_threshold)
         threshold_tensor = threshold_tensor.floor_()  # 1: has interpolation, 0: no interpolation
@@ -343,6 +345,7 @@ class NoisyLmdbDataset(LmdbDataset):
 
         tags = graph.tags
         tags = (tags > 0)
+        print("tags:",tags)
         pos = graph.pos.clone()
         pos_relaxed = graph.pos_relaxed.clone()
         pos_interpolated = pos * interpolate_factor + pos_relaxed * (1 - interpolate_factor)
