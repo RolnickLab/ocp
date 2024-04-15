@@ -110,7 +110,7 @@ class UntrainedCanonicalisation():
 
         if self.cano_type:
             if self.cano_type == "2D":
-                self.cano_func = untrained_cano.cano_fct_2D
+                self.cano_func = untrained_cano.cano_fct_3D # To be changed if 2D becomes implemented
             elif self.cano_type == "3D":
                 self.cano_func = untrained_cano.cano_fct_3D
             elif self.cano_type == "DA":
@@ -164,7 +164,7 @@ class TrainedCanonicalisation():
 
         if self.cano_type:
             if self.cano_type == "2D":
-                self.cano_func = trained_cano.cano_fct_2D
+                self.cano_func = trained_cano.cano_fct_3D # To be changed if 2D becomes implemented
             elif self.cano_type == "3D":
                 self.cano_func = trained_cano.cano_fct_3D
             elif self.cano_type == "DA":
