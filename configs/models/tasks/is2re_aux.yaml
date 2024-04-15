@@ -14,6 +14,7 @@ default:
     loss_position: "mse"
     auxiliary_task_weight: 15
     auxiliary_min_weight: 1
+    auxiliary_decay: True # if False, constant auxiliary task weight
     use_interpolate_init_relaxed_pos: True
   normalizer: null
   model:

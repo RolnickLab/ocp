@@ -349,7 +349,7 @@ class SingleTrainer(BaseTrainer):
                     k: self.scaler.scale(v) if self.scaler else v
                     for k, v in loss.items()
                 }
-                print("loss",dict2str(loss))
+                # print("loss",dict2str(loss))
                 if torch.isnan(loss["total_loss"]):
                     print("\n\n >>> 🛑 Loss is NaN. Stopping training.\n\n")
                     self.logger.add_tags(["nan_loss"])
@@ -384,6 +384,7 @@ class SingleTrainer(BaseTrainer):
 
                     # Log metrics.
                     self.metrics["current_auxiliary_task_weight"] = {"metric": self.current_auxiliary_task_weight}
+                    self.metrics["energy_coefficient"] = {"metric": self.energy_coefficient}
 
                     gbm, gbs = timer.prepare_for_logging()
                     self.metrics["get_batch_time_mean"] = {"metric": gbm["get_batch"]}
@@ -442,27 +443,28 @@ class SingleTrainer(BaseTrainer):
                             checkpoint_file="best_checkpoint.pt",
                             training_state=False,
                         )
-                    if (
-                        self.early_stopper.should_stop(
-                            current_val_metric, self.scheduler.get_lr(), self.epoch
-                        )
-                        or self.early_stopping_file.exists()
-                    ):
-                        if self.early_stopping_file.exists():
-                            print("\n\n >>> 🛑 Early stopping file found.\n\n")
-                            now = self.now.replace(" ", "_").replace(":", "-")
-                            self.early_stopping_file.rename(
-                                self.early_stopping_file.parent
-                                / f"{self.early_stopping_file.stem}_{now}.stopped"
+                    if self.early_stop:
+                        if (
+                            self.early_stopper.should_stop(
+                                current_val_metric, self.scheduler.get_lr(), self.epoch
                             )
-                        else:
-                            print(f"\n\n >>> 🛑 {self.early_stopper.reason}\n\n")
+                            or self.early_stopping_file.exists()
+                        ):
+                            if self.early_stopping_file.exists():
+                                print("\n\n >>> 🛑 Early stopping file found.\n\n")
+                                now = self.now.replace(" ", "_").replace(":", "-")
+                                self.early_stopping_file.rename(
+                                    self.early_stopping_file.parent
+                                    / f"{self.early_stopping_file.stem}_{now}.stopped"
+                                )
+                            else:
+                                print(f"\n\n >>> 🛑 {self.early_stopper.reason}\n\n")
 
-                        if self.logger:
-                            self.logger.add_tags(["E-S"])
-                        return self.end_of_training(
-                            epoch_int, debug_batches, model_run_time, epoch_times
-                        )
+                            if self.logger:
+                                self.logger.add_tags(["E-S"])
+                            return self.end_of_training(
+                                epoch_int, debug_batches, model_run_time, epoch_times
+                            )
 
                     self.model.train()
 
@@ -659,9 +661,8 @@ class SingleTrainer(BaseTrainer):
             target_normed = self.normalizers["target"].norm(energy_target, hofs=hofs)
         else:
             target_normed = energy_target
-        energy_mult = self.config["optim"].get("energy_coefficient", 1)
         loss["energy_loss"] = self.loss_fn["energy"](preds["energy"], target_normed)
-        loss["total_loss"].append(energy_mult * loss["energy_loss"])
+        loss["total_loss"].append(self.energy_coefficient * loss["energy_loss"])
 
         # Node features auxiliary loss.
         if self.config["model"]["noisy_nodes"]:
@@ -879,11 +880,12 @@ class SingleTrainer(BaseTrainer):
     def _compute_auxiliary_task_weight(self):
         # linearly decay self.auxiliary_task_weight to 1 
         # throughout the whole training procedure
-        _min_weight = self.auxiliary_min_weight
-        weight = self.auxiliary_task_weight
-        weight_range = max(0.0, weight - _min_weight)
-        weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.total_steps))
-        self.current_auxiliary_task_weight = weight
+        if self.auxiliary_decay:
+            _min_weight = self.auxiliary_min_weight
+            weight = self.auxiliary_task_weight
+            weight_range = max(0.0, weight - _min_weight)
+            weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.total_steps))
+            self.current_auxiliary_task_weight = weight
         return
 
     @torch.no_grad()

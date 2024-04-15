@@ -98,6 +98,7 @@ class BaseTrainer(ABC):
             warmup_epochs=self.config["optim"].get("es_warmup_epochs") or -1,
         )
         self.config["commit"] = self.config.get("commit", get_commit_hash())
+        self.early_stop = self.config.get("early_stop", True)
 
         if self.is_debug:
             del self.config["checkpoint_dir"]
@@ -185,15 +186,17 @@ class BaseTrainer(ABC):
         )
 
         # variables related to auxiliary_task_loss scheduling
-        self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 0.0)
-        self.auxiliary_min_weight = self.config['optim'].get('auxiliary_min_weight', 0.0)
-        print('self.auxiliary_task_weight:',self.auxiliary_task_weight)
+        self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 1.0)
+        self.auxiliary_min_weight = self.config['optim'].get('auxiliary_min_weight', 0.1)
+        self.energy_coefficient = self.config['optim'].get('energy_coefficient', 1.0)
+        self.auxiliary_decay = self.config['optim'].get('auxiliary_decay', True)
+        # print('self.auxiliary_task_weight:',self.auxiliary_task_weight)
         self.use_interpolate_init_relaxed_pos = self.config['optim'].get('use_interpolate_init_relaxed_pos', False)
-        print('self.use_interpolate_init_relaxed_pos:',self.use_interpolate_init_relaxed_pos)
+        # print('self.use_interpolate_init_relaxed_pos:',self.use_interpolate_init_relaxed_pos)
         # self.constant_noise = self.config['model'].get('constant_noise', False)
         # print('self.constant_noise:',self.constant_noise)
-        if self.config["model"]["noisy_nodes"]:
-            print('config["model"]["noisy_nodes"]=True')         
+        # if self.config["model"]["noisy_nodes"]:
+            # print('config["model"]["noisy_nodes"]=True')         
         # nn_config = self.config["dataset"].get("noisy_nodes")
         # if not isinstance(nn_config, dict):
 

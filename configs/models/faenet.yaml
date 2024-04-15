@@ -109,7 +109,7 @@ is2re_aux:
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
     fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
     model:
-      num_interactions: 18
+      num_interactions: 5
       noisy_nodes: True
   # *** Important note ***
   #   The total number of gpus used for this run was 1.

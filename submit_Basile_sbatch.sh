@@ -24,4 +24,6 @@ cd /home/mila/b/basile.terver/ocp/ocp # replace: location of the code
 
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Trained Canonicalisation" --cano_args.equivariance_module=trained_cano --cano_args.cano_type=3D 
 
-python main.py --config=faenet-is2re_aux-10k --model.num_interactions=5 optim.max_epochs=50 --dataset.train.noisy_nodes.type=constant --mode=train --note='constant noise, 50 epochs'
+# python main.py --config=faenet-is2re_aux-10k --model.num_interactions=5 optim.max_epochs=50 --dataset.train.noisy_nodes.type=constant --mode=train --note='constant noise, 50 epochs'
+
+python main.py faenet-is2re_aux-all --optim.lr_initial=0.0001 --optim.scheduler=LinearWarmupCosineAnnealingLR --optim.max_epochs=50 --note='constant noise, 50 epochs, debug launch_exp'

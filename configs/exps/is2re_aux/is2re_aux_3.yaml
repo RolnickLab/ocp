@@ -33,6 +33,7 @@ runs:
   - config: faenet-is2re_aux-all
     note: "Cosine-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -40,6 +41,7 @@ runs:
   - config: faenet-is2re_aux-all
     note: "Cosine-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -47,6 +49,7 @@ runs:
   - config: faenet-is2re_aux-all
     note: "Cosine-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -54,6 +57,7 @@ runs:
   - config: faenet-is2re_aux-all
     note: "Cosine-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -62,59 +66,71 @@ runs:
   - config: faenet-is2re_aux-all
     note: "cst-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
   - config: faenet-is2re_aux-all
     note: "cst-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
   
   - config: faenet-is2re_aux-all
     note: "cst-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
   - config: faenet-is2re_aux-all
     note: "cst-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
 # Null LR
   - config: faenet-is2re_aux-all
-    note: "cst-very-low-lr"
+    note: "null-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
 
   - config: faenet-is2re_aux-all
-    note: "cst-low-lr"
+    note: "null-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
   
   - config: faenet-is2re_aux-all
-    note: "cst-med-lr"
+    note: "null-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
 
   - config: faenet-is2re_aux-all
-    note: "cst-usual-lr"
+    note: "null-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       scheduler: Null
       max_epochs: 50
@@ -123,6 +139,7 @@ runs:
   - config: faenet-is2re_aux-10k
     note: "Cosine-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -131,6 +148,7 @@ runs:
   - config: faenet-is2re_aux-10k
     note: "Cosine-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -139,6 +157,7 @@ runs:
   - config: faenet-is2re_aux-10k
     note: "Cosine-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -147,6 +166,7 @@ runs:
   - config: faenet-is2re_aux-10k
     note: "Cosine-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
       max_epochs: 50
@@ -156,59 +176,71 @@ runs:
   - config: faenet-is2re_aux-10k
     note: "cst-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
   - config: faenet-is2re_aux-10k
     note: "cst-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
   
   - config: faenet-is2re_aux-10k
     note: "cst-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
   - config: faenet-is2re_aux-10k
     note: "cst-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       max_epochs: 50
       energy_coefficient: 0.0
+      scheduler: None
 
 # Null LR
   - config: faenet-is2re_aux-10k
-    note: "cst-very-low-lr"
+    note: "null-very-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0001
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
 
   - config: faenet-is2re_aux-10k
-    note: "cst-low-lr"
+    note: "null-low-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.0005
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
   
   - config: faenet-is2re_aux-10k
-    note: "cst-med-lr"
+    note: "null-med-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.001
       scheduler: Null
       max_epochs: 50
       energy_coefficient: 0.0
 
   - config: faenet-is2re_aux-10k
-    note: "cst-usual-lr"
+    note: "null-usual-lr"
     optim:
+      auxiliary_decay: False
       lr_initial: 0.002
       scheduler: Null
       max_epochs: 50
