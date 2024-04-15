@@ -13,6 +13,7 @@ import ocpmodels.preprocessing.untrained_cano as untrained_cano
 import ocpmodels.preprocessing.trained_cano as trained_cano
 
 from ocpmodels.preprocessing.vn_pointcloud import VNSmall
+from ocpmodels.preprocessing.vn_dgcnn import VN_dgcnn
 
 
 class Transform:
@@ -319,7 +320,12 @@ class AddAttributes:
 
 
 def get_learnable_model(cano_method):
-    return VNSmall()
+    if cano_method == "pointnet":
+        return VNSmall()
+    elif cano_method == "dgcnn":
+        return VN_dgcnn()
+    else:
+        raise ValueError(f"Unknown canonicalisation method: {cano_method}")
 
 # Both will be called, but in different places
 def get_transforms(trainer_config):
