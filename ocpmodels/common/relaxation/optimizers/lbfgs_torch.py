@@ -17,6 +17,7 @@ from torch_scatter import scatter
 
 from ocpmodels.common.relaxation.ase_utils import batch_to_atoms
 from ocpmodels.common.utils import radius_graph_pbc
+from ocpmodels.datasets.lmdb_dataset import data_list_collater
 
 
 class LBFGS:
@@ -55,7 +56,7 @@ class LBFGS:
         logging.info("Step   Fmax(eV/A)")
 
         if not self.otf_graph and "edge_index" not in batch:
-            self.model.update_graph(self.batch)
+            self.batch = self.model.update_graph(self.batch)
 
     def get_energy_and_forces(self, apply_constraint: bool = True):
         energy, forces = self.model.get_energy_and_forces(self.batch, apply_constraint)
@@ -67,7 +68,7 @@ class LBFGS:
         self.batch.pos += update.to(dtype=torch.float32)
 
         if not self.otf_graph:
-            self.model.update_graph(self.batch)
+            self.batch = self.model.update_graph(self.batch)
 
     def check_convergence(self, iteration, forces=None, energy=None):
         if forces is None or energy is None:
@@ -211,7 +212,11 @@ class TorchCalc:
         self.transform = transform
 
     def get_energy_and_forces(self, atoms, apply_constraint: bool = True):
-        predictions = self.model.predict(atoms, per_image=False, disable_tqdm=True)
+        predictions = self.model.predict(
+            atoms,
+            per_image=False,
+            disable_tqdm=True,
+        )
         energy = predictions["energy"]
         forces = predictions["forces"]
         if apply_constraint:
@@ -220,10 +225,20 @@ class TorchCalc:
         return energy, forces
 
     def update_graph(self, atoms):
-        edge_index, cell_offsets, num_neighbors = radius_graph_pbc(atoms, 6, 50)
-        atoms.edge_index = edge_index
-        atoms.cell_offsets = cell_offsets
-        atoms.neighbors = num_neighbors
-        if self.transform is not None:
-            atoms = self.transform(atoms)
+        atoms = atoms.to_data_list()
+        for a in atoms:
+            if self.transform is not None:
+                a = self.transform(a)
+            # atoms = data_list_collater([self.transform(a) for a in atoms])
+            # atoms = Batch.from_data_list([self.transform(a) for a in atoms])
+            edge_index, cell_offsets, num_neighbors = radius_graph_pbc(a, 6, 50)
+            a.edge_index = edge_index
+            a.cell_offsets = cell_offsets
+            a.neighbors = num_neighbors
+        atoms = data_list_collater(atoms)
+        # edge_index, cell_offsets, num_neighbors = radius_graph_pbc(atoms, 6, 50)
+        # atoms.edge_index = edge_index
+        # atoms.cell_offsets = cell_offsets
+        # atoms.neighbors = num_neighbors
+        torch.cuda.empty_cache()
         return atoms

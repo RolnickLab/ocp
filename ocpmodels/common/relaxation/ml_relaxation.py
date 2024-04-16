@@ -75,6 +75,7 @@ def ml_relax(
             relaxed_batches.append(relaxed_batch)
         except RuntimeError as err:
             e = err
+            print(err)
             oom = True
             torch.cuda.empty_cache()
 

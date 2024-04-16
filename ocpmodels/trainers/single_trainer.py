@@ -1010,6 +1010,10 @@ class SingleTrainer(BaseTrainer):
                 logging.info(f"Skipping batch: {batch[0].sid.tolist()}")
                 continue
 
+            transform = None
+            if self.config.get("frame_averaging", "") != "":
+                transform = self.relax_dataset.transform.transforms[-1]
+
             relaxed_batch = ml_relax(
                 batch=batch,
                 model=self,
@@ -1018,7 +1022,7 @@ class SingleTrainer(BaseTrainer):
                 relax_opt=self.config["task"]["relax_opt"],
                 save_full_traj=self.config["task"].get("save_full_traj", True),
                 device=self.device,
-                transform=None,
+                transform=transform,
             )
 
             if self.config["task"].get("write_pos", False):
