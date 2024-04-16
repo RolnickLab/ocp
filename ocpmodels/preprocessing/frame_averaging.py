@@ -23,7 +23,7 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
     """
     dim = pos.shape[1]  # to differentiate between 2D or 3D case
     plus_minus_list = list(product([1, -1], repeat=dim))
-    plus_minus_list = [torch.tensor(x) for x in plus_minus_list]
+    plus_minus_list = [torch.tensor(x, device=eigenvec.device) for x in plus_minus_list]
     all_fa_pos = []
     all_cell = []
     all_rots = []
@@ -44,7 +44,7 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
 
     if fa_method == "det" or fa_method == "se3-det":
         sum_eigenvec = torch.sum(eigenvec, axis=0)
-        plus_minus_list = [torch.where(sum_eigenvec >= 0, 1.0, -1.0)]
+        plus_minus_list = [torch.where(sum_eigenvec >= 0, 1.0, -1.0, device=pos.device)]
 
     for pm in plus_minus_list:
         # Append new graph positions to list
@@ -54,7 +54,7 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
         fa_pos = pos @ new_eigenvec
 
         if pos_3D is not None:
-            full_eigenvec = torch.eye(3)
+            full_eigenvec = torch.eye(3, device=eigenvec.device)
             fa_pos = torch.cat((fa_pos, pos_3D.unsqueeze(1)), dim=1)
             full_eigenvec[:2, :2] = new_eigenvec
             new_eigenvec = full_eigenvec
@@ -64,7 +64,9 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
 
         # Check if determinant is 1 for SE(3) case
         if se3 and not torch.allclose(
-            torch.linalg.det(new_eigenvec), torch.tensor(1.0), atol=1e-03
+            torch.linalg.det(new_eigenvec),
+            torch.tensor(1.0, device=pos.device),
+            atol=1e-03,
         ):
             continue
 
