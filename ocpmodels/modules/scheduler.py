@@ -109,8 +109,11 @@ class LRScheduler:
         self.optim_config = optim_config.copy()
         self.warmup_scheduler = None
         self.silent = silent
+
         if self.optim_config.get("scheduler"):
             self.scheduler_type = self.optim_config["scheduler"]
+        else:
+            self.scheduler_type = "LambdaLR"
 
         if self.scheduler_type == "LambdaLR":
             scheduler_lambda_fn = None
@@ -121,13 +124,9 @@ class LRScheduler:
             elif self.lambda_type == "multistep":
                 scheduler_lambda_fn = MultistepLRLambda(self.optim_config)
             else:
-                raise ValueError
-            self.optim_config["lr_lambda"] = scheduler_lambda_fn
-        else:
-            self.scheduler_type = "LambdaLR"
 
-            def scheduler_lambda_fn(x):
-                return warmup_lr_lambda(x, self.optim_config)
+                def scheduler_lambda_fn(x):
+                    return warmup_lr_lambda(x, self.optim_config)
 
             self.optim_config["lr_lambda"] = scheduler_lambda_fn
 
