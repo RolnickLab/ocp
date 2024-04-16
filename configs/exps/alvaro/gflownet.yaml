@@ -61,19 +61,83 @@ runs:
   #   note: depfaenet per-adsorbate string of a list
   #   adsorbates: "*O, *OH, *OH2, *H"
 
-  - config: depfaenet-is2re-all
-    note: final depfaenet trained on selected adsorbate, without tags
-    adsorbates: "*O, *OH, *OH2, *H"
+  # - config: depfaenet-is2re-all
+  #   note: Trained on selected adsorbate more epochs
+  #   adsorbates: "*O, *OH, *OH2, *H"
+  #   optim:
+  #     max_epochs: 10
 
-  - config: depfaenet-is2re-all
-    note: depfaenet full data
+  # - config: depfaenet-is2re-all
+  #   note: depfaenet full data
 
   # - config: depfaenet-is2re-all
   #   note: To be used for continue from dir
 
+  # - config: depfaenet-is2re-all
+  #   note: Fine-tune on per-ads-dataset 4 epoch
+  #   continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
+  #   adsorbates: "*O, *OH, *OH2, *H"
+  #   optim:
+  #     max_epochs: 4
+  #     lr_initial: 0.00015
+
+  # - config: depfaenet-is2re-all
+  #   note: Fine-tune on per-ads-dataset 10 epoch
+  #   continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
+  #   adsorbates: "*O, *OH, *OH2, *H"
+  #   optim:
+  #     max_epochs: 10
+  #     lr_initial: 0.00015
+
   - config: depfaenet-is2re-all
-    note: Fine-tune on per-ads-dataset
-    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023246
+    note: Fine-tune on per-ads-dataset 10 epoch
+    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
     adsorbates: "*O, *OH, *OH2, *H"
     optim:
-      max_epochs: 3
+      max_epochs: 20
+      lr_initial: 0.0001
+
+  - config: depfaenet-is2re-all
+    note: Fine-tune on per-ads-dataset 20 epoch
+    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 20
+      lr_initial: 0.00015
+
+  - config: depfaenet-is2re-all
+    note: Fine-tune on per-ads-dataset 15 epoch
+    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 15
+      lr_initial: 0.0002
+
+  - config: depfaenet-is2re-all
+    note: Fine-tune on per-ads-dataset 10 epoch
+    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4023244
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 10
+      lr_initial: 0.0001
+
+  - config: depfaenet-is2re-all
+    note: Fine-tune on per-ads-dataset starting from fine-tuned model
+    continue_from_dir: /network/scratch/a/alexandre.duval/ocp/runs/4071859
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 10
+      lr_initial: 0.0001
+
+  - config: depfaenet-is2re-all
+    note: Trained on selected adsorbate
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 25
+      lr_initial: 0.0001
+
+  - config: depfaenet-is2re-all
+    note: Trained on selected adsorbate
+    adsorbates: "*O, *OH, *OH2, *H"
+    optim:
+      max_epochs: 25
