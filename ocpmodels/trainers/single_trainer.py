@@ -886,7 +886,7 @@ class SingleTrainer(BaseTrainer):
                             batch[0].force @ rotated["rot"].to(batch[0].force.device)
                             - rotated["batch_list"][0].force
                         ).sum(),
-                        torch.tensor([0.0]),
+                        torch.tensor([0.0], device = batch[0].force.device),
                         atol=1e-05,
                     )
                 elif self.task_name == "is2re":
