@@ -77,3 +77,10 @@ s2ef:
   default: {}
 
   2M: {}
+
+is2re:
+  default:
+    model:
+      regress_forces: False
+
+  all: {}
