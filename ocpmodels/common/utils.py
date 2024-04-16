@@ -1083,8 +1083,19 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
         # find configs: from checkpoints first, from the dropped config file
         # otherwise
         ckpts = list(load_dir.glob("checkpoints/checkpoint-*.pt"))
-        if not ckpts and not already_ckpt:
-            print(f"💥 Could not find checkpoints in {str(load_dir)}.")
+        if (not ckpts and not already_ckpt) or (args.reload_config):
+            if args.reload_config:
+                print(
+                    "🔄 Reloading config from the specified directory (not from the model .pt file)."
+                )
+                if already_ckpt:
+                    latest_ckpt = load_dir
+                else:
+                    latest_ckpt = str(
+                        sorted(ckpts, key=lambda c: float(c.stem.split("-")[-1]))[-1]
+                    )
+            else:
+                print(f"💥 Could not find checkpoints in {str(load_dir)}.")
             configs = list(load_dir.glob("config-*.y*ml"))
             if not configs:
                 print(f"💥 Could not find configs in {str(load_dir)}.")
@@ -1103,6 +1114,7 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
             load_path = latest_ckpt
             loaded_config = torch.load(latest_ckpt, map_location="cpu")["config"]
 
+
         # config has been found. We need to prune/modify it depending on whether
         # we're restarting or continuing.
         if args.continue_from_dir:
@@ -1120,7 +1132,7 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
                 k: v for k, v in loaded_config.items() if k not in remove_keys
             }
             loaded_config["checkpoint"] = str(latest_ckpt)
-            loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
+            # loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
             loaded_config["job_id"] = JOB_ID
             loaded_config["local_rank"] = config.get("local_rank", 0)
         else:
