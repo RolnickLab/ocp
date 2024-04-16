@@ -102,6 +102,12 @@ class Flags:
             + "from the command-line",
         )
         self.parser.add_argument(
+            "--reload_config",
+            action="store_true",
+            help="Reload the config from the checkpoint",
+            default=False,
+        )
+        self.parser.add_argument(
             "--keep_orion_config",
             type=bool,
             help="If not True, any key in the continued/restarted config that contains"
@@ -196,7 +202,7 @@ class Flags:
         self.parser.add_argument(
             "--wandb_project",
             type=str,
-            default="ocp-5",
+            default="faenet++",
             help="WandB project name to use",
         )
         self.parser.add_argument(
