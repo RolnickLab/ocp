@@ -117,7 +117,7 @@ class LRScheduler:
 
         if self.scheduler_type == "LambdaLR":
             scheduler_lambda_fn = None
-            self.lambda_type = self.optim_config["lambda_type"]
+            self.lambda_type = self.optim_config.get("lambda_type", "")
 
             if self.lambda_type == "cosine":
                 scheduler_lambda_fn = CosineLRLambda(self.optim_config)
