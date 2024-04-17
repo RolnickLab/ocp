@@ -9,11 +9,9 @@ from ocpmodels.preprocessing.graph_rewiring import (
     remove_tag0_nodes,
 )
 
-import ocpmodels.preprocessing.untrained_cano as untrained_cano
 import ocpmodels.preprocessing.trained_cano as trained_cano
 
-from ocpmodels.preprocessing.vn_pointcloud import VNSmall
-from ocpmodels.preprocessing.vn_dgcnn import VN_dgcnn
+from ocpmodels.preprocessing.vn_pointcloud import VNSmall, VNPointnet, VN_dgcnn
 
 
 class Transform:
@@ -110,11 +108,11 @@ class UntrainedCanonicalisation():
 
         if self.cano_type:
             if self.cano_type == "2D":
-                self.cano_func = untrained_cano.cano_fct_3D # To be changed if 2D becomes implemented
+                self.cano_func = trained_cano.cano_fct_3D # To be changed if 2D becomes implemented
             elif self.cano_type == "3D":
-                self.cano_func = untrained_cano.cano_fct_3D
+                self.cano_func = trained_cano.cano_fct_3D
             elif self.cano_type == "DA":
-                self.cano_func = untrained_cano.data_augmentation
+                self.cano_func = trained_cano.data_augmentation
             else:
                 raise ValueError(f"Unknown frame averaging: {self.cano_type}")
 
@@ -321,9 +319,11 @@ class AddAttributes:
 
 def get_learnable_model(cano_method):
     if cano_method == "pointnet":
-        return VNSmall()
+        return VNPointnet()
     elif cano_method == "dgcnn":
         return VN_dgcnn()
+    elif cano_method == "simple":
+        return VNSmall()
     else:
         raise ValueError(f"Unknown canonicalisation method: {cano_method}")
 
