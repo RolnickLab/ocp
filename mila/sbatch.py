@@ -41,7 +41,7 @@ else
     conda activate {env}
 fi
 {wandb_offline}
-srun --gpus-per-task=1 --output={output} {python_command}
+srun --output={output} {python_command}
 """
 
 
@@ -234,9 +234,7 @@ def load_sbatch_args_from_dir(dir):
         k, v = (
             line[2:]
             if line.startswith("--")
-            else line[1:]
-            if line.startswith("-")
-            else line
+            else line[1:] if line.startswith("-") else line
         ).split("=")
         sbatch_args[k] = v
     args = {
@@ -280,9 +278,7 @@ if __name__ == "__main__":
     modules = (
         []
         if not args.modules
-        else args.modules.split(",")
-        if isinstance(args.modules, str)
-        else args.modules
+        else args.modules.split(",") if isinstance(args.modules, str) else args.modules
     )
     if args.verbose:
         args.pretty_print()
