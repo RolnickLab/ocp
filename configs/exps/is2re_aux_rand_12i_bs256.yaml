@@ -1,20 +1,20 @@
 job:
   mem: 80GB
   cpus: 4
-  gres: gpu:1
+  gres: gpu:2
   partition: long
   # time: 15:00:00
 
 default:
   mode: train
   optim:
-    batch_size: 64
-    eval_batch_size: 64
+    batch_size: 128
+    eval_batch_size: 128
     optimizer: AdamW
     auxiliary_decay: True
-    auxiliary_task_weight: 1
+    auxiliary_task_weight: 15
     energy_coefficient: 1.0
-    max_epochs: 70
+    max_epochs: 60
   cp_data_to_tmpdir: True
   normalizer: null
   model:

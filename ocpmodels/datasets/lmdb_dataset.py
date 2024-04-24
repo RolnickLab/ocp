@@ -209,16 +209,18 @@ class LmdbDataset(Dataset):
         # je peux noise les positions ici et rajouter des attributs
         # si on veut débugguer, il faut un seul worker, donc il faut utiliser
         # --no_cpus_to_workers et optim.num_workers =0.
-
+        # breakpoint()
         el_id, datapoint_pickled = self.get_pickled_from_db(idx)
         data_object = pyg2_data_transform(pickle.loads(datapoint_pickled))
         if el_id:
             data_object.id = el_id
+        # breakpoint()
         
         t1 = time.time_ns()
         if self.transform is not None:
-            print(f"transforming data object of idx {idx} with self.transform={self.transform}")
+            # print(f"transforming data object of idx {idx} with self.transform={self.transform}")
             data_object = self.transform(data_object)
+        # breakpoint()
         t2 = time.time_ns()
 
         load_time = (t1 - t0) * 1e-9  # time in s
@@ -290,7 +292,7 @@ class NoisyLmdbDataset(LmdbDataset):
             self.interpolate_threshold=self.nn_config["interpolate_threshold"]
             self.min_interpolate_factor=self.nn_config["min_interpolate_factor"]
             self.gaussian_noise_std=self.nn_config["gaussian_noise_std"]
-    
+        self.noised_indices = set() # persistent throughout epochs
         #Rajouter dans l'init que les attributs qui ne sont pas dans la config.
 
     def noise_graph(self, graph, idx):
@@ -302,16 +304,12 @@ class NoisyLmdbDataset(LmdbDataset):
             f"Unknown noisy node type in {self.nn_config}"
 
         if self.nn_config["type"] == "constant":
-            # graph.pos = graph.pos + torch.ones_like(graph.pos) * nn_config["value"]
-            if not hasattr(graph, 'fixed_noise_done'):
-                graph.fixed_noise_done = False
-            if not graph.fixed_noise_done:
-                print("constant type noise and noising the graph")
+            if idx not in self.noised_indices:
+                # print("constant type noise and noising the graph")
                 self.interpolate_init_relaxed_pos(graph)
-                graph.fixed_noise_done = True
+                self.noised_indices.add(idx)
 
         elif self.nn_config["type"] == "rand":
-            graph.pos = graph.original_pos.clone()
             self.interpolate_init_relaxed_pos(graph)
 
         elif self.nn_config["type"] == "rand_deter":
@@ -321,35 +319,39 @@ class NoisyLmdbDataset(LmdbDataset):
     
     def __getitem__(self, idx):
         graph_data = super().__getitem__(idx)
-        # store original position at first retrieval of each graph
+        # store original position at eahc retrieval
+        # each graph Data Object is lost at end of each epoch
         if not hasattr(graph_data, 'original_pos'):
             graph_data.original_pos = graph_data.pos.clone()
         
         return self.noise_graph(graph_data, idx)
     
     def interpolate_init_relaxed_pos(self, graph):
-        print("graph.pos.device:",graph.pos.device)
+        # Uncomment below prints to reproduce explore_2.ipynb
+        # print("self.interpolate_threshold:",self.interpolate_threshold)
+        # print("graph.pos.device:",graph.pos.device)
         threshold_tensor = torch.rand((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
-        threshold_tensor = threshold_tensor + (1 - self.interpolate_threshold)
+        # print("threshold_tensor:",threshold_tensor)
+        threshold_tensor = threshold_tensor + (1 - self.interpolate_threshold)#+0.5 constant tensor
+        # print("threshold_tensor:",threshold_tensor)
         threshold_tensor = threshold_tensor.floor_()  # 1: has interpolation, 0: no interpolation
+        # print("threshold_tensor:",threshold_tensor)
 
         interpolate_factor = torch.rand((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
         interpolate_factor = interpolate_factor * (1 - self.min_interpolate_factor) + self.min_interpolate_factor
-
-        noise_vec = torch.randn((graph.num_nodes, 3), dtype=graph.pos.dtype, device=graph.pos.device)
-        noise_vec_norm = noise_vec.norm(dim=1, keepdim=True)
-        noise_vec = noise_vec / (noise_vec_norm + 1e-6)
-        noise_scale = torch.randn((graph.num_nodes, 1), dtype=graph.pos.dtype, device=graph.pos.device)
-        noise_vec = noise_vec * noise_scale * self.gaussian_noise_std
-        noise_vec = noise_vec.normal_(mean=0, std=self.gaussian_noise_std)
+        # print("interpolate_factor:",interpolate_factor)
+        
+        noise_vec = torch.randn((graph.num_nodes, 3), dtype=graph.pos.dtype, device=graph.pos.device) * self.gaussian_noise_std
 
         tags = graph.tags
         tags = (tags > 0)
-        print("tags:",tags)
+        # print("tags:",tags)
         pos = graph.pos.clone()
         pos_relaxed = graph.pos_relaxed.clone()
         pos_interpolated = pos * interpolate_factor + pos_relaxed * (1 - interpolate_factor)
+        # print("pos_interpolated-pos:",pos_interpolated-pos)
         pos_noise = pos_interpolated + noise_vec
+        # print("pos_noise-pos",pos_noise-pos)
         new_pos = pos_noise * threshold_tensor + pos * (1 - threshold_tensor)
         graph.pos[tags] = new_pos[tags]
         

@@ -1,3 +1,4 @@
+# Same as rand_12i_bs32 but with dropout on output block
 job:
   mem: 80GB
   cpus: 4
@@ -8,23 +9,26 @@ job:
 default:
   mode: train
   optim:
-    batch_size: 64
-    eval_batch_size: 64
+    batch_size: 32
+    eval_batch_size: 32
     optimizer: AdamW
     auxiliary_decay: True
-    auxiliary_task_weight: 1
+    auxiliary_task_weight: 15
     energy_coefficient: 1.0
-    max_epochs: 70
+    max_epochs: 50
   cp_data_to_tmpdir: True
   normalizer: null
   model:
     otf_graph: False
     max_num_neighbors: 40
     noisy_nodes: True
-    num_interactions: 12
+    num_interactions: 15
+    position_decoder_type: mlp
+    dropout_lowest_layer: output
   trainer: single
   logger: wandb
   early_stop: False
+  test_ri: True
 
   frame_averaging: 2D
   fa_method: se3-random
@@ -45,8 +49,7 @@ default:
     labels:
       - relaxed energy
 
-# ----------------------all dataset-------------------
-# CosineAnnealing
+# ------------------------No dropout------------------------
 runs:
   - config: faenet-is2re_aux-all
     note: "Cosine-very-low-lr"
@@ -71,33 +74,47 @@ runs:
     optim:
       lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
-
-# ----------------------------10k-----------------------
-# CosineAnnealing
-  - config: faenet-is2re_aux-10k
+# ---------------------Dropout output block-----------
+  - config: faenet-is2re_aux-all
     note: "Cosine-very-low-lr"
     optim:
-      lr_initial: 0.000002
+      lr_initial: 0.0001
       scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
+    model:
+      position_decoder_model_config:
+        mlp:
+          dropout_lin: 0.2
+      dropout_lin: 0.2
 
-  - config: faenet-is2re_aux-10k
+  - config: faenet-is2re_aux-all
     note: "Cosine-low-lr"
     optim:
-      lr_initial: 0.00001
+      lr_initial: 0.0005
       scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
+    model:
+      position_decoder_model_config:
+        mlp:
+          dropout_lin: 0.2
+      dropout_lin: 0.2
   
-  - config: faenet-is2re_aux-10k
+  - config: faenet-is2re_aux-all
     note: "Cosine-med-lr"
     optim:
-      lr_initial: 0.00002
+      lr_initial: 0.001
       scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
+    model:
+      position_decoder_model_config:
+        mlp:
+          dropout_lin: 0.2
+      dropout_lin: 0.2
 
-  - config: faenet-is2re_aux-10k
+  - config: faenet-is2re_aux-all
     note: "Cosine-usual-lr"
     optim:
-      lr_initial: 0.00004
+      lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
+    model:
+      position_decoder_model_config:
+        mlp:
+          dropout_lin: 0.2
+      dropout_lin: 0.2

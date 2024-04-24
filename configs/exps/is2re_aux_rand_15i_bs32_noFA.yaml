@@ -8,26 +8,26 @@ job:
 default:
   mode: train
   optim:
-    batch_size: 64
-    eval_batch_size: 64
+    batch_size: 32
+    eval_batch_size: 32
     optimizer: AdamW
     auxiliary_decay: True
-    auxiliary_task_weight: 1
+    auxiliary_task_weight: 15
     energy_coefficient: 1.0
-    max_epochs: 70
+    max_epochs: 50
   cp_data_to_tmpdir: True
   normalizer: null
   model:
     otf_graph: False
     max_num_neighbors: 40
     noisy_nodes: True
-    num_interactions: 12
+    num_interactions: 15
   trainer: single
   logger: wandb
   early_stop: False
 
-  frame_averaging: 2D
-  fa_method: se3-random
+  frame_averaging: ""
+  fa_method: ""
 
   dataset:
     train:
@@ -71,33 +71,3 @@ runs:
     optim:
       lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
-
-# ----------------------------10k-----------------------
-# CosineAnnealing
-  - config: faenet-is2re_aux-10k
-    note: "Cosine-very-low-lr"
-    optim:
-      lr_initial: 0.000002
-      scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
-
-  - config: faenet-is2re_aux-10k
-    note: "Cosine-low-lr"
-    optim:
-      lr_initial: 0.00001
-      scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
-  
-  - config: faenet-is2re_aux-10k
-    note: "Cosine-med-lr"
-    optim:
-      lr_initial: 0.00002
-      scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500
-
-  - config: faenet-is2re_aux-10k
-    note: "Cosine-usual-lr"
-    optim:
-      lr_initial: 0.00004
-      scheduler: LinearWarmupCosineAnnealingLR
-      max_epochs: 500

@@ -1,3 +1,11 @@
+# This is the exact same configs as in is2re_aux_cst_5i_1w_noearlystop
+# but with updated code for 
+# lmdbdataset.py, where we actually noise all graphs of the dataset
+# whereas previously (noisy_nodes_noisy_lmdb branch) 
+# we were just noising one graph of the dataset. Thus, we were essentially doing
+# ISR2S because of the position prediction head and the auxiliary loss which is MSE
+# -------------------------------
+# Initially batch size wad 256 but caused only OOMs, so changed it to 128 in this same file
 job:
   mem: 80GB
   cpus: 4
@@ -8,13 +16,13 @@ job:
 default:
   mode: train
   optim:
-    batch_size: 64
-    eval_batch_size: 64
+    batch_size: 128
+    eval_batch_size: 128
     optimizer: AdamW
-    auxiliary_decay: True
+    auxiliary_decay: False
     auxiliary_task_weight: 1
-    energy_coefficient: 1.0
-    max_epochs: 70
+    energy_coefficient: 0.0
+    max_epochs: 50
   cp_data_to_tmpdir: True
   normalizer: null
   model:
@@ -32,7 +40,7 @@ default:
   dataset:
     train:
       noisy_nodes:
-        type: rand #rand or rand_deter or constant
+        type: constant #rand or rand_deter or constant
         interpolate_threshold: 0.5
         min_interpolate_factor: 0.0
         gaussian_noise_std: 0.3
@@ -72,6 +80,30 @@ runs:
       lr_initial: 0.002
       scheduler: LinearWarmupCosineAnnealingLR
 
+# Null LR
+  - config: faenet-is2re_aux-all
+    note: "null-very-low-lr"
+    optim:
+      lr_initial: 0.0001
+      scheduler: Null
+
+  - config: faenet-is2re_aux-all
+    note: "null-low-lr"
+    optim:
+      lr_initial: 0.0005
+      scheduler: Null
+  
+  - config: faenet-is2re_aux-all
+    note: "null-med-lr"
+    optim:
+      lr_initial: 0.001
+      scheduler: Null
+
+  - config: faenet-is2re_aux-all
+    note: "null-usual-lr"
+    optim:
+      lr_initial: 0.002
+      scheduler: Null
 # ----------------------------10k-----------------------
 # CosineAnnealing
   - config: faenet-is2re_aux-10k
@@ -100,4 +132,33 @@ runs:
     optim:
       lr_initial: 0.00004
       scheduler: LinearWarmupCosineAnnealingLR
+      max_epochs: 500
+
+# Null LR
+  - config: faenet-is2re_aux-10k
+    note: "null-very-low-lr"
+    optim:
+      lr_initial: 0.000002
+      scheduler: Null
+      max_epochs: 500
+
+  - config: faenet-is2re_aux-10k
+    note: "null-low-lr"
+    optim:
+      lr_initial: 0.00001
+      scheduler: Null
+      max_epochs: 500
+  
+  - config: faenet-is2re_aux-10k
+    note: "null-med-lr"
+    optim:
+      lr_initial: 0.00002
+      scheduler: Null
+      max_epochs: 500
+
+  - config: faenet-is2re_aux-10k
+    note: "null-usual-lr"
+    optim:
+      lr_initial: 0.00004
+      scheduler: Null
       max_epochs: 500

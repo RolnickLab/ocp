@@ -569,7 +569,7 @@ class SingleTrainer(BaseTrainer):
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
-            e_all, f_all, gt_all = [], [], []
+            e_all, f_all, gt_all, p_all = [], [], [], []
 
             # Compute model prediction for each frame
             for i in range(len(batch_list[0].fa_pos)):
@@ -600,6 +600,18 @@ class SingleTrainer(BaseTrainer):
                         .view(-1, 3)
                     )
                     f_all.append(g_forces)
+                if preds.get("positions") is not None:
+                    # Transform positions to guarantee equivariance of FA method
+                    fa_rot = torch.repeat_interleave(
+                        batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
+                    )
+                    g_positions = (
+                        preds["positions"]
+                        .view(-1, 1, 3)
+                        .bmm(fa_rot.transpose(1, 2).to(preds["positions"].device))
+                        .view(-1, 3)
+                    )
+                    p_all.append(g_positions)
                 if preds.get("forces_grad_target") is not None:
                     # Transform gradients to stay consistent with FA
                     if fa_rot is None:
@@ -625,15 +637,20 @@ class SingleTrainer(BaseTrainer):
             # Average predictions over frames
             preds["energy"] = sum(e_all) / len(e_all)
             if len(f_all) > 0 and all(y is not None for y in f_all):
+                # if mode == "train": breakpoint()
                 preds["forces"] = sum(f_all) / len(f_all)
             if len(gt_all) > 0 and all(y is not None for y in gt_all):
                 preds["forces_grad_target"] = sum(gt_all) / len(gt_all)
+                # if mode == "train":breakpoint()
+            if len(p_all) > 0 and all(y is not None for y in p_all):
+                preds["positions"] = sum(p_all) / len(p_all)
+                # if mode == "train":breakpoint()
         else:
             preds = self.model(batch_list)
 
         if preds["energy"].shape[-1] == 1:
             preds["energy"] = preds["energy"].view(-1)
-
+        # if mode == "train":breakpoint()
         return preds
 
     def compute_loss(self, preds, batch_list):
@@ -678,7 +695,7 @@ class SingleTrainer(BaseTrainer):
             tag_mask = (tag_mask > 0)
             
             self._compute_auxiliary_task_weight()
-            loss["auxiliary"] = self.loss_fn['auxiliary'](mask_input(preds['positions'], tag_mask), 
+            loss["auxiliary"] = self.loss_fn["auxiliary"](mask_input(preds["positions"], tag_mask), 
                 mask_input(delta_pos, tag_mask))
             loss["total_loss"].append(self.current_auxiliary_task_weight * loss["auxiliary"])
 
@@ -911,6 +928,10 @@ class SingleTrainer(BaseTrainer):
         forces_diff_z = torch.zeros(1, device=self.device)
         forces_diff_z_graph = torch.zeros(1, device=self.device)
         forces_diff_refl = torch.zeros(1, device=self.device)
+        positions_diff = torch.zeros(1, device=self.device)
+        positions_diff_z = torch.zeros(1, device=self.device)
+        positions_diff_z_graph = torch.zeros(1, device=self.device)
+        positions_diff_refl = torch.zeros(1, device=self.device)
         n_batches = 0
         n_atoms = 0
 
@@ -952,11 +973,28 @@ class SingleTrainer(BaseTrainer):
                     torch.tensor([0.0]),
                     atol=1e-05,
                 )
-            elif self.task_name == "is2re" or self.task_name == "is2re_aux":
+            elif self.task_name == "is2re":
                 energy_diff_z_percentage += (
                     torch.abs(preds1["energy"] - preds2["energy"])
                     / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
                 ).sum()
+            elif self.task_name == "is2re_aux":
+                energy_diff_z_percentage += (
+                    torch.abs(preds1["energy"] - preds2["energy"])
+                    / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
+                ).sum()
+                positions_diff_z += torch.abs(
+                    preds1["positions"] @ rotated["rot"].to(preds1["positions"].device)
+                    - preds2["positions"]
+                ).sum()
+                assert torch.allclose(
+                    torch.abs(
+                        batch[0].pos @ rotated["rot"].to(batch[0].pos.device)
+                        - rotated["batch_list"][0].pos
+                    ).sum(),
+                    torch.tensor([0.0]),
+                    atol=1e-05,
+                )
             else:
                 energy_diff_z_percentage += (
                     torch.abs(preds1["energy"] - preds2["energy"])
@@ -982,14 +1020,11 @@ class SingleTrainer(BaseTrainer):
                     preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
                     - preds3["forces"]
                 ).sum()
-                # assert torch.allclose(
-                #     torch.abs(
-                #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
-                #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
-                #     ).sum(),
-                #     torch.tensor([0.0]),   # .to(batch[0].force.device)
-                #     atol=1e-05,
-                # )
+            if self.task_name == "is2re_aux":
+                positions_diff_refl += torch.abs(
+                    preds1["positions"] @ reflected["rot"].to(preds1["positions"].device)
+                    - preds3["positions"]
+                ).sum()
 
             # 3D Rotation and compute diff in prediction
             rotated = self.rotate_graph(batch)
@@ -997,6 +1032,8 @@ class SingleTrainer(BaseTrainer):
             energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
             if self.task_name == "s2ef":
                 forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
+            if self.task_name == "is2re_aux":
+                positions_diff += torch.abs(preds1["positions"] - preds4["positions"]).sum()
 
         # Aggregate the results
         energy_diff_z = energy_diff_z / n_batches
@@ -1027,7 +1064,21 @@ class SingleTrainer(BaseTrainer):
                     "2D_F_refl_i": float(forces_diff_refl),
                 }
             )
-
+        # Test equivariance of positions
+        if self.task_name == "is2re_aux":
+            positions_diff_z = positions_diff_z / n_atoms
+            positions_diff_z_graph = positions_diff_z / n_batches
+            positions_diff = positions_diff / n_atoms
+            positions_diff_refl = positions_diff_refl / n_atoms
+            symmetry.update(
+                {
+                    "2D_P_ri_graph": float(positions_diff_z_graph),
+                    "2D_P_ri": float(positions_diff_z),
+                    "3D_P_ri": float(positions_diff),
+                    "2D_P_refl_i": float(positions_diff_refl),
+                }
+            )
+        # breakpoint()
         if not self.silent:
             logging.info("Symmetry results:")
             print("".join([f"\n  > {k:12}: {v:.5f}" for k, v in symmetry.items()]))

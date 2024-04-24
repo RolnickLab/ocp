@@ -38,6 +38,7 @@ class ForceDecoder(nn.Module):
             self.norm = lambda n: nn.Identity()
         else:
             raise ValueError(f"Unknown norm type: {self.model_config['norm']}")
+        dropout_rate = self.model_config.get("dropout_lin", 0.0)
         if self.type == "simple":
             assert "hidden_channels" in self.model_config
             self.model = nn.Sequential(
@@ -46,6 +47,7 @@ class ForceDecoder(nn.Module):
                     self.model_config["hidden_channels"],
                 ),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
                 nn.Linear(self.model_config["hidden_channels"], 3),
             )
         elif self.type == "mlp":  # from forcenet
@@ -57,6 +59,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
                 nn.Linear(self.model_config["hidden_channels"], 3),
             )
         elif self.type == "res":
@@ -68,6 +71,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(input_channels),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
             )
             self.mlp_2 = nn.Sequential(
                 nn.Linear(
@@ -76,6 +80,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(input_channels),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
             )
             self.mlp_3 = nn.Sequential(
                 nn.Linear(
@@ -84,6 +89,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
                 nn.Linear(self.model_config["hidden_channels"], 3),
             )
         elif self.type == "res_updown":
@@ -95,6 +101,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
             )
             self.mlp_2 = nn.Sequential(
                 nn.Linear(
@@ -103,6 +110,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
             )
             self.mlp_3 = nn.Sequential(
                 nn.Linear(
@@ -111,6 +119,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(input_channels),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
             )
             self.mlp_4 = nn.Sequential(
                 nn.Linear(
@@ -119,6 +128,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
+                nn.Dropout(dropout_rate),
                 nn.Linear(self.model_config["hidden_channels"], 3),
             )
         else:

@@ -438,7 +438,9 @@ class FAENet(BaseModel):
         energy_head: Optional[str] = None,
         regress_forces: Optional[str] = None,
         force_decoder_type: Optional[str] = "mlp",
+        position_decoder_type: Optional[str] = "mlp",
         force_decoder_model_config: Optional[dict] = {"hidden_channels": 128},
+        position_decoder_model_config: Optional[dict] = {"hidden_channels": 128},
         noisy_nodes: bool = False,
         **kwargs,
     ):
@@ -449,7 +451,9 @@ class FAENet(BaseModel):
         self.cutoff = cutoff
         self.energy_head = energy_head
         self.force_decoder_type = force_decoder_type
+        self.position_decoder_type = position_decoder_type
         self.force_decoder_model_config = force_decoder_model_config
+        self.position_decoder_model_config = position_decoder_model_config
         self.graph_norm = graph_norm
         self.hidden_channels = hidden_channels
         self.max_num_neighbors = max_num_neighbors
@@ -568,9 +572,9 @@ class FAENet(BaseModel):
         # Position head
         self.position_decoder = (
             ForceDecoder(
-                self.force_decoder_type,
+                self.position_decoder_type,
                 self.hidden_channels,
-                self.force_decoder_model_config,
+                self.position_decoder_model_config,
                 self.act,
             )
             if noisy_nodes
