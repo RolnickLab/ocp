@@ -202,9 +202,9 @@ class BaseTrainer(ABC):
 
         # self.loaders should have been defined in self.load() above
         self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
-        print('self.total_steps:',self.total_steps)
+        # print('self.total_steps:',self.total_steps)
         self.current_auxiliary_task_weight = self.auxiliary_task_weight
-        print('self.current_auxiliary_task_weight:',self.current_auxiliary_task_weight)
+        # print('self.current_auxiliary_task_weight:',self.current_auxiliary_task_weight)
 
     def load(self):
         self.load_seed_from_config()

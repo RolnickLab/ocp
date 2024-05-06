@@ -151,3 +151,45 @@ def plot_element_3d(data_graph, order=None, clusters=None):
 
     fig.tight_layout()
     plt.show()
+
+def plot_atom_positions(positions):
+    """
+    Plots a graph of atoms with their positions using NetworkX and matplotlib with no edges.
+
+    Args:
+    positions_tensor (torch.Tensor or np.ndarray): A 2D tensor or array of shape (N, 3) where N is the number of atoms
+    and the columns represent the x, y, and z coordinates of each atom.
+    """
+    # Ensure the input is a NumPy array
+    try:
+        positions = positions.detach().cpu().numpy()
+    except:
+        positions = positions[0].detach().cpu().numpy()
+
+    # Create a graph
+    G = nx.Graph()
+
+    # Add nodes with position attributes
+    for i, position in enumerate(positions):
+        G.add_node(i, pos=position)
+
+    # Extract positions in a format that NetworkX can use for plotting
+    pos = nx.get_node_attributes(G, 'pos')
+
+    # Create a 3D plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Scatter plot for nodes
+    xs, ys, zs = np.array(list(pos.values())).T
+    ax.scatter(xs, ys, zs, s=100, c='blue', edgecolor='k', alpha=0.6)
+
+    # Set labels and title
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+    ax.set_zlabel('Z Coordinate')
+    ax.set_title('Atom Positions in 3D Space')
+
+    # Layout adjustment
+    plt.tight_layout()
+    plt.show()
