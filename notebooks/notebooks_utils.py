@@ -152,6 +152,27 @@ def plot_element_3d(data_graph, order=None, clusters=None):
     fig.tight_layout()
     plt.show()
 
+def plot_noisy_nodes_target_3d(data):
+    pos = data.pos
+    pos_relaxed = data.pos_relaxed
+
+    target = pos_relaxed - pos
+    if isinstance(target, torch.Tensor):
+        target = target.numpy()
+
+    xs, ys, zs = target.T 
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(xs, ys, zs, s=100, c='blue', edgecolor='k', alpha=0.6)
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+    ax.set_zlabel('Z Coordinate')
+    ax.set_title('Target Position Predictions')
+
+    plt.tight_layout()
+    plt.show()
+
 def plot_atom_positions(positions):
     """
     Plots a graph of atoms with their positions using NetworkX and matplotlib with no edges.
@@ -193,3 +214,79 @@ def plot_atom_positions(positions):
     # Layout adjustment
     plt.tight_layout()
     plt.show()
+
+def plot_combined_atom_positions(pred_positions, data, title=''):
+    """
+    Plots predicted atom positions alongside their target positions from a graph in 3D on the same plot,
+    with different colors for each and labels showing atom indices. Connects corresponding predicted and target 
+    positions with edges.
+
+    Args:
+    pred_positions (np.ndarray or torch.Tensor): Predicted positions of atoms as a 2D array or tensor.
+    data (object with attributes): An object that has attributes 'pos' and 'pos_relaxed' for positions.
+    title (str): Custom title for the plot.
+    """
+    title = f"Predicted vs Target Pos {title}"
+    # Ensure input is a numpy array if it's a tensor
+    if isinstance(pred_positions, torch.Tensor):
+        pred_positions = pred_positions.detach().cpu().numpy()
+
+    # Calculate target positions
+    pos = data.pos
+    pos_relaxed = data.pos_relaxed
+    target = pos_relaxed - pos
+    if isinstance(target, torch.Tensor):
+        target = target.numpy()
+
+    # Create a 3D plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Scatter plot for predicted positions
+    xs, ys, zs = pred_positions.T
+    scatter1 = ax.scatter(xs, ys, zs, s=100, c='blue', edgecolor='k', alpha=0.6, label='Predicted')
+
+    # Scatter plot for target positions
+    xt, yt, zt = target.T
+    scatter2 = ax.scatter(xt, yt, zt, s=100, c='red', edgecolor='k', alpha=0.6, label='Target')
+
+    # Connect corresponding nodes with edges
+    for i in range(len(xs)):
+        ax.plot([xs[i], xt[i]], [ys[i], yt[i]], [zs[i], zt[i]], 'gray', alpha=0.5)  # Add edge
+
+        # Annotate each point with its index
+        ax.text(xs[i], ys[i], zs[i], f'{i}', color='black', size=10)
+        ax.text(xt[i], yt[i], zt[i], f'{i}', color='black', size=10)
+
+    # Set labels and custom title
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title(title)
+
+    # Add legend
+    ax.legend()
+
+    # Layout adjustment for better visualization
+    plt.tight_layout()
+    plt.show()
+
+def print_model_modules(model, indent=0):
+    """
+    Prints the modules of a given model with structured formatting, using indentation to show hierarchy.
+    Also displays the number of trainable parameters and dimensions of linear layers.
+
+    Args:
+    model (torch.nn.Module): The model whose modules you want to print.
+    indent (int): The indentation level to use for this layer of modules (used internally in recursion).
+    """
+    for name, module in model.named_children():
+        print(' ' * indent + f'{name} -> {module.__class__.__name__}', end='')
+        if hasattr(module, 'weight') and hasattr(module.weight, 'size'):
+            print(f', Parameters: {module.weight.numel()}', end='')
+            if isinstance(module, nn.Linear):
+                print(f', In features: {module.in_features}, Out features: {module.out_features}', end='')
+        print()  # Move to the next line after printing details about the current module
+        # Recursively print child modules
+        if list(module.children()):
+            print_model_modules(module, indent + 4)  # Increase indentation for child modules
