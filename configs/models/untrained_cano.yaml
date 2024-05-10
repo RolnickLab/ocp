@@ -1,11 +1,6 @@
 default:
-  cano_args:
-    equivariance_module: "untrained_cano" # untrained_cano, fa
-    cano_type: "3D"
-    # Frame averaging specific arguments
-    fa_method: ""
-  frame_averaging: "" # {"2D", "3D", "DA", ""}
-  fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  canonicalisation: "" # {"2D", "3D", "DA", ""}
+  cano_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
   model:
     name: faenet
     act: swish
@@ -73,8 +68,8 @@ default:
 is2re:
   default:
     graph_rewiring: remove-tag-0
-    frame_averaging: "2D" # {"2D", "3D", "DA", ""}
-    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    canonicalisation: "2D" # {"2D", "3D", "DA", ""}
+    cano_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified
@@ -111,8 +106,8 @@ is2re:
 
 s2ef:
   default:
-    frame_averaging: 2D
-    fa_method: random
+    canonicalisation: 2D
+    cano_method: random
     graph_rewiring: remove-tag-0
     model:
       hidden_channels: 256
@@ -150,8 +145,8 @@ s2ef:
 qm9:
   default:
     mode: train
-    frame_averaging: 3D # {"2D", "3D", "DA", ""}
-    fa_method: random # {"", all, random, det, se3-all, se3-random, se3-det}
+    canonicalisation: 3D # {"2D", "3D", "DA", ""}
+    cano_method: random # {"", all, random, det, se3-all, se3-random, se3-det}
     dataset:
       train:
         lse_shift: true
@@ -206,8 +201,8 @@ qm9:
 
 qm7x:
   default:
-    frame_averaging: 3D # {"2D", "3D", "DA", ""}
-    fa_method: random # {"", all, random, det, se3-all, se3-random, se3-det}
+    canonicalisation: 3D # {"2D", "3D", "DA", ""}
+    cano_method: random # {"", all, random, det, se3-all, se3-random, se3-det}
     model:
       act: swish
       max_num_neighbors: 40

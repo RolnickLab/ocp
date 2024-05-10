@@ -38,13 +38,12 @@ from ocpmodels.common.data_parallel import (
 from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
-from ocpmodels.common.utils import (
-    JOB_ID,
-    get_commit_hash,
-    resolve,
-    save_checkpoint,
+from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
+from ocpmodels.datasets.data_transforms import (
+    FrameAveraging,
+    UntrainedCanonicalisation,
+    get_transforms,
 )
-from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -255,7 +254,6 @@ class BaseTrainer(ABC):
 
         transform = get_transforms(self.config)  # TODO: train/val/test behavior
         batch_size = self.config["optim"]["batch_size"]
-
         max_epochs = self.config["optim"].get("max_epochs", -1)
         max_steps = self.config["optim"].get("max_steps", -1)
         max_samples = self.config["optim"].get("max_samples", -1)
@@ -1041,6 +1039,22 @@ class BaseTrainer(ABC):
             if hasattr(batch, "neighbors"):
                 batch_rotated.neighbors = batch.neighbors
 
+        # Recompute cano-pos for batch_rotated
+        if hasattr(batch, "cano_pos"):
+            delattr(batch_rotated, "cano_pos")
+            delattr(batch_rotated, "cano_cell")
+            delattr(batch_rotated, "cano_rot")
+
+            g_list = batch_rotated.to_data_list()
+            cano_transform = UntrainedCanonicalisation(
+                self.config["canonicalisation"], self.config["cano_method"]
+            )
+            for g in g_list:
+                g = cano_transform(g)
+            batch_rotated = Batch.from_data_list(g_list)
+            if hasattr(batch, "neighbors"):
+                batch_rotated.neighbors = batch.neighbors
+
         return {"batch_list": [batch_rotated], "rot": rot}
 
     def reflect_graph(self, batch, reflection=None):
@@ -1074,6 +1088,21 @@ class BaseTrainer(ABC):
             )
             for g in g_list:
                 g = fa_transform(g)
+            batch_reflected = Batch.from_data_list(g_list)
+            if hasattr(batch, "neighbors"):
+                batch_reflected.neighbors = batch.neighbors
+
+        # Recompute cano-pos for batch_rotated
+        if hasattr(batch, "cano_pos"):
+            delattr(batch_reflected, "cano_pos")
+            delattr(batch_reflected, "cano_cell")
+            delattr(batch_reflected, "cano_rot")
+            g_list = batch_reflected.to_data_list()
+            cano_transform = UntrainedCanonicalisation(
+                self.config["canonicalisation"], self.config["cano_method"]
+            )
+            for g in g_list:
+                g = cano_transform(g)
             batch_reflected = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
                 batch_reflected.neighbors = batch.neighbors

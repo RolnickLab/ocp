@@ -207,7 +207,7 @@ class SingleTrainer(BaseTrainer):
     ):
         if not torch.is_grad_enabled():
             print("\nWarning: torch grad is disabled. Enabling.\n")
-            torch.set_grad_enabled(True)
+            torch.set_grad_enabled(True) # ----------------------------------------------------------
         n_train = min(
             len(self.loaders[self.train_dataset_name]),
             self.config["optim"]["max_steps"],
@@ -512,19 +512,19 @@ class SingleTrainer(BaseTrainer):
         Returns:
             (dict): model predictions tensor for "energy" and "forces".
         """
-        # Distinguish frame averaging from base case.
-        if self.config["frame_averaging"] and self.config["frame_averaging"] != "DA":
+        # Canonicalisation case.
+        if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
             e_all, f_all, gt_all = [], [], []
 
-            # Compute model prediction for each frame
-            for i in range(len(batch_list[0].fa_pos)):
-                batch_list[0].pos = batch_list[0].fa_pos[i]
+            # Compute model prediction after canonicalisation
+            for i in range(len(batch_list[0].cano_pos)):
+                batch_list[0].pos = batch_list[0].cano_pos[0]
                 if self.task_name in OCP_AND_DEUP_TASKS:
-                    batch_list[0].cell = batch_list[0].fa_cell[i]
-
+                    batch_list[0].cell = batch_list[0].cano_cell[0]
+                
                 # forward pass
                 preds = self.model(
                     deepcopy(batch_list),
@@ -534,31 +534,31 @@ class SingleTrainer(BaseTrainer):
                 )
                 e_all.append(preds["energy"])
 
-                fa_rot = None
+                cano_rot = None
 
                 if preds.get("forces") is not None:
-                    # Transform forces to guarantee equivariance of FA method
-                    fa_rot = torch.repeat_interleave(
-                        batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
+                    # Transform forces to guarantee equivariance of canonicalisation method ------------------------ MODIF
+                    cano_rot = torch.repeat_interleave(
+                        batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
                     g_forces = (
                         preds["forces"]
                         .view(-1, 1, 3)
-                        .bmm(fa_rot.transpose(1, 2).to(preds["forces"].device))
+                        .bmm(cano_rot.transpose(1, 2).to(preds["forces"].device))
                         .view(-1, 3)
                     )
                     f_all.append(g_forces)
                 if preds.get("forces_grad_target") is not None:
-                    # Transform gradients to stay consistent with FA
-                    if fa_rot is None:
-                        fa_rot = torch.repeat_interleave(
-                            batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
+                    # Transform gradients to stay consistent with canonicalisation
+                    if cano_rot is None:
+                        cano_rot = torch.repeat_interleave(
+                            batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                         )
                     g_grad_target = (
                         preds["forces_grad_target"]
                         .view(-1, 1, 3)
                         .bmm(
-                            fa_rot.transpose(1, 2).to(
+                            cano_rot.transpose(1, 2).to(
                                 preds["forces_grad_target"].device
                             )
                         )
@@ -566,7 +566,7 @@ class SingleTrainer(BaseTrainer):
                     )
                     gt_all.append(g_grad_target)
 
-            batch_list[0].pos = original_pos
+            batch_list[0].pos = original_pos # MODIFY HERE ---------------------------------
             if self.task_name in OCP_AND_DEUP_TASKS:
                 batch_list[0].cell = original_cell
 
@@ -576,12 +576,12 @@ class SingleTrainer(BaseTrainer):
                 preds["forces"] = sum(f_all) / len(f_all)
             if len(gt_all) > 0 and all(y is not None for y in gt_all):
                 preds["forces_grad_target"] = sum(gt_all) / len(gt_all)
+
         else:
             preds = self.model(batch_list)
 
         if preds["energy"].shape[-1] == 1:
             preds["energy"] = preds["energy"].view(-1)
-
         return preds
 
     def compute_loss(self, preds, batch_list):
@@ -892,10 +892,11 @@ class SingleTrainer(BaseTrainer):
 
             # Diff in positions
             pos_diff = -1
-            if hasattr(batch[0], "fa_pos"):
+
+            if hasattr(batch[0], "cano_pos"):
                 pos_diff = 0
                 # Compute total difference across frames
-                for pos1, pos2 in zip(batch[0].fa_pos, rotated["batch_list"][0].fa_pos):
+                for pos1, pos2 in zip(batch[0].cano_pos, rotated["batch_list"][0].cano_pos):
                     pos_diff += pos1 - pos2
                 # Manhattan distance of pos matrix wrt 0 matrix.
                 pos_diff_total += torch.abs(pos_diff).sum()
