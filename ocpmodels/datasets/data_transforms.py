@@ -48,6 +48,8 @@ class BaseCanonicalisation(Transform):
             self.equivariance_module = UntrainedCanonicalisation(**cano_args)
 
     def __call__(self, data):
+        if type(self.equivariance_module) == str:
+            return data
         return self.equivariance_module.call(data)
 
 
