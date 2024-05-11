@@ -70,6 +70,8 @@ class BaseTrainableCanonicalisation(Transform):
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
     def __call__(self, data):
+        if type(self.equivariance_module) == str:
+            return data
         return self.equivariance_module.call(data)
 
 
