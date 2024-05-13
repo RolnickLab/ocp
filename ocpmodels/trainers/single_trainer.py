@@ -513,15 +513,18 @@ class SingleTrainer(BaseTrainer):
         # (default behaviour is to do nothing, if no learnable transform is picked)
         if not torch.is_grad_enabled() and mode == "train":
             print("\nWarning: enabling in preprocessing.\n")
-            torch.set_grad_enabled(True) 
+            torch.set_grad_enabled(True)
         learnable_transform = get_learnable_transforms(self.cano_model, self.config)
         batch_list_list = batch_list[0].to_data_list()
         for b in batch_list_list:
             b = learnable_transform(b.to(self.device))
-        batch_list[0] = Batch.from_data_list(batch_list_list)
+        batch_list[0] = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
-        if self.config["cano_args"]["cano_type"] and self.config["cano_args"]["cano_type"] != "DA":
+        if (
+            self.config["cano_args"]["cano_type"]
+            and self.config["cano_args"]["cano_type"] != "DA"
+        ):
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
@@ -532,7 +535,7 @@ class SingleTrainer(BaseTrainer):
                 batch_list[0].pos = batch_list[0].cano_pos[i]
                 if self.task_name in OCP_AND_DEUP_TASKS:
                     batch_list[0].cell = batch_list[0].cano_cell[i]
-                
+
                 # forward pass
                 preds = self.model(
                     # deepcopy(batch_list),
@@ -601,11 +604,15 @@ class SingleTrainer(BaseTrainer):
         # Energy loss
         energy_target = torch.cat(
             [
-                batch.y_relaxed.to(self.device)
-                if self.task_name == "is2re"
-                else batch.deup_loss.to(self.device)
-                if self.task_name == "deup_is2re"
-                else batch.y.to(self.device)
+                (
+                    batch.y_relaxed.to(self.device)
+                    if self.task_name == "is2re"
+                    else (
+                        batch.deup_loss.to(self.device)
+                        if self.task_name == "deup_is2re"
+                        else batch.y.to(self.device)
+                    )
+                )
                 for batch in batch_list
             ],
             dim=0,
@@ -718,11 +725,15 @@ class SingleTrainer(BaseTrainer):
         target = {
             "energy": torch.cat(
                 [
-                    batch.y_relaxed.to(self.device)
-                    if self.task_name == "is2re"
-                    else batch.deup_loss.to(self.device)
-                    if self.task_name == "deup_is2re"
-                    else batch.y.to(self.device)
+                    (
+                        batch.y_relaxed.to(self.device)
+                        if self.task_name == "is2re"
+                        else (
+                            batch.deup_loss.to(self.device)
+                            if self.task_name == "deup_is2re"
+                            else batch.y.to(self.device)
+                        )
+                    )
                     for batch in batch_list
                 ],
                 dim=0,
@@ -845,20 +856,22 @@ class SingleTrainer(BaseTrainer):
         n_atoms = 0
 
         with torch.no_grad():
-            for i, batch in enumerate(self.loaders[self.config["dataset"]["default_val"]]):
+            for i, batch in enumerate(
+                self.loaders[self.config["dataset"]["default_val"]]
+            ):
                 if self.sigterm:
                     return "SIGTERM"
                 if debug_batches > 0 and i == debug_batches:
                     break
-                
+
                 n_batches += len(batch[0].natoms)
                 n_atoms += batch[0].natoms.sum()
 
                 # Compute model prediction
                 preds1 = self.model_forward(
-                    # [t.detach() for t in batch], 
+                    # [t.detach() for t in batch],
                     batch,
-                    mode="inference"
+                    mode="inference",
                 )
 
                 # Compute prediction on rotated graph
@@ -866,7 +879,7 @@ class SingleTrainer(BaseTrainer):
                 preds2 = self.model_forward(
                     # [t.detach() for t in rotated["batch_list"]],
                     rotated["batch_list"],
-                    mode="inference"
+                    mode="inference",
                 )
 
                 # Difference in predictions, for energy and forces
@@ -886,7 +899,7 @@ class SingleTrainer(BaseTrainer):
                             batch[0].force @ rotated["rot"].to(batch[0].force.device)
                             - rotated["batch_list"][0].force
                         ).sum(),
-                        torch.tensor([0.0], device = batch[0].force.device),
+                        torch.tensor([0.0], device=batch[0].force.device),
                         atol=1e-05,
                     )
                 elif self.task_name == "is2re":
@@ -906,7 +919,9 @@ class SingleTrainer(BaseTrainer):
                 if hasattr(batch[0], "cano_pos"):
                     pos_diff = 0
                     # Compute total difference across frames
-                    for pos1, pos2 in zip(batch[0].cano_pos, rotated["batch_list"][0].cano_pos):
+                    for pos1, pos2 in zip(
+                        batch[0].cano_pos, rotated["batch_list"][0].cano_pos
+                    ):
                         pos_diff += pos1 - pos2
                     # Manhattan distance of pos matrix wrt 0 matrix.
                     pos_diff_total += torch.abs(pos_diff).sum()
@@ -914,9 +929,9 @@ class SingleTrainer(BaseTrainer):
                 # Reflect graph and compute diff in prediction
                 reflected = self.reflect_graph(batch)
                 preds3 = self.model_forward(
-                    # [t.detach() for t in reflected["batch_list"]], 
+                    # [t.detach() for t in reflected["batch_list"]],
                     reflected["batch_list"],
-                    mode="inference"
+                    mode="inference",
                 )
                 energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
                 if self.task_name == "s2ef":
@@ -936,9 +951,9 @@ class SingleTrainer(BaseTrainer):
                 # 3D Rotation and compute diff in prediction
                 rotated = self.rotate_graph(batch)
                 preds4 = self.model_forward(
-                    # [t.detach() for t in rotated["batch_list"]], 
+                    # [t.detach() for t in rotated["batch_list"]],
                     rotated["batch_list"],
-                    mode="inference"
+                    mode="inference",
                 )
                 energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
                 if self.task_name == "s2ef":
