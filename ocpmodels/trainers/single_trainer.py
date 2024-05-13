@@ -314,6 +314,9 @@ class SingleTrainer(BaseTrainer):
                 self.epoch = epoch_int + (i + 1) / n_train
                 self.step = epoch_int * n_train + i + 1
 
+                self.current_auxiliary_task_weight = self.auxiliary_scheduler.get_weight()
+                self.energy_coefficient = self.energy_scheduler.get_weight()
+
                 # Get a batch.
                 with timer.next("get_batch"):
                     batch = next(train_loader_iter)
@@ -469,6 +472,8 @@ class SingleTrainer(BaseTrainer):
                     self.model.train()
 
                 self.scheduler_step(eval_every, current_val_metric)
+                self.auxiliary_scheduler.step()
+                self.energy_scheduler.step()
 
                 if is_final_batch:
                     break
@@ -694,7 +699,7 @@ class SingleTrainer(BaseTrainer):
             tag_mask = torch.cat([batch.tags.to(self.device) for batch in batch_list], dim=0)
             tag_mask = (tag_mask > 0)
             
-            self._compute_auxiliary_task_weight()
+            # self._compute_auxiliary_task_weight()
             loss["auxiliary"] = self.loss_fn["auxiliary"](mask_input(preds["positions"], tag_mask), 
                 mask_input(delta_pos, tag_mask))
             loss["total_loss"].append(self.current_auxiliary_task_weight * loss["auxiliary"])
@@ -894,16 +899,16 @@ class SingleTrainer(BaseTrainer):
                 split="train",
             )
     
-    def _compute_auxiliary_task_weight(self):
+    """def _compute_auxiliary_task_weight(self):
         # linearly decay self.auxiliary_task_weight to 1 
         # throughout the whole training procedure
         if self.auxiliary_decay:
             _min_weight = self.auxiliary_min_weight
             weight = self.auxiliary_task_weight
             weight_range = max(0.0, weight - _min_weight)
-            weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.total_steps))
+            weight = weight - weight_range * min(1.0, ((self.step + 0.0) / self.max_steps))
             self.current_auxiliary_task_weight = weight
-        return
+        return"""
 
     @torch.no_grad()
     def test_model_symmetries(self, debug_batches=-1):

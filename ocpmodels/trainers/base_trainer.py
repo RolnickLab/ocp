@@ -51,7 +51,7 @@ from ocpmodels.modules.exponential_moving_average import (
 )
 from ocpmodels.modules.loss import DDPLoss, L2MAELoss
 from ocpmodels.modules.normalizer import Normalizer
-from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
+from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler, LossWeightScheduler
 
 
 @registry.register_trainer("base")
@@ -201,7 +201,7 @@ class BaseTrainer(ABC):
         # if not isinstance(nn_config, dict):
 
         # self.loaders should have been defined in self.load() above
-        self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
+        # self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
         # print('self.total_steps:',self.total_steps)
         self.current_auxiliary_task_weight = self.auxiliary_task_weight
         # print('self.current_auxiliary_task_weight:',self.current_auxiliary_task_weight)
@@ -566,7 +566,7 @@ class BaseTrainer(ABC):
         self.loss_fn["force"] = self.config["optim"].get("loss_force", "mae")
         # Node features auxiliary loss
         if self.config["model"]["noisy_nodes"]:
-            self.loss_fn["auxiliary"] = self.config["optim"].get("loss_position", "mse")
+            self.loss_fn["auxiliary"] = self.config["optim"].get("loss_position", "mae")
 
         for loss, loss_name in self.loss_fn.items():
             if loss_name in ["l1", "mae"]:
@@ -630,6 +630,10 @@ class BaseTrainer(ABC):
             self.config["optim"],
             silent=self.silent,
         )
+        self.auxiliary_scheduler = LossWeightScheduler(self.config["optim"], 
+                loss_type="auxiliary", max_steps=self.config['optim']['max_steps'])
+        self.energy_scheduler = LossWeightScheduler(self.config["optim"], 
+                loss_type="energy", max_steps=self.config['optim']['max_steps'])
         self.clip_grad_norm = self.config["optim"].get("clip_grad_norm")
         self.ema_decay = self.config["optim"].get("ema_decay")
         if self.ema_decay:

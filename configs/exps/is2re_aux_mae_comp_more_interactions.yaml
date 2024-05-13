@@ -1,0 +1,87 @@
+# Same as compFA with /2 bs comparing num_interactions
+job:
+  mem: 80GB
+  cpus: 4
+  gres: gpu:1
+  partition: long
+  # time: 15:00:00
+
+default:
+  mode: train
+  optim:
+    batch_size: 64
+    eval_batch_size: 64
+    optimizer: AdamW
+    auxiliary_decay: True
+    auxiliary_task_weight: 15
+    energy_coefficient: 1.0
+    lr_initial: 0.002
+    scheduler: LinearWarmupCosineAnnealingLR
+    warmup_steps: 192000
+    auxiliary_decay: True
+    auxiliary_task_weight: 15
+    auxiliary_min_weight: 1.0
+    energy_coefficient: 1.0
+    max_epochs: 50
+    loss_energy: "mae"
+    loss_position: "mae"
+  cp_data_to_tmpdir: True
+  normalizer: null
+  model:
+    otf_graph: False
+    max_num_neighbors: 40
+    noisy_nodes: True
+  trainer: single
+  logger: wandb
+  early_stop: False
+  test_ri: True
+
+  frame_averaging: 2D
+  fa_method: se3-random
+
+  dataset:
+    train:
+      noisy_nodes:
+        type: rand #rand or rand_deter or constant
+        interpolate_threshold: 0.5
+        min_interpolate_factor: 0.0
+        gaussian_noise_std: 0.3
+
+  task:
+    dataset: lmdb_noisy #single_point_lmdb  
+    description: "Relaxed state energy prediction from initial structure."
+    type: regression
+    metric: mae
+    labels:
+      - relaxed energy
+
+runs:
+  - config: faenet-is2re_aux-all
+    note: "5 interactions"
+    model:
+      num_interactions: 18
+
+  - config: faenet-is2re_aux-all
+    note: "8 interactions"
+    model:
+      num_interactions: 20
+  
+  - config: faenet-is2re_aux-all
+    note: "10 interactions"
+    model:
+      num_interactions: 22
+
+  - config: faenet-is2re_aux-all
+    note: "12 interactions"
+    model:
+      num_interactions: 24
+
+  - config: faenet-is2re_aux-all
+    note: "14 interactions"
+    model:
+      num_interactions: 26
+
+  - config: faenet-is2re_aux-all
+    note: "16 interactions"
+    model:
+      num_interactions: 28
