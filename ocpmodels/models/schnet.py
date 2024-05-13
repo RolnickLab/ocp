@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
 from math import pi as PI
 
 import torch
@@ -323,7 +324,7 @@ class SchNet(BaseModel):
         return self.decoder(preds["hidden_state"])
 
     @conditional_grad(torch.enable_grad())
-    def energy_forward(self, data):
+    def energy_forward(self, data, q=None):
         """"""
         # Re-compute on the fly the graph
         if self.otf_graph:
