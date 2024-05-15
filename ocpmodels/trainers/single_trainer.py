@@ -518,7 +518,7 @@ class SingleTrainer(BaseTrainer):
         batch_list_list = batch_list[0].to_data_list()
         for b in batch_list_list:
             b = learnable_transform(b.to(self.device))
-        batch_list[0] = self.parallel_collater(batch_list_list)
+        batch_list = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
         if (
