@@ -10,7 +10,7 @@ from ocpmodels.preprocessing.graph_rewiring import (
 )
 
 import ocpmodels.preprocessing.trained_cano as trained_cano
-
+import ocpmodels.preprocessing.sign_equiv_sfa as sign_equiv_sfa
 from ocpmodels.preprocessing.vn_pointcloud import VNSmall, VNPointnet, VN_dgcnn
 
 
@@ -47,6 +47,8 @@ class BaseUntrainableCanonicalisation(Transform):
             self.equivariance_module = FrameAveraging(**cano_args)
         elif self.equivariance_module == "untrained_cano":
             self.equivariance_module = UntrainedCanonicalisation(**cano_args)
+        elif self.equivariance_module == "untrained_sign_equiv_sfa":
+            self.equivariance_module = SignEquivariantSFA(training=False, **cano_args)
         else: # No untrained canonicalisation used
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
@@ -66,6 +68,8 @@ class BaseTrainableCanonicalisation(Transform):
 
         if self.equivariance_module == "trained_cano":
             self.equivariance_module = TrainedCanonicalisation(cano_model, **cano_args)
+        elif self.equivariance_module == "trained_sign_equiv_sfa":
+            self.equivariance_module = SignEquivariantSFA(training=True, **cano_args)
         else: # No trainable canonicalisation used
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
@@ -252,6 +256,54 @@ class FrameAveraging():
             )
             return data
 
+class SignEquivariantSFA():
+    r"""Sign Equivariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+    """
+    def __init__(self, training, cano_type=None, fa_method=None, **kw_args):
+        self.fa_method = (
+            "random" if (fa_method is None or fa_method == "") else fa_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        self.training = training
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+        assert self.fa_method in {
+            "",
+            "random",
+            "det",
+            "all",
+            "se3-random",
+            "se3-det",
+            "se3-all",
+        }
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.fa_func = sign_equiv_sfa.frame_averaging_3D # to be implemented properly
+            elif self.cano_type == "3D":
+                self.fa_func = sign_equiv_sfa.frame_averaging_3D
+            elif self.cano_type == "DA":
+                self.fa_func = sign_equiv_sfa.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.fa_func(data, self.fa_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
+                data.pos, data.cell if hasattr(data, "cell") else None, 
+                self.fa_method, self.training,
+            )
+            return data
+        
 
 class GraphRewiring(Transform):
     def __init__(self, rewiring_type=None) -> None:
