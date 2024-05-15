@@ -2,7 +2,8 @@ from copy import deepcopy
 from ocpmodels.common.graph_transforms import RandomRotate
 import torch
 
-def modified_gram_schmidt(vectors): # From Kaba et al. 2023
+
+def modified_gram_schmidt(vectors):  # From Kaba et al. 2023
     v1 = vectors[:, 0]
     v1 = v1 / torch.norm(v1, dim=1, keepdim=True)
     v2 = vectors[:, 1] - torch.sum(vectors[:, 1] * v1, dim=1, keepdim=True) * v1
@@ -43,7 +44,8 @@ def cano_fct_3D(vn_model, pos, cell, cano_method, edges=None):
     vn_rot = vn_model(vn_pos)
     vn_rot = modified_gram_schmidt(vn_rot)
 
-    vn_cell = vn_cell @ vn_rot
+    if cell is not None:
+        vn_cell = vn_cell @ vn_rot
     vn_pos = vn_pos @ vn_rot
 
     return [vn_pos.squeeze()], [vn_cell], [vn_rot]
