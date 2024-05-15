@@ -283,6 +283,8 @@ class BaseTrainer(ABC):
                     )
                 except:
                     print(f"Loading without isolating adsorbates for dataset {split}")
+                    if "qm7x" in self.config["task"]["dataset"]:
+                        ds_conf["split"] = split
                     self.datasets[split] = registry.get_dataset_class(
                         self.config["task"]["dataset"]
                     )(
