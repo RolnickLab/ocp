@@ -39,7 +39,12 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import get_transforms, get_learnable_model, BaseTrainableCanonicalisation, BaseUntrainableCanonicalisation
+from ocpmodels.datasets.data_transforms import (
+    get_transforms,
+    get_learnable_model,
+    BaseTrainableCanonicalisation,
+    BaseUntrainableCanonicalisation,
+)
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -266,15 +271,24 @@ class BaseTrainer(ABC):
                     silent=self.silent,
                 )
             else:
-                self.datasets[split] = registry.get_dataset_class(
-                    self.config["task"]["dataset"]
-                )(
-                    ds_conf,
-                    transform=transform,
-                    adsorbates=self.config.get("adsorbates"),
-                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
-                    silent=self.silent,
-                )
+                try:
+                    self.datasets[split] = registry.get_dataset_class(
+                        self.config["task"]["dataset"]
+                    )(
+                        ds_conf,
+                        transform=transform,
+                        adsorbates=self.config.get("adsorbates"),
+                        adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
+                        silent=self.silent,
+                    )
+                except:
+                    print(f"Loading without isolating adsorbates for dataset {split}")
+                    self.datasets[split] = registry.get_dataset_class(
+                        self.config["task"]["dataset"]
+                    )(
+                        ds_conf,
+                        transform=transform,
+                    )
 
             shuffle = False
             if "train" in split:
@@ -399,9 +413,9 @@ class BaseTrainer(ABC):
             **self.config["model"],
         }
 
-        if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+        if self.config["cano_args"]["equivariance_module"] == "trained_cano":
             self.cano_model = get_learnable_model(
-                self.config['cano_args']['cano_method'],
+                self.config["cano_args"]["cano_method"],
             ).to(self.device)
         else:
             self.cano_model = None
@@ -413,7 +427,7 @@ class BaseTrainer(ABC):
         self.model.set_deup_inference(False)
 
         total_num_params = self.model.num_params
-        if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+        if self.config["cano_args"]["equivariance_module"] == "trained_cano":
             total_num_params += sum(p.numel() for p in self.cano_model.parameters())
 
         if dist_utils.is_master() and not self.silent:
@@ -425,7 +439,7 @@ class BaseTrainer(ABC):
         # if self.logger is not None:
         #     self.logger.watch(self.model)
 
-        # if self.config['cano_args']['equivariance_module'] == 'trained_cano':        
+        # if self.config['cano_args']['equivariance_module'] == 'trained_cano':
         #     self.cano_model = OCPDataParallel(
         #         self.cano_model,
         #         output_device=self.device,
@@ -438,7 +452,7 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if dist_utils.initialized():
-            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
                 self.cano_model = DistributedDataParallel(
                     self.cano_model, device_ids=[self.device], output_device=self.device
                 )
@@ -563,7 +577,7 @@ class BaseTrainer(ABC):
                     else:
                         params_decay += [param]
 
-            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
                 for name, param in self.cano_model.named_parameters():
                     if param.requires_grad:
                         if "embedding" in name:
@@ -577,10 +591,7 @@ class BaseTrainer(ABC):
 
             self.optimizer = optimizer(
                 [
-                    {
-                        "params": params_no_decay, 
-                        "weight_decay": 0
-                    },
+                    {"params": params_no_decay, "weight_decay": 0},
                     {
                         "params": params_decay,
                         "weight_decay": self.config["optim"]["weight_decay"],
@@ -590,9 +601,10 @@ class BaseTrainer(ABC):
                 **self.config["optim"].get("optimizer_params", {}),
             )
         else:
-            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
-                combined_params = \
-                    list(self.model.parameters()) + list(self.cano_model.parameters())
+            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
+                combined_params = list(self.model.parameters()) + list(
+                    self.cano_model.parameters()
+                )
             else:
                 combined_params = self.model.parameters()
 
@@ -1061,7 +1073,7 @@ class BaseTrainer(ABC):
         # Rotate graph
         batch_rotated, rot, inv_rot = transform(deepcopy(batch))
         assert not torch.allclose(batch.pos, batch_rotated.pos, atol=1e-05)
-        
+
         # Recompute cano-pos for batch_rotated
         if hasattr(batch, "cano_pos"):
             delattr(batch_rotated, "cano_pos")
@@ -1070,19 +1082,29 @@ class BaseTrainer(ABC):
 
             g_list = batch_rotated.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
-                cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
-            elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
-                cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
+            if self.config["cano_args"]["equivariance_module"] in [
+                "",
+                "fa",
+                "untrained_cano",
+            ]:
+                cano_transform = BaseUntrainableCanonicalisation(
+                    self.config["cano_args"]
+                )
+            elif self.config["cano_args"]["equivariance_module"] in ["trained_cano"]:
+                cano_transform = BaseTrainableCanonicalisation(
+                    self.cano_model, self.config["cano_args"]
+                )
             else:
-                raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
+                raise ValueError(
+                    f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}"
+                )
 
-            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
-            else: 
+            else:
                 for g in g_list:
-                    g = cano_transform(g.to('cpu'))
+                    g = cano_transform(g.to("cpu"))
 
             batch_rotated = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
@@ -1117,19 +1139,29 @@ class BaseTrainer(ABC):
             delattr(batch_reflected, "cano_rot")
             g_list = batch_reflected.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano']:
-                cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
-            elif self.config['cano_args']['equivariance_module'] in ['trained_cano']:
-                cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
+            if self.config["cano_args"]["equivariance_module"] in [
+                "",
+                "fa",
+                "untrained_cano",
+            ]:
+                cano_transform = BaseUntrainableCanonicalisation(
+                    self.config["cano_args"]
+                )
+            elif self.config["cano_args"]["equivariance_module"] in ["trained_cano"]:
+                cano_transform = BaseTrainableCanonicalisation(
+                    self.cano_model, self.config["cano_args"]
+                )
             else:
-                raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
-            
-            if self.config['cano_args']['equivariance_module'] == 'trained_cano':
+                raise ValueError(
+                    f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}"
+                )
+
+            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
-            else: 
+            else:
                 for g in g_list:
-                    g = cano_transform(g.to('cpu'))
+                    g = cano_transform(g.to("cpu"))
 
             batch_reflected = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
