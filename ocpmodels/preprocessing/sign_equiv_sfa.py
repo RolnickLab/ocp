@@ -108,8 +108,8 @@ def compute_frames(training, eigenvec, pos, cell, fa_method="random", pos_3D=Non
 
     if cell is not None:
         fa_cell = cell @ eigenvec
-
-    return [fa_pos], [fa_cell], [eigenvec]
+    
+    return [fa_pos], [fa_cell], [eigenvec.unsqueeze(0)]
 
 def check_constraints(eigenval, eigenvec, dim=3):
     """Check requirements for frame averaging are satisfied
