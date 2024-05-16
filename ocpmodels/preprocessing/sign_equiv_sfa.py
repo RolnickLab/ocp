@@ -27,10 +27,12 @@ class SignNet(nn.Module):
 
 
 class SignEquivariantNet(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim=3, output_dim=3):
         super(SignEquivariantNet, self).__init__()
         self.sign_net = SignNet(input_dim, output_dim)
-        self.W1, self.W2, self.W3 = self.get_linear_maps(input_dim)
+        self.W1 = nn.Parameter(torch.randn(input_dim, input_dim))
+        self.W2 = nn.Parameter(torch.randn(input_dim, input_dim))
+        self.W3 = nn.Parameter(torch.randn(input_dim, input_dim))
 
     def forward(self, u):
         sign_net_output = self.sign_net(u)
@@ -38,14 +40,8 @@ class SignEquivariantNet(nn.Module):
                           self.W2 @ sign_net_output[:, None, 1], 
                           self.W3 @ sign_net_output[:, None, 2]], dim=1)
 
-    def get_linear_maps(self, input_dim):
-        W1 = nn.Linear(input_dim, input_dim, bias=False)
-        W2 = nn.Linear(input_dim, input_dim, bias=False)
-        W3 = nn.Linear(input_dim, input_dim, bias=False)
-        return W1.weight, W2.weight, W3.weight
 
-
-def compute_frames(training, eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
+def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
     """Compute all frames for a given graph.
 
     Args:
@@ -90,7 +86,7 @@ def compute_frames(training, eigenvec, pos, cell, fa_method="random", pos_3D=Non
     random_pm = plus_minus_list[index]
     random_pm = random_pm.to(eigenvec.device)
 
-    sign_equiv_net = SignEquivariantNet(dim, dim)
+    sign_equiv_net = network
     if not training:
         for param in sign_equiv_net.parameters():
             param.requires_grad = False
@@ -137,7 +133,7 @@ def check_constraints(eigenval, eigenvec, dim=3):
 
 
 
-def frame_averaging_3D(pos, cell=None, fa_method="random", training=False, check=False):
+def frame_averaging_3D(network, training, pos, cell=None, fa_method="random", check=False):
     pos = pos - pos.mean(dim=0, keepdim=True)
     C = torch.matmul(pos.t(), pos)
     eigenval, eigenvec = torch.linalg.eigh(C)
@@ -149,12 +145,12 @@ def frame_averaging_3D(pos, cell=None, fa_method="random", training=False, check
         check_constraints(eigenval, eigenvec, 3)
 
     fa_pos, fa_cell, fa_rot = compute_frames(
-        training, eigenvec, pos, cell, fa_method
+        training, network, eigenvec, pos, cell, fa_method
     )
     return fa_pos, fa_cell, fa_rot
 
 
-def frame_averaging_2D(pos, cell=None, fa_method="random", training=False, check=False):
+def frame_averaging_2D(network, training, pos, cell=None, fa_method="random", check=False):
     # Compute centroid and covariance
     pos_2D = pos[:, :2] - pos[:, :2].mean(dim=0, keepdim=True)
     C = torch.matmul(pos_2D.t(), pos_2D)
@@ -172,7 +168,7 @@ def frame_averaging_2D(pos, cell=None, fa_method="random", training=False, check
 
     # Compute all frames
     fa_pos, fa_cell, fa_rot = compute_frames(
-        training, eigenvec, pos_2D, cell, fa_method, pos[:, 2]
+        training, network, eigenvec, pos_2D, cell, fa_method, pos[:, 2]
     )
     # No need to update distances, they are preserved.
 

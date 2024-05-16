@@ -11,6 +11,8 @@ from ocpmodels.preprocessing.graph_rewiring import (
 
 import ocpmodels.preprocessing.trained_cano as trained_cano
 import ocpmodels.preprocessing.sign_equiv_sfa as sign_equiv_sfa
+
+from ocpmodels.preprocessing.sign_equiv_sfa import SignEquivariantNet
 from ocpmodels.preprocessing.vn_pointcloud import VNSmall, VNPointnet, VN_dgcnn
 
 
@@ -48,7 +50,7 @@ class BaseUntrainableCanonicalisation(Transform):
         elif self.equivariance_module == "untrained_cano":
             self.equivariance_module = UntrainedCanonicalisation(**cano_args)
         elif self.equivariance_module == "untrained_sign_equiv_sfa":
-            self.equivariance_module = SignEquivariantSFA(training=False, **cano_args)
+            self.equivariance_module = SignEquivariantSFA(training=False, cano_model=None, **cano_args)
         else: # No untrained canonicalisation used
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
@@ -69,7 +71,7 @@ class BaseTrainableCanonicalisation(Transform):
         if self.equivariance_module == "trained_cano":
             self.equivariance_module = TrainedCanonicalisation(cano_model, **cano_args)
         elif self.equivariance_module == "trained_sign_equiv_sfa":
-            self.equivariance_module = SignEquivariantSFA(training=True, **cano_args)
+            self.equivariance_module = SignEquivariantSFA(training=True, cano_model=cano_model, **cano_args)
         else: # No trainable canonicalisation used
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
@@ -259,7 +261,7 @@ class FrameAveraging():
 class SignEquivariantSFA():
     r"""Sign Equivariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
     """
-    def __init__(self, training, cano_type=None, fa_method=None, **kw_args):
+    def __init__(self, training, cano_model=None, cano_type=None, fa_method=None, **kw_args):
         self.fa_method = (
             "random" if (fa_method is None or fa_method == "") else fa_method
         )
@@ -281,6 +283,15 @@ class SignEquivariantSFA():
             "se3-det",
             "se3-all",
         }
+        
+        if not self.training:
+            self.cano_model = get_learnable_model("trained_sign_equiv_sfa")
+            for param in self.cano_model.parameters():
+                param.requires_grad = False
+        elif self.training:
+            if cano_model is None:
+                raise ValueError("Sign equivariant SFA requires a canonicalisation model")
+            self.cano_model = cano_model
 
         if self.cano_type:
             if self.cano_type == "2D":
@@ -299,8 +310,11 @@ class SignEquivariantSFA():
             return self.fa_func(data, self.fa_method)
         else:
             data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
-                data.pos, data.cell if hasattr(data, "cell") else None, 
-                self.fa_method, self.training,
+                self.cano_model,
+                self.training,
+                data.pos, 
+                data.cell if hasattr(data, "cell") else None, 
+                self.fa_method, 
             )
             return data
         
@@ -378,6 +392,8 @@ def get_learnable_model(cano_method):
         return VN_dgcnn()
     elif cano_method == "simple":
         return VNSmall()
+    elif cano_method in ["trained_sign_equiv_sfa", "untrained_sign_equiv_sfa"]:
+        return SignEquivariantNet()
     else:
         raise ValueError(f"Unknown canonicalisation method: {cano_method}")
 
