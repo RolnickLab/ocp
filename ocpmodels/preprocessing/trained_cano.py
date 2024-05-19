@@ -34,6 +34,8 @@ def cano_fct_3D(vn_model, pos, cell, cano_method, edges=None):
         tensor: updated unit cell
         tensor: the rotation matrix used
     """
+    pos = pos - pos.mean(dim=0, keepdim=True)
+    
     if cano_method is not None:
         pass
 
