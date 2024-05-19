@@ -555,8 +555,14 @@ class SingleTrainer(BaseTrainer):
                     cano_rot = torch.repeat_interleave(
                         batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
+                    
+                    if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
+                        preds_forces = preds["forces"] * (original_pos - original_pos.mean(dim=0, keepdim=True))
+                    else:
+                        preds_forces = preds["forces"]
+                    
                     g_forces = (
-                        preds["forces"]
+                        preds_forces
                         .view(-1, 1, 3)
                         .bmm(cano_rot.transpose(1, 2).to(preds["forces"].device))
                         .view(-1, 3)
@@ -568,8 +574,16 @@ class SingleTrainer(BaseTrainer):
                         cano_rot = torch.repeat_interleave(
                             batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                         )
+                    
+                    if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
+                        preds_grad_target = preds["forces_grad_target"] * (
+                            original_pos - original_pos.mean(dim=0, keepdim=True)
+                        )
+                    else:
+                        preds_grad_target = preds["forces_grad_target"]
+                    
                     g_grad_target = (
-                        preds["forces_grad_target"]
+                        preds_grad_target
                         .view(-1, 1, 3)
                         .bmm(
                             cano_rot.transpose(1, 2).to(

@@ -142,13 +142,13 @@ def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", p
     random_pm = plus_minus_list[index]
     random_pm = random_pm.to(eigenvec.device)
 
-    sign_equiv_net = network
+    sign_inv_net = network
     if not training:
-        for param in sign_equiv_net.parameters():
+        for param in sign_inv_net.parameters():
             param.requires_grad = False
 
     eigenvec = random_pm * eigenvec
-    eigenvec = sign_equiv_net.to(eigenvec.device)(eigenvec)
+    eigenvec = sign_inv_net.to(eigenvec.device)(eigenvec)
 
     fa_pos = pos @ eigenvec
 
