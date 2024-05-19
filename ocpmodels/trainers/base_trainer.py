@@ -36,7 +36,12 @@ from ocpmodels.common.graph_transforms import RandomReflect, RandomRotate
 from ocpmodels.common.registry import registry
 from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
-from ocpmodels.datasets.data_transforms import get_transforms, get_learnable_model, BaseTrainableCanonicalisation, BaseUntrainableCanonicalisation
+from ocpmodels.datasets.data_transforms import (
+    get_transforms,
+    get_learnable_model,
+    BaseTrainableCanonicalisation,
+    BaseUntrainableCanonicalisation,
+)
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -260,14 +265,26 @@ class BaseTrainer(ABC):
                     self.config["dataset"], split, transform=transform
                 )
             else:
-                self.datasets[split] = registry.get_dataset_class(
-                    self.config["task"]["dataset"]
-                )(
-                    ds_conf,
-                    transform=transform,
-                    adsorbates=self.config.get("adsorbates"),
-                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
-                )
+                try:
+                    self.datasets[split] = registry.get_dataset_class(
+                        self.config["task"]["dataset"]
+                    )(
+                        ds_conf,
+                        transform=transform,
+                        adsorbates=self.config.get("adsorbates"),
+                        adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
+                        silent=self.silent,
+                    )
+                except:
+                    print(f"Loading without isolating adsorbates for dataset {split}")
+                    if "qm7x" in self.config["task"]["dataset"]:
+                        ds_conf["split"] = split
+                    self.datasets[split] = registry.get_dataset_class(
+                        self.config["task"]["dataset"]
+                    )(
+                        ds_conf,
+                        transform=transform,
+                    )
 
             shuffle = False
             if "train" in split:

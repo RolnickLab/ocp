@@ -45,7 +45,8 @@ def cano_fct_3D(vn_model, pos, cell, cano_method, edges=None):
     vn_rot = vn_model(vn_pos)
     vn_rot = modified_gram_schmidt(vn_rot)
 
-    vn_cell = vn_cell @ vn_rot
+    if cell is not None:
+        vn_cell = vn_cell @ vn_rot
     vn_pos = vn_pos @ vn_rot
 
     return [vn_pos.squeeze()], [vn_cell], [vn_rot]
