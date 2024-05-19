@@ -2,7 +2,7 @@ default:
   cano_args:
     equivariance_module: "untrained_cano" # untrained_cano, , trained_cano, fa, trained_sign_equiv_sfa, untrained_sign_equiv_sfa
     cano_type: "3D"
-    cano_method: "" # pointnet, deep_pointnet, dgcnn
+    cano_method: "pointnet" # pointnet, deep_pointnet, dgcnn
     # Frame averaging specific arguments
     fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
   # Legacy FA arguments:
