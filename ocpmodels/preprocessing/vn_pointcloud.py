@@ -29,6 +29,7 @@ class VNSmall(torch.nn.Module):
         self.n_knn = n_knn
         self.pooling = pooling
         self.pos_enc = VNLinearLeakyReLU(3, 3, dim=5, negative_slope=0.0)
+        self.bn = VNBatchNorm(3, dim=5)
 
         if self.pooling == "max":
             self.pool = VNMaxPool(3)
@@ -48,6 +49,7 @@ class VNSmall(torch.nn.Module):
 
         x = get_graph_feature_cross(x, k=n_knn)
         x = self.pos_enc(x)
+        # x = self.bn(x)
         return self.pool(self.pool(x))
 
 
@@ -123,7 +125,7 @@ class VNPointnet(torch.nn.Module):
         out = self.conv_pos(feat)
         out = self.pool(out)
 
-        out = self.bn1(self.conv1(out))
+        out = self.bn1(self.conv1(out)) # rm for 2 layers
         out = self.conv2(out)
         out = self.dropout(out)
         
