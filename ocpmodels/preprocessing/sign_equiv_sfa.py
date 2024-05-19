@@ -7,9 +7,66 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch_geometric.nn import GCNConv
+from torch_geometric.nn.conv import MessagePassing
+
+from ocpmodels.preprocessing.vn_layers.vn_utils import knn
+
+class GCN(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        self.convs.append(GCNConv(in_channels, hidden_channels))
+        for _ in range(num_layers-2):
+            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        
+        self.convs.append(GCNConv(hidden_channels, out_channels))
+
+
+    def forward(self, x, edge_index):
+        return self.encode(x, edge_index)
+
+    def encode(self, x, edge_index):
+        for conv in self.convs[:-1]:
+            x = conv(x, edge_index).relu()
+        x = self.convs[-1](x, edge_index)
+        return x
+
+    def decode(self, z, edge_label_index):
+        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
+
+class GCNSignNet(nn.Module):
+    def __init__(self, num_eigs=3, hidden_channels=64, out_channels=3):
+        super().__init__()
+        phi_out_dim = hidden_channels // num_eigs
+        self.phi = GCN(1, hidden_channels, phi_out_dim)
+        self.rho = GCN(num_eigs * phi_out_dim, hidden_channels, out_channels)
+
+    def forward(self, x):
+        return self.encode(x)
+
+    def encode(self, x):
+        breakpoint()
+        n_knn = min(10, x.shape[0] - 1)
+        mat_knn = knn(x.unsqueeze(0).transpose(1,2), n_knn)
+        
+        row, col = torch.meshgrid(torch.arange(mat_knn.size(1)), torch.arange(n_knn), indexing='ij')
+        edge_index = torch.stack([row.reshape(-1), mat_knn[0].reshape(-1)], dim=0)
+
+        x = x.unsqueeze(-1) # n x k x 1
+        x = x.transpose(0,1) # k x n x 1
+        x = self.phi(x, edge_index) + self.phi(-x, edge_index)
+        x = x.transpose(0,1) # n x k x d
+        x = x.reshape(x.shape[0], -1) # n x kd
+        x = self.rho(x, edge_index) # n x d
+        return x
+
+    def decode(self, z, edge_label_index):
+        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
+    
 
 class SignNet(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim=3, output_dim=3):
         super(SignNet, self).__init__()
         self.mu = nn.Sequential(
             nn.Linear(input_dim, 32),
@@ -36,10 +93,9 @@ class SignEquivariantNet(nn.Module):
 
     def forward(self, u):
         sign_net_output = self.sign_net(u)
-        return torch.cat([self.W1 @ sign_net_output[:, None, 0], 
-                          self.W2 @ sign_net_output[:, None, 1], 
-                          self.W3 @ sign_net_output[:, None, 2]], dim=1)
-
+        return torch.cat([self.W1 @ u[0, None].T, 
+                          self.W2 @ u[1, None].T, 
+                          self.W3 @ u[2, None].T], dim=1) * sign_net_output
 
 def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", pos_3D=None, det_index=0):
     """Compute all frames for a given graph.
@@ -91,8 +147,8 @@ def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", p
         for param in sign_equiv_net.parameters():
             param.requires_grad = False
 
-    new_eigenvec = random_pm * eigenvec
-    eigenvec = sign_equiv_net.to(eigenvec.device)(new_eigenvec)
+    eigenvec = random_pm * eigenvec
+    eigenvec = sign_equiv_net.to(eigenvec.device)(eigenvec)
 
     fa_pos = pos @ eigenvec
 

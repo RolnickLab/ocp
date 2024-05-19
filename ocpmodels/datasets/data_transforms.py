@@ -12,7 +12,7 @@ from ocpmodels.preprocessing.graph_rewiring import (
 import ocpmodels.preprocessing.trained_cano as trained_cano
 import ocpmodels.preprocessing.sign_equiv_sfa as sign_equiv_sfa
 
-from ocpmodels.preprocessing.sign_equiv_sfa import SignEquivariantNet
+from ocpmodels.preprocessing.sign_equiv_sfa import SignEquivariantNet, SignNet
 from ocpmodels.preprocessing.vn_pointcloud import VNSmall, VNPointnet, VN_dgcnn
 
 
@@ -393,7 +393,8 @@ def get_learnable_model(cano_method):
     elif cano_method == "simple":
         return VNSmall()
     elif cano_method in ["trained_sign_equiv_sfa", "untrained_sign_equiv_sfa"]:
-        return SignEquivariantNet()
+        # return SignEquivariantNet()
+        return SignNet()
     else:
         raise ValueError(f"Unknown canonicalisation method: {cano_method}")
 
