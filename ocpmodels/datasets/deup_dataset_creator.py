@@ -167,7 +167,7 @@ class DeupDatasetCreator:
 
         shared_config = {}
         shared_config["graph_rewiring"] = self.trainers[0].config["graph_rewiring"]
-        shared_config["fa_frames"] = self.trainers[0].config["fa_frames"]
+        shared_config["fa_method"] = self.trainers[0].config["fa_method"]
         shared_config["frame_averaging"] = self.trainers[0].config["frame_averaging"]
 
         # Done!
@@ -228,6 +228,7 @@ class DeupDatasetCreator:
         if self.mc_dropout:
             if n_samples <= 0:
                 raise ValueError("n_samples must be > 0 for MC-Dropout ensembles.")
+            # Speed up computation by re-using latent representation q for all models
             preds += [
                 self.trainers[0].model_forward(batch_list, mode="deup", q=q)
                 for _ in range(n_samples - len(preds))
@@ -306,6 +307,7 @@ class DeupDatasetCreator:
 
         stats = {d: {} for d in dataset_strs}
 
+        # Loop on train, val_id, val_ood_cat, val_ood_ads
         for dataset_name in dataset_strs:
             deup_samples = []
             deup_ds_size = 0
@@ -319,12 +321,15 @@ class DeupDatasetCreator:
                 preds = self.forward(
                     batch_list, n_samples=n_samples, shared_encoder=True
                 )
-
+                # Compute mean and standard deviation of GNN predictions
                 pred_mean = preds["energies"].mean(dim=1)  # Batch
                 pred_std = preds["energies"].std(dim=1)  # Batch
+                # Compute residual between mean predicted energy and ground truth
                 loss = self.trainers[0].loss_fn["energy"](
                     pred_mean, batch.y_relaxed.to(pred_mean.device)
                 )
+                # Store deup samples
+                assert len(preds["q"]) == len(batch)
                 deup_samples += [
                     {
                         "energy_target": batch.y_relaxed.clone(),
@@ -430,13 +435,29 @@ if __name__ == "__main__":
     from ocpmodels.datasets.deup_dataset_creator import DeupDatasetCreator
     from ocpmodels.datasets.lmdb_dataset import DeupDataset
     from ocpmodels.common.utils import JOB_ID, RUNS_DIR, make_config_from_conf_str
+    import argparse
 
-    base_trainer_path = "/network/scratch/s/schmidtv/ocp/runs/3298908"
+    def parse_args():
+        parser = argparse.ArgumentParser(description="Deup Dataset Creator")
+        parser.add_argument(
+            "--checkpoints",
+            nargs="+",
+            default="/network/scratch/a/alexandre.duval/ocp/runs/4648581/",
+            help="Paths to the checkpoints",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.3,
+            help="Dropout value",
+        )
+        return parser.parse_args()
 
-    # what models to load for inference
+    args = parse_args()
+
     trainers_conf = {
-        "checkpoints": [base_trainer_path],
-        "dropout": 0.7,
+        "checkpoints": args.checkpoints,
+        "dropout": args.dropout,
     }
     # setting first_trainable_layer to output means that the latent space
     # q will be defined as input to the output layer, even though the model
@@ -461,6 +482,7 @@ if __name__ == "__main__":
     # base_config = make_config_from_conf_str("faenet-is2re-all")
     # base_datasets_config = base_config["dataset"]
 
+    # Load deup dataset
     deup_dataset = DeupDataset(
         {
             **base_datasets_config,

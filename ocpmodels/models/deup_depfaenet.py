@@ -3,10 +3,10 @@ from torch import nn
 from torch.nn import Linear
 from torch_scatter import scatter
 from ocpmodels.common.registry import registry
-from ocpmodels.models.faenet import FAENet, OutputBlock
+from ocpmodels.models.depfaenet import DepFAENet, DiscOutputBlock
 
 
-class DeupOutputBlock(OutputBlock):
+class DeupDepOutputBlock(DiscOutputBlock):
     def __init__(
         self, energy_head, hidden_channels, act, dropout_lin, deup_features={}
     ):
@@ -30,6 +30,7 @@ class DeupOutputBlock(OutputBlock):
             )
 
     def forward(self, h, edge_index, edge_weight, batch, alpha, data=None):
+        # If sample density is used as feature, we need to add the extra dimension
         if self._set_q_dim:
             assert data is not None
             assert "deup_q" in data.to_dict().keys()
@@ -46,6 +47,7 @@ class DeupOutputBlock(OutputBlock):
             alpha = self.w_lin(h)
 
         # OutputBlock to get final atom rep
+        # No dropout in deup-(dep)faenet
         h = self.lin1(h)
         h = self.act(h)
         if self.deup_extra_dim <= 0:
@@ -57,7 +59,7 @@ class DeupOutputBlock(OutputBlock):
         }:
             h = h * alpha
 
-        # Global pooling -- get final graph rep
+        # Pool into a graph rep if necessary
         if len(h) > len(batch):
             h = scatter(
                 h,
@@ -86,13 +88,12 @@ class DeupOutputBlock(OutputBlock):
 
         return out
 
-
-@registry.register_model("deup_faenet")
-class DeupFAENet(FAENet):
+@registry.register_model("deup_depfaenet")
+class DeupDepFAENet(DepFAENet):
     def __init__(self, *args, **kwargs):
         kwargs["dropout_edge"] = 0
         super().__init__(*args, **kwargs)
-        self.output_block = DeupOutputBlock(
+        self.output_block = DeupDepOutputBlock(
             self.energy_head,
             kwargs["hidden_channels"],
             self.act,
