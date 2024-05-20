@@ -41,11 +41,11 @@ class FrameAveraging(Transform):
             Can be 2D FA, 3D FA, Data Augmentation or no FA, respectively denoted by
             (`"2D"`, `"3D"`, `"DA"`, `""`)
         fa_method (str): the actual frame averaging technique used.
-            "stochastic" refers to sampling one frame at random (at each epoch), "det"
+            "random" refers to sampling one frame at random (at each epoch), "det"
             to chosing deterministically one frame, and "all" to using all frames. The
             prefix "se3-" refers to the SE(3) equivariant version of the method. ""
-            means that no frame averaging is used. (`""`, `"stochastic"`, `"all"`,
-            `"det"`, `"se3-stochastic"`, `"se3-all"`, `"se3-det"`)
+            means that no frame averaging is used. (`""`, `"random"`, `"all"`,
+            `"det"`, `"se3-random"`, `"se3-all"`, `"se3-det"`)
 
     Returns:
         (data.Data): updated data object with new positions (+ unit cell) attributes
