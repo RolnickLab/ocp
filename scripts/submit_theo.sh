@@ -19,7 +19,7 @@ cd /home/mila/t/theo.saulus/code/ocp # replace: location of the code
 
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-s2ef-2M --note="Test Trained Canonicalisation" --cano_args.equivariance_module=trained_cano --cano_args.cano_type=3D --optim.max_epochs=1 --model.num_interactions=1 --inference_time_loops=0
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=untrained_sign_inv_sfa --cano_args.cano_type=3D
-# python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-s2ef-2M --note="Test Trained Canonicalisation" --cano_args.equivariance_module=untrained_cano --cano_args.cano_type=3D --cano_args.cano_method=pointnet --inference_time_loops=0 --continue_from_dir="/network/scratch/t/theo.saulus/ocp/runs/4751495"
+python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-s2ef-2M --note="Test Trained Canonicalisation" --cano_args.equivariance_module=trained_cano --cano_args.cano_type=3D --cano_args.cano_method=pointnet --inference_time_loops=0
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=fa --cano_args.cano_type=3D --cano_args.fa_method=all --optim.batch_size=192 --optim.eval_batch_size=192
 
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=fa --cano_args.cano_type=DA
@@ -50,5 +50,5 @@ cd /home/mila/t/theo.saulus/code/ocp # replace: location of the code
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-is2re-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=sign_equiv_sfa --cano_args.cano_type=2D --inference_time_loops=0
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-s2ef-2M --note="Test Trained Canonicalisation" --cano_args.equivariance_module=sign_equiv_sfa --cano_args.cano_type=3D --inference_time_loops=0
 # python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-qm7x-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=sign_equiv_sfa --cano_args.cano_type=3D --inference_time_loops=0
-python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-qm9-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=sign_equiv_sfa --cano_args.cano_type=3D --inference_time_loops=0
+# python main.py --test_ri=True --mode=train --wandb_tags=faenet++ --wandb_project=faenet++ --config=faenet-qm9-all --note="Test Trained Canonicalisation" --cano_args.equivariance_module=sign_equiv_sfa --cano_args.cano_type=3D --inference_time_loops=0
 

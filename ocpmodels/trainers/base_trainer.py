@@ -1075,7 +1075,7 @@ class BaseTrainer(ABC):
 
             g_list = batch_rotated.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'untrained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
             elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
                 cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
@@ -1122,7 +1122,7 @@ class BaseTrainer(ABC):
             delattr(batch_reflected, "cano_rot")
             g_list = batch_reflected.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'untrained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
             elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
                 cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])

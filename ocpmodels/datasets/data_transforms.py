@@ -340,11 +340,11 @@ class SignEquivSFA():
 
         if self.cano_type:
             if self.cano_type == "2D":
-                self.fa_func = frame_averaging.frame_averaging_2D
+                self.fa_func = sign_equiv_stoch_fa.frame_averaging_2D
             elif self.cano_type == "3D":
-                self.fa_func = frame_averaging.frame_averaging_3D
+                self.fa_func = sign_equiv_stoch_fa.frame_averaging_3D
             elif self.cano_type == "DA":
-                self.fa_func = frame_averaging.data_augmentation
+                self.fa_func = sign_equiv_stoch_fa.data_augmentation
             else:
                 raise ValueError(f"Unknown frame averaging: {self.cano_type}")
 
