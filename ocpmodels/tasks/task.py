@@ -162,7 +162,9 @@ class S2EFtoIS2RE(BaseTask):
         self.trainer = trainer
         if self.config.get("checkpoint") is not None:
             print("\n🔵 Resuming:\n  • ", end="", flush=True)
+            cp_tmp = self.config["cp_data_to_tmp_dir"]
             self.trainer.load_checkpoint(self.config["checkpoint"])
+            self.config["cp_data_to_tmp_dir"] = cp_tmp
             print()
 
         # save checkpoint path to runner state for slurm resubmissions
@@ -183,7 +185,8 @@ class S2EFtoIS2RE(BaseTask):
             self.trainer.config["logger"] = "wandb"
             self.trainer.config["wandb_name"] = (
                 self.trainer.config["job_id"]
-                + "-" + self.trainer.config["config"]
+                + "-"
+                + self.trainer.config["config"]
                 + "-ft-is2re"
             )
             self.trainer.config["wandb_id"] = "-ft-is2re"
