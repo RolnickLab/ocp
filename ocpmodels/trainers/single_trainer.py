@@ -141,7 +141,7 @@ class SingleTrainer(BaseTrainer):
             disable=disable_tqdm,
         ):
             with torch.cuda.amp.autocast(enabled=self.scaler is not None):
-                preds = self.model_forward(batch_list)
+                preds = self.model_forward(batch_list, mode="inference")
 
             if self.normalizers is not None and "target" in self.normalizers:
                 hofs = None
@@ -1052,8 +1052,21 @@ class SingleTrainer(BaseTrainer):
                 continue
 
             transform = None
-            if self.config.get("frame_averaging", "") != "":
-                transform = self.relax_dataset.transform.transforms[-1]
+            try:
+                if self.config["cano_args"].get("equivariance_module", "") in [
+                    "trained_cano",
+                    "fa",
+                ]:
+                    transform = get_learnable_transforms(self.cano_model, self.config)
+                elif self.config["cano_args"].get("equivariance_module", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
+                    transform.equivariance_module.cano_model = (
+                        transform.equivariance_module.cano_model.to(self.device)
+                    )
+            except:
+                # old version
+                if self.config.get("frame_averaging", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
 
             relaxed_batch = ml_relax(
                 batch=batch,
