@@ -1,6 +1,6 @@
 default:
   frame_averaging: "" # {"2D", "3D", "DA", ""}
-  fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  fa_method: "" # {"", all, random, det, se3-all, se3-random, se3-det}
   model:
     name: faenet
     act: swish
@@ -69,7 +69,7 @@ is2re:
   default:
     graph_rewiring: remove-tag-0
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
-    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    fa_method: "se3-random" # {"", all, random, det, se3-all, se3-random, se3-det}
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified
