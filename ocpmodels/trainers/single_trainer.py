@@ -557,7 +557,10 @@ class SingleTrainer(BaseTrainer):
                     )
                     
                     if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
-                        preds_forces = preds["forces"] * (original_pos - original_pos.mean(dim=0, keepdim=True))
+                        # Multiply by rotated X (with no sign change, hence (-1)**i to compensate)
+                        preds_forces = preds["forces"] * (-1)**i * (
+                            batch_list[0].pos - batch_list[0].pos.mean(dim=0, keepdim=True)
+                        )
                     else:
                         preds_forces = preds["forces"]
                     
@@ -576,8 +579,8 @@ class SingleTrainer(BaseTrainer):
                         )
                     
                     if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
-                        preds_grad_target = preds["forces_grad_target"] * (
-                            original_pos - original_pos.mean(dim=0, keepdim=True)
+                        preds_grad_target = preds["forces_grad_target"] * (-1)**i * (
+                            batch_list[0].pos - batch_list[0].pos.mean(dim=0, keepdim=True)
                         )
                     else:
                         preds_grad_target = preds["forces_grad_target"]
