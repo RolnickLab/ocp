@@ -23,7 +23,7 @@ def compute_frames(eigenvec, pos, cell, fa_method="random", pos_3D=None, det_ind
     """
     dim = pos.shape[1]  # to differentiate between 2D or 3D case
     plus_minus_list = list(product([1, -1], repeat=dim))
-    plus_minus_list = [torch.tensor(x) for x in plus_minus_list]
+    plus_minus_list = [torch.tensor(x, device=eigenvec.device) for x in plus_minus_list]
     all_fa_pos = []
     all_cell = []
     all_rots = []
