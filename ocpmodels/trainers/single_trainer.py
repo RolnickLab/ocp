@@ -1055,14 +1055,17 @@ class SingleTrainer(BaseTrainer):
             try:
                 if self.config["cano_args"].get("equivariance_module", "") in [
                     "trained_cano",
-                    "fa",
                 ]:
                     transform = get_learnable_transforms(self.cano_model, self.config)
                 elif self.config["cano_args"].get("equivariance_module", "") != "":
                     transform = self.relax_dataset.transform.transforms[-1]
-                    transform.equivariance_module.cano_model = (
-                        transform.equivariance_module.cano_model.to(self.device)
-                    )
+                    if (
+                        self.config["cano_args"].get("equivariance_module", "")
+                        != "untrainable_cano"
+                    ):
+                        transform.equivariance_module.cano_model = (
+                            transform.equivariance_module.cano_model.to(self.device)
+                        )
             except:
                 # old version
                 if self.config.get("frame_averaging", "") != "":
