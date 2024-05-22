@@ -521,11 +521,12 @@ class SingleTrainer(BaseTrainer):
         if not torch.is_grad_enabled() and mode == "train":
             print("\nWarning: enabling in preprocessing.\n")
             torch.set_grad_enabled(True)
-        learnable_transform = get_learnable_transforms(self.cano_model, self.config)
-        batch_list_list = batch_list[0].to_data_list()
-        for b in batch_list_list:
-            b = learnable_transform(b.to(self.device))
-        batch_list = self.parallel_collater(batch_list_list)
+        if self.config["cano_args"].get("equivariance_module", "") == "trained_cano":
+            learnable_transform = get_learnable_transforms(self.cano_model, self.config)
+            batch_list_list = batch_list[0].to_data_list()
+            for b in batch_list_list:
+                b = learnable_transform(b.to(self.device))
+            batch_list = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
         if (
