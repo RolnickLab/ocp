@@ -122,7 +122,7 @@ class SingleTrainer(BaseTrainer):
             self.normalizers["grad_target"].to(self.device)
 
         predictions = {"id": [], "energy": []}
-        if self.task_name == "s2ef":
+        if self.task_name in ["s2ef", "qm7x"]:
             predictions["forces"] = []
             predictions["chunk_idx"] = []
 
@@ -151,7 +151,7 @@ class SingleTrainer(BaseTrainer):
             if per_image:
                 system_ids = (
                     [str(i) for i in batch_list[0].sid.tolist()]
-                    if self.task_name == "s2ef"
+                    if self.task_name in ["s2ef", "qm7x"]
                     else [
                         str(i) + "_" + str(j)
                         for i, j in zip(
@@ -162,7 +162,7 @@ class SingleTrainer(BaseTrainer):
                 predictions["id"].extend(system_ids)
                 predictions["energy"].extend(preds["energy"].to(torch.float16).tolist())
 
-                if self.task_name == "s2ef":
+                if self.task_name in ["s2ef", "qm7x"]:
                     batch_natoms = torch.cat([batch.natoms for batch in batch_list])
                     batch_fixed = torch.cat([batch.fixed for batch in batch_list])
                     forces = preds["forces"].cpu().detach().to(torch.float16)
@@ -188,7 +188,7 @@ class SingleTrainer(BaseTrainer):
                     predictions["forces"].extend(per_image_forces)
             else:
                 predictions["energy"] = preds["energy"].detach()
-                if self.task_name == "s2ef":
+                if self.task_name in ["s2ef", "qm7x"]:
                     predictions["forces"] = preds["forces"].detach()
                 return predictions
 
@@ -902,7 +902,7 @@ class SingleTrainer(BaseTrainer):
                 # Difference in predictions, for energy and forces
                 energy_diff_z += torch.abs(preds1["energy"] - preds2["energy"]).sum()
 
-                if self.task_name == "s2ef":
+                if self.task_name in ["s2ef", "qm7x"]:
                     energy_diff_z_percentage += (
                         torch.abs(preds1["energy"] - preds2["energy"])
                         / torch.abs(batch[0].y).to(preds1["energy"].device)
@@ -951,7 +951,7 @@ class SingleTrainer(BaseTrainer):
                     mode="inference",
                 )
                 energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
-                if self.task_name == "s2ef":
+                if self.task_name in ["s2ef", "qm7x"]:
                     forces_diff_refl += torch.abs(
                         preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
                         - preds3["forces"]
@@ -973,7 +973,7 @@ class SingleTrainer(BaseTrainer):
                     mode="inference",
                 )
                 energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
-                if self.task_name == "s2ef":
+                if self.task_name in ["s2ef", "qm7x"]:
                     forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
 
         # Aggregate the results
@@ -992,7 +992,7 @@ class SingleTrainer(BaseTrainer):
         }
 
         # Test equivariance of forces
-        if self.task_name == "s2ef":
+        if self.task_name in ["s2ef", "qm7x"]:
             forces_diff_z = forces_diff_z / n_atoms
             forces_diff_z_graph = forces_diff_z / n_batches
             forces_diff = forces_diff / n_atoms
