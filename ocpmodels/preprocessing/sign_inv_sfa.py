@@ -11,6 +11,7 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.nn.conv import MessagePassing
 
 from ocpmodels.preprocessing.vn_layers.vn_utils import knn
+from ocpmodels.preprocessing.trained_cano import modified_gram_schmidt
 
 class GCN(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2):
@@ -149,6 +150,7 @@ def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", p
 
     eigenvec = random_pm * eigenvec
     eigenvec = sign_inv_net.to(eigenvec.device)(eigenvec)
+    eigenvec = modified_gram_schmidt(eigenvec.unsqueeze(0))
 
     fa_pos = pos @ eigenvec
 
@@ -161,7 +163,7 @@ def compute_frames(training, network, eigenvec, pos, cell, fa_method="random", p
     if cell is not None:
         fa_cell = cell @ eigenvec
     
-    return [fa_pos], [fa_cell], [eigenvec.unsqueeze(0)]
+    return [fa_pos.squeeze()], [fa_cell], [eigenvec]
 
 def check_constraints(eigenval, eigenvec, dim=3):
     """Check requirements for frame averaging are satisfied
