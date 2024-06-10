@@ -26,6 +26,7 @@ with Loader("Imports"):
     from ocdata.adsorbates import Adsorbate
     from ocdata.bulk_obj import Bulk
     from ocdata.combined import Combined
+    from ocdata.patched_voronoi import PatchedVoronoiNN, VoronoiNN
     from ocdata.surfaces import Surface
     from ocpmodels.preprocessing.atoms_to_graphs import AtomsToGraphs
 
@@ -325,13 +326,15 @@ if __name__ == "__main__":
                         assert args.actions.surface_id < len(possible_surfaces)
                         surface_id = args.actions.surface_id
 
+                    surface_info = possible_surfaces[surface_id]
                     # make Surface object
                     surface_obj = Surface(  # <<<< IMPORTANT
                         bulk,
-                        possible_surfaces[surface_id],
+                        surface_info,
                         surface_id,
                         len(possible_surfaces),
                         no_loader=args.no_loader,
+                        voronoi_class=PatchedVoronoiNN,  # or VoronoiNN
                     )
                     print(
                         "# Selected surface:",

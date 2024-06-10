@@ -79,6 +79,7 @@ class Surface:
         surface_index,
         total_surfaces_possible,
         no_loader=True,
+        voronoi_class=VoronoiNN,
     ):
         """
         Initialize the surface object, tag atoms, and constrain the surface.
@@ -95,6 +96,7 @@ class Surface:
         self.surface_sampling_str = (
             str(surface_index) + "/" + str(total_surfaces_possible)
         )
+        self.voronoi_class = VoronoiNN
 
         unit_surface_atoms = AseAtomsAdaptor.get_atoms(surface_struct)
         self.surface_atoms = self.tile_atoms(unit_surface_atoms)
@@ -107,7 +109,11 @@ class Surface:
             ).reduced_formula
         ), "Mismatched bulk and surface"
 
-        self.tag_surface_atoms(self.bulk_object.bulk_atoms, self.surface_atoms)
+        self.tag_surface_atoms(
+            self.bulk_object.bulk_atoms,
+            self.surface_atoms,
+            self.voronoi_class,
+        )
         self.constrained_surface = constrain_surface(self.surface_atoms)
 
     def tile_atoms(self, atoms):
@@ -129,7 +135,7 @@ class Surface:
         atoms_tiled = atoms.repeat(n_xyz)
         return atoms_tiled
 
-    def tag_surface_atoms(self, bulk_atoms, surface_atoms):
+    def tag_surface_atoms(self, bulk_atoms, surface_atoms, voronoi_class=VoronoiNN):
         """
         Sets the tags of an `ase.Atoms` object. Any atom that we consider a "bulk"
         atom will have a tag of 0, and any atom that we consider a "surface" atom
@@ -148,7 +154,7 @@ class Surface:
             ignore=self.no_loader,
         ) as loader:
             voronoi_tags = self._find_surface_atoms_with_voronoi(
-                bulk_atoms, surface_atoms
+                bulk_atoms, surface_atoms, voronoi_class
             )
 
         height_tags = self._find_surface_atoms_by_height(surface_atoms)
@@ -156,7 +162,12 @@ class Surface:
         tags = [max(v_tag, h_tag) for v_tag, h_tag in zip(voronoi_tags, height_tags)]
         surface_atoms.set_tags(tags)
 
-    def _find_surface_atoms_with_voronoi(self, bulk_atoms, surface_atoms):
+    def _find_surface_atoms_with_voronoi(
+        self,
+        bulk_atoms,
+        surface_atoms,
+        voronoi_class=VoronoiNN,
+    ):
         """
         Labels atoms as surface or bulk atoms according to their coordination
         relative to their bulk structure. If an atom's coordination is less than it
@@ -183,7 +194,7 @@ class Surface:
         surface_struct = AseAtomsAdaptor.get_structure(surface_atoms)
         center_of_mass = self.calculate_center_of_mass(surface_struct)
         bulk_cn_dict = self.calculate_coordination_of_bulk_atoms(bulk_atoms)
-        voronoi_nn = VoronoiNN(tol=0.1)  # 0.1 chosen for better detection
+        voronoi_nn = voronoi_class(tol=0.1)  # 0.1 chosen for better detection
         default_cutoff = voronoi_nn.cutoff
 
         tags = []
