@@ -13,76 +13,61 @@ from torch_geometric.nn.conv import MessagePassing
 from ocpmodels.preprocessing.vn_layers.vn_utils import knn
 from ocpmodels.preprocessing.trained_cano import modified_gram_schmidt
 
-class GCN(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2):
+from ocpmodels.preprocessing.vn_layers.vn_layers import VNLinearLeakyReLU, VNMaxPool, mean_pool, VNBatchNorm
+from ocpmodels.preprocessing.vn_layers.vn_utils import get_graph_feature, get_graph_feature_cross
+
+
+class VNTunedPointnet(torch.nn.Module):
+    def __init__(self, pooling="mean"):
         super().__init__()
-        self.convs = nn.ModuleList()
-        self.convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(num_layers-2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        self.pooling = pooling
+        self.conv_pos = VNLinearLeakyReLU(3, 64 // 3, dim=5, negative_slope=0.0)
+        self.conv1 = VNLinearLeakyReLU(64 // 3, 64 // 3, dim=4, negative_slope=0.0)
+        self.bn1 = VNBatchNorm(64 // 3, dim=4)
+        self.conv2 = VNLinearLeakyReLU(64 // 3, 12 // 3, dim=4, negative_slope=0.0)
+        self.dropout = nn.Dropout(p=0.5)
+        self.pool = mean_pool
         
-        self.convs.append(GCNConv(hidden_channels, out_channels))
+    def forward(self, eigenvecs: torch.Tensor) -> torch.Tensor:
+        if len(eigenvecs.size()) == 2:
+            eigenvecs = eigenvecs.unsqueeze(0).transpose(2,1)
+        else:
+            eigenvecs = eigenvecs.transpose(2, 1)
 
-
-    def forward(self, x, edge_index):
-        return self.encode(x, edge_index)
-
-    def encode(self, x, edge_index):
-        for conv in self.convs[:-1]:
-            x = conv(x, edge_index).relu()
-        x = self.convs[-1](x, edge_index)
-        return x
-
-    def decode(self, z, edge_label_index):
-        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
-
-class GCNSignNet(nn.Module):
-    def __init__(self, num_eigs=3, hidden_channels=64, out_channels=3):
-        super().__init__()
-        phi_out_dim = hidden_channels // num_eigs
-        self.phi = GCN(1, hidden_channels, phi_out_dim)
-        self.rho = GCN(num_eigs * phi_out_dim, hidden_channels, out_channels)
-
-    def forward(self, x):
-        return self.encode(x)
-
-    def encode(self, x):
-        breakpoint()
-        n_knn = min(10, x.shape[0] - 1)
-        mat_knn = knn(x.unsqueeze(0).transpose(1,2), n_knn)
-        
-        row, col = torch.meshgrid(torch.arange(mat_knn.size(1)), torch.arange(n_knn), indexing='ij')
-        edge_index = torch.stack([row.reshape(-1), mat_knn[0].reshape(-1)], dim=0)
-
-        x = x.unsqueeze(-1) # n x k x 1
-        x = x.transpose(0,1) # k x n x 1
-        x = self.phi(x, edge_index) + self.phi(-x, edge_index)
-        x = x.transpose(0,1) # n x k x d
-        x = x.reshape(x.shape[0], -1) # n x kd
-        x = self.rho(x, edge_index) # n x d
-        return x
-
-    def decode(self, z, edge_label_index):
-        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
-    
+        batch_size, num_points, _ = eigenvecs.size()
+        feat = get_graph_feature_cross(eigenvecs, k=1)
+        # feat = eigenvecs.repeat(1,3,1,1).unsqueeze(-1)
+        out = self.conv_pos(feat)
+        out = self.pool(out)
+        out = self.conv2(out)
+        out = self.dropout(out)
+        return out.mean(dim=-1)[:, :3].squeeze(0)
 
 class SignNet(nn.Module):
     def __init__(self, input_dim=3, output_dim=3):
         super(SignNet, self).__init__()
-        self.mu = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.ReLU(),
-            nn.Linear(32, output_dim)
-        )
-        self.kappa = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.ReLU(),
-            nn.Linear(32, output_dim)
-        )
+        self.mu = VNTunedPointnet()
+        self.kappa = VNTunedPointnet()
 
     def forward(self, x):
         return self.mu(self.kappa(x) + self.kappa(-x))
 
+# class SignNet(nn.Module):
+#     def __init__(self, input_dim=3, output_dim=3):
+#         super(SignNet, self).__init__()
+#         self.mu = nn.Sequential(
+#             nn.Linear(input_dim, 32),
+#             nn.ReLU(),
+#             nn.Linear(32, output_dim)
+#         )
+#         self.kappa = nn.Sequential(
+#             nn.Linear(input_dim, 32),
+#             nn.ReLU(),
+#             nn.Linear(32, output_dim)
+#         )
+
+#     def forward(self, x):
+#         return self.mu(self.kappa(x) + self.kappa(-x))
 
 class SignEquivariantNet(nn.Module):
     def __init__(self, input_dim=3, output_dim=3):
