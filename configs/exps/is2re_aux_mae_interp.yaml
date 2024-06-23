@@ -11,6 +11,8 @@ default:
     batch_size: 64
     eval_batch_size: 64
     optimizer: AdamW
+    lr_initial: 0.002
+    scheduler: LinearWarmupCosineAnnealingLR
     max_epochs: 50
     loss_position: "mae"
     loss_energy: "mae"

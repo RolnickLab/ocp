@@ -22,10 +22,11 @@ default:
     scheduler: LinearWarmupCosineAnnealingLR
   cp_data_to_tmpdir: True
   frame_averaging: 2D
+  early_stop: False
 
 runs:
 # --------------------------------------------------
-  - config: faenet-is2re-all
+  - config: faenet-is2re-all # real top run
     note: "top-runs"
     fa_method: se3-random
     model:

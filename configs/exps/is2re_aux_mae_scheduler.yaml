@@ -11,14 +11,15 @@ default:
     batch_size: 64
     eval_batch_size: 64
     optimizer: AdamW
-    auxiliary_decay: True
+    lr_initial: 0.002
+    scheduler: LinearWarmupCosineAnnealingLR
+    warmup_steps: 96000
     energy_coefficient: 1.0
     max_epochs: 50
     loss_position: "mae"
     loss_energy: "mae"
     auxiliary_decay: True
     energy_decay: False
-    energy_coefficient: 1.0
   cp_data_to_tmpdir: True
   normalizer: null
   model:

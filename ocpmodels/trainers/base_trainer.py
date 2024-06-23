@@ -630,10 +630,32 @@ class BaseTrainer(ABC):
             self.config["optim"],
             silent=self.silent,
         )
-        self.auxiliary_scheduler = LossWeightScheduler(self.config["optim"], 
+
+
+        try:
+            self.auxiliary_scheduler = LossWeightScheduler(
+                self.config["optim"],
+                loss_type="auxiliary",
+                max_steps=self.config['optim']['max_steps']
+            )
+            print("Auxiliary Scheduler loaded with attributes:", vars(self.auxiliary_scheduler))
+
+            self.energy_scheduler = LossWeightScheduler(
+                self.config["optim"],
+                loss_type="energy",
+                max_steps=self.config['optim']['max_steps']
+            )
+            print("Energy Scheduler loaded with attributes:", vars(self.energy_scheduler))
+
+        except Exception as e:
+            print(f"Error loading loss weight schedulers: {e}")
+            raise
+
+        
+        """self.auxiliary_scheduler = LossWeightScheduler(self.config["optim"], 
                 loss_type="auxiliary", max_steps=self.config['optim']['max_steps'])
         self.energy_scheduler = LossWeightScheduler(self.config["optim"], 
-                loss_type="energy", max_steps=self.config['optim']['max_steps'])
+                loss_type="energy", max_steps=self.config['optim']['max_steps'])"""
         self.clip_grad_norm = self.config["optim"].get("clip_grad_norm")
         self.ema_decay = self.config["optim"].get("ema_decay")
         if self.ema_decay:
@@ -998,15 +1020,14 @@ class BaseTrainer(ABC):
 
         # Log specific metrics
         if final and self.config["logger"] == "wandb" and dist_utils.is_master():
-            overall_energy_mae = cumulated_energy_mae / len(all_splits)
+            overall_metrics = metrics_dict["overall"]
             self.logger.log({"Eval time": cumulated_time})
-            self.objective = overall_energy_mae
-            self.logger.log({"Eval time": cumulated_time})
-            self.logger.log({"Overall MAE": overall_energy_mae})
+            self.objective = overall_metrics["energy_mae"]["metric"]
+            self.logger.log({"Overall MAE": overall_metrics["energy_mae"]["metric"]})
+            self.logger.log({"Overall Energy Within Threshold": overall_metrics["energy_within_threshold"]["metric"]})
             if self.config["model"].get("regress_forces", False):
-                overall_forces_mae = cumulated_forces_mae / len(all_splits)
-                self.logger.log({"Overall Forces MAE": overall_forces_mae})
-                self.objective = (overall_energy_mae + overall_forces_mae) / 2
+                self.logger.log({"Overall Forces MAE": overall_metrics["forces_mae"]["metric"]})
+                self.objective = (overall_metrics["energy_mae"]["metric"] + overall_metrics["forces_mae"]["metric"]) / 2
             self.logger.log({"Objective": self.objective})
 
         # Run on test split
@@ -1032,7 +1053,7 @@ class BaseTrainer(ABC):
                 table = Table(title=f"Results at epoch {epoch}")
             else:
                 table = Table(title="Results")
-            for c, col in enumerate(["Metric / Split"] + all_splits):
+            for c, col in enumerate(["Metric / Split"] + all_splits + ["Average"]):
                 table.add_column(col, justify="left" if c == 0 else "right")
 
             highlights = set()  # {"energy_mae", "forces_mae", "total_loss"}
@@ -1043,12 +1064,65 @@ class BaseTrainer(ABC):
                     f"{metrics_dict[split][metric]['metric']:.5f}"
                     for split in all_splits
                 ]
+                # Use the overall metrics stored in metrics_dict["overall"]
+                avg_metric = metrics_dict["overall"][metric]["metric"]
+                row.append(f"{avg_metric:.5f}")
                 table.add_row(*row, style="on white" if metric in highlights else "")
 
             logging.info(f"eval_all_splits time: {time.time() - start_time:.2f}s")
             print()
             console = Console()
             console.print(table)
+            # Second table with conversions
+            conversion_table = Table(title="Converted Results (Energy in meV, Threshold in %)")
+            for c, col in enumerate(["Metric / Split"] + all_splits + ["Average"]):
+                conversion_table.add_column(col, justify="left" if c == 0 else "right")
+
+            for metric in smn:
+                metric = metric[2:] if metric.startswith("z_") else metric
+                if metric in ["energy_mae", "energy_mse"]:
+                    conversion_factor = 1000  # Convert from eV to meV
+                elif metric == "energy_within_threshold":
+                    conversion_factor = 100  # Convert to percentage
+                else:
+                    conversion_factor = 1  # No conversion
+
+                row = [metric] + [
+                    f"{metrics_dict[split][metric]['metric'] * conversion_factor:.5f}"
+                    for split in all_splits
+                ]
+                # Use the overall metrics stored in metrics_dict["overall"]
+                avg_metric = metrics_dict["overall"][metric]["metric"] * conversion_factor
+                row.append(f"{avg_metric:.5f}")
+                conversion_table.add_row(*row, style="on white" if metric in highlights else "")
+
+            console.print(conversion_table)
+
+            # Print LaTeX table
+            latex_table = """
+    \\begin{table*}[ht]
+    \\centering
+    \\resizebox{1\\textwidth}{!}{
+        \\begin{tabular}{l|ccccc|ccccc}
+        & \\multicolumn{5}{c|}{Energy MAE (meV) $\\downarrow$} & \\multicolumn{5}{c}{EwT (\\%) $\\uparrow$}\\\\
+        Model & ID & OOD Ads & OOD Cat & OOD Both & Average & ID & OOD Ads & OOD Cat & OOD Both & Average \\\\
+        \\hline
+        """
+
+            energy_mae_row = ["Energy MAE"] + [f"{metrics_dict[split]['energy_mae']['metric'] * 1000:.0f}" for split in all_splits] + [f"{metrics_dict['overall']['energy_mae']['metric'] * 1000:.0f}"]
+            ewt_row = ["Energy Within Threshold"] + [f"{metrics_dict[split]['energy_within_threshold']['metric'] * 100:.2f}" for split in all_splits] + [f"{metrics_dict['overall']['energy_within_threshold']['metric'] * 100:.2f}"]
+
+            latex_table += "    " + " & ".join(energy_mae_row) + " \\\\\n"
+            latex_table += "    " + " & ".join(ewt_row) + " \\\\\n"
+            latex_table += """
+        \\end{tabular}
+        }
+    \\caption{Comparison of model performance on different validation splits.}
+    \\label{table:eval_splits_performance}
+    \\end{table*}
+    """
+            print(latex_table)
+
             print()
             print("\n• Trainer objective set to:", self.objective, end="\n\n")
 

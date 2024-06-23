@@ -1,0 +1,117 @@
+job:
+  mem: 80GB
+  cpus: 4
+  gres: gpu:1
+  partition: long
+  # time: 15:00:00
+
+default:
+  test_ri: True
+  mode: train
+  # graph_rewiring: remove-tag-0
+  model:
+    complex_mp: True
+    graph_norm: True
+  #   edge_embed_type: all_rij
+  # wandb_tags: "best-config"
+  optim:
+    batch_size: 128
+    eval_batch_size: 128
+    max_epochs: 50
+    lr_initial: 0.002
+    scheduler: LinearWarmupCosineAnnealingLR
+  cp_data_to_tmpdir: True
+  frame_averaging: 2D
+  early_stop: False
+
+runs:
+# --------------------------------------------------
+  - config: faenet-is2re-all # real top run
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 5
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
+
+  - config: faenet-is2re-all
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 8
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
+
+  - config: faenet-is2re-all
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 10
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
+
+  - config: faenet-is2re-all 
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 12
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
+
+  - config: faenet-is2re-all 
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 14
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
+
+  - config: faenet-is2re-all 
+    note: "top-runs"
+    fa_method: se3-random
+    model:
+      mp_type: updownscale_base
+      tag_hidden_channels: 32
+      pg_hidden_channels: 96
+      hidden_channels: 384
+      num_filters: 480
+      num_gaussians: 104
+      num_interactions: 16
+      cutoff: 6.0
+    optim:
+      eval_every: 0.25
