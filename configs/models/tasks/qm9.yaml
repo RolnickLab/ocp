@@ -8,6 +8,7 @@ default:
     max_num_neighbors: 40
     use_pbc: False
     force_decoder_type: null
+    noisy_nodes: False
 
   optim:
     optimizer: AdamW

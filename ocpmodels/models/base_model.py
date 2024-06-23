@@ -64,13 +64,20 @@ class BaseModel(nn.Module):
     def forces_forward(self, preds):
         """Forward pass for force prediction."""
         raise NotImplementedError
+    
+    def positions_forward(self, preds):
+        """Forward pass for force prediction."""
+        raise NotImplementedError
 
-    def forward(self, data, mode="train", regress_forces=None, q=None):
+    def forward(self, data, mode="train", regress_forces=None,regress_positions=None, q=None):
         grad_forces = forces = None
 
         # Fine tune on gradients
         if regress_forces:
             self.regress_forces = regress_forces
+        
+        if regress_positions:
+            self.regress_positions = regress_positions
 
         # energy gradient w.r.t. positions will be computed
         if mode == "train" or self.regress_forces == "from_energy":
@@ -101,6 +108,10 @@ class BaseModel(nn.Module):
                 raise ValueError(
                     f"Unknown forces regression mode {self.regress_forces}"
                 )
+        if self.regress_positions:
+            # predict positions
+            # if regress_positions=='direct':
+            preds['positions'] = self.positions_forward(preds)
 
         return preds
 

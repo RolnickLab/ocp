@@ -18,7 +18,7 @@ default:
   cp_data_to_tmpdir: True
 
 runs:
-  - config: faenet-is2re-all # 2700544
+  - config: faenet-is2re-all # true best run
     note: "top-runs"
     frame_averaging: 2D
     fa_method: se3-random

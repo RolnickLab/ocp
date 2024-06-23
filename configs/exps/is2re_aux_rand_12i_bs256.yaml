@@ -1,0 +1,103 @@
+job:
+  mem: 80GB
+  cpus: 4
+  gres: gpu:2
+  partition: long
+  # time: 15:00:00
+
+default:
+  mode: train
+  optim:
+    batch_size: 128
+    eval_batch_size: 128
+    optimizer: AdamW
+    auxiliary_decay: True
+    auxiliary_task_weight: 15
+    energy_coefficient: 1.0
+    max_epochs: 60
+  cp_data_to_tmpdir: True
+  normalizer: null
+  model:
+    otf_graph: False
+    max_num_neighbors: 40
+    noisy_nodes: True
+    num_interactions: 12
+  trainer: single
+  logger: wandb
+  early_stop: False
+
+  frame_averaging: 2D
+  fa_method: se3-random
+
+  dataset:
+    train:
+      noisy_nodes:
+        type: rand #rand or rand_deter or constant
+        interpolate_threshold: 0.5
+        min_interpolate_factor: 0.0
+        gaussian_noise_std: 0.3
+
+  task:
+    dataset: lmdb_noisy #single_point_lmdb  
+    description: "Relaxed state energy prediction from initial structure."
+    type: regression
+    metric: mae
+    labels:
+      - relaxed energy
+
+# ----------------------all dataset-------------------
+# CosineAnnealing
+runs:
+  - config: faenet-is2re_aux-all
+    note: "Cosine-very-low-lr"
+    optim:
+      lr_initial: 0.0001
+      scheduler: LinearWarmupCosineAnnealingLR
+
+  - config: faenet-is2re_aux-all
+    note: "Cosine-low-lr"
+    optim:
+      lr_initial: 0.0005
+      scheduler: LinearWarmupCosineAnnealingLR
+  
+  - config: faenet-is2re_aux-all
+    note: "Cosine-med-lr"
+    optim:
+      lr_initial: 0.001
+      scheduler: LinearWarmupCosineAnnealingLR
+
+  - config: faenet-is2re_aux-all
+    note: "Cosine-usual-lr"
+    optim:
+      lr_initial: 0.002
+      scheduler: LinearWarmupCosineAnnealingLR
+
+# ----------------------------10k-----------------------
+# CosineAnnealing
+  - config: faenet-is2re_aux-10k
+    note: "Cosine-very-low-lr"
+    optim:
+      lr_initial: 0.000002
+      scheduler: LinearWarmupCosineAnnealingLR
+      max_epochs: 500
+
+  - config: faenet-is2re_aux-10k
+    note: "Cosine-low-lr"
+    optim:
+      lr_initial: 0.00001
+      scheduler: LinearWarmupCosineAnnealingLR
+      max_epochs: 500
+  
+  - config: faenet-is2re_aux-10k
+    note: "Cosine-med-lr"
+    optim:
+      lr_initial: 0.00002
+      scheduler: LinearWarmupCosineAnnealingLR
+      max_epochs: 500
+
+  - config: faenet-is2re_aux-10k
+    note: "Cosine-usual-lr"
+    optim:
+      lr_initial: 0.00004
+      scheduler: LinearWarmupCosineAnnealingLR
+      max_epochs: 500

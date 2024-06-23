@@ -42,6 +42,7 @@ from ocpmodels.common.utils import (
     get_commit_hash,
     resolve,
     save_checkpoint,
+    dict2str
 )
 from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.modules.evaluator import Evaluator
@@ -50,19 +51,20 @@ from ocpmodels.modules.exponential_moving_average import (
 )
 from ocpmodels.modules.loss import DDPLoss, L2MAELoss
 from ocpmodels.modules.normalizer import Normalizer
-from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
+from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler, LossWeightScheduler
 
 
 @registry.register_trainer("base")
 class BaseTrainer(ABC):
     def __init__(self, load=True, **kwargs):
+        # print("kwargs:",dict2str(kwargs))
         run_dir = kwargs["run_dir"]
         model_name = kwargs["model"].pop(
             "name", kwargs.get("model_name", "Unknown - base_trainer issue")
         )
         self.early_stopping_file = resolve(run_dir) / f"{str(uuid4())}.stop"
         kwargs["model"]["graph_rewiring"] = kwargs.get("graph_rewiring")
-
+        
         self.config = {
             **kwargs,
             "model_name": model_name,
@@ -72,7 +74,7 @@ class BaseTrainer(ABC):
             "logs_dir": str(resolve(run_dir) / "logs"),
             "early_stopping_file": str(self.early_stopping_file),
         }
-
+        # print("Config:", "\n" + dict2str(self.config))
         self.sigterm = False
         self.objective = None
         self.epoch = 0
@@ -87,7 +89,8 @@ class BaseTrainer(ABC):
         self.silent = self.config["silent"]
         self.datasets = {}
         self.samplers = {}
-        self.loaders = {}
+        self.loaders = {}#un dataloader par dataset (train,val). Il duplique dataset dans un certain nb
+        # de workers. Pour chaque loader, il a autant de workers que de CPU, donc 4-1=3.
         self.early_stopper = EarlyStopper(
             patience=self.config["optim"].get("es_patience") or 15,
             min_abs_change=self.config["optim"].get("es_min_abs_change") or 1e-5,
@@ -95,6 +98,7 @@ class BaseTrainer(ABC):
             warmup_epochs=self.config["optim"].get("es_warmup_epochs") or -1,
         )
         self.config["commit"] = self.config.get("commit", get_commit_hash())
+        self.early_stop = self.config.get("early_stop", True)
 
         if self.is_debug:
             del self.config["checkpoint_dir"]
@@ -180,6 +184,27 @@ class BaseTrainer(ABC):
             task=self.task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
+
+        # variables related to auxiliary_task_loss scheduling
+        self.auxiliary_task_weight = self.config['optim'].get('auxiliary_task_weight', 1.0)
+        self.auxiliary_min_weight = self.config['optim'].get('auxiliary_min_weight', 0.1)
+        self.energy_coefficient = self.config['optim'].get('energy_coefficient', 1.0)
+        self.auxiliary_decay = self.config['optim'].get('auxiliary_decay', True)
+        # print('self.auxiliary_task_weight:',self.auxiliary_task_weight)
+        self.use_interpolate_init_relaxed_pos = self.config['optim'].get('use_interpolate_init_relaxed_pos', False)
+        # print('self.use_interpolate_init_relaxed_pos:',self.use_interpolate_init_relaxed_pos)
+        # self.constant_noise = self.config['model'].get('constant_noise', False)
+        # print('self.constant_noise:',self.constant_noise)
+        # if self.config["model"]["noisy_nodes"]:
+            # print('config["model"]["noisy_nodes"]=True')         
+        # nn_config = self.config["dataset"].get("noisy_nodes")
+        # if not isinstance(nn_config, dict):
+
+        # self.loaders should have been defined in self.load() above
+        # self.total_steps = len(self.loaders["train"]) * self.config["optim"]["max_epochs"] # defined for the _compute_auxiliary_task_weight function of the single_trainer
+        # print('self.total_steps:',self.total_steps)
+        self.current_auxiliary_task_weight = self.auxiliary_task_weight
+        # print('self.current_auxiliary_task_weight:',self.current_auxiliary_task_weight)
 
     def load(self):
         self.load_seed_from_config()
@@ -271,6 +296,7 @@ class BaseTrainer(ABC):
                     silent=self.silent,
                 )
             else:
+                # KEY step: create dataset object
                 self.datasets[split] = registry.get_dataset_class(
                     self.config["task"]["dataset"]
                 )(
@@ -352,6 +378,31 @@ class BaseTrainer(ABC):
             self.loaders[split] = self.get_dataloader(
                 self.datasets[split], self.samplers[split]
             )
+        # Pre-process the training dataset if constant noise is enabled
+        """if self.constant_noise:
+            # Apply constant noise to the entire training dataset
+            noised_training_dataset = []
+            for batch_data in self.loaders[self.train_dataset_name]:
+                noised_batch = self.interpolate_init_relaxed_pos(batch_data)
+                noised_training_dataset.append(noised_batch)
+            
+            self.datasets[split] = registry.get_dataset_class(
+                    self.config["task"]["dataset"]
+                )(
+                    ds_conf,
+                    transform=transform,
+                    adsorbates=self.config.get("adsorbates"),
+                    adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
+                    silent=self.silent,
+                )
+            
+            self.samplers["noised_train"] = self.get_sampler(
+                self.datasets["noised_train"], batch_size, shuffle=shuffle
+            )
+            self.loaders["noised_train"] = self.get_dataloader(
+                self.datasets["noised_train"], self.samplers["noised_train"]
+            )"""
+        
 
         # Normalizer for the dataset.
         # Compute mean, std of training set labels.
@@ -403,10 +454,14 @@ class BaseTrainer(ABC):
             },
             **self.config["model"],
         }
-
+        # print("self.config['model_name']:",self.config["model_name"])
+        # print("registry.mapping:",registry.mapping)
+        # print("registry.get_model_class(self.config['model_name']):",registry.get_model_class(self.config["model_name"]))
         self.model = registry.get_model_class(self.config["model_name"])(
             **model_config
-        ).to(self.device)
+        )
+        # print("type(self.model):",type(self.model))
+        self.model.to(self.device)
         self.model.reset_parameters()
         self.model.set_deup_inference(False)
 
@@ -506,8 +561,13 @@ class BaseTrainer(ABC):
 
     def load_loss(self, reduction="mean"):
         self.loss_fn = {}
+        # Energy and force losses (unchanged)
         self.loss_fn["energy"] = self.config["optim"].get("loss_energy", "mae")
         self.loss_fn["force"] = self.config["optim"].get("loss_force", "mae")
+        # Node features auxiliary loss
+        if self.config["model"]["noisy_nodes"]:
+            self.loss_fn["auxiliary"] = self.config["optim"].get("loss_position", "mae")
+
         for loss, loss_name in self.loss_fn.items():
             if loss_name in ["l1", "mae"]:
                 self.loss_fn[loss] = nn.L1Loss(reduction=reduction)
@@ -570,6 +630,32 @@ class BaseTrainer(ABC):
             self.config["optim"],
             silent=self.silent,
         )
+
+
+        try:
+            self.auxiliary_scheduler = LossWeightScheduler(
+                self.config["optim"],
+                loss_type="auxiliary",
+                max_steps=self.config['optim']['max_steps']
+            )
+            print("Auxiliary Scheduler loaded with attributes:", vars(self.auxiliary_scheduler))
+
+            self.energy_scheduler = LossWeightScheduler(
+                self.config["optim"],
+                loss_type="energy",
+                max_steps=self.config['optim']['max_steps']
+            )
+            print("Energy Scheduler loaded with attributes:", vars(self.energy_scheduler))
+
+        except Exception as e:
+            print(f"Error loading loss weight schedulers: {e}")
+            raise
+
+        
+        """self.auxiliary_scheduler = LossWeightScheduler(self.config["optim"], 
+                loss_type="auxiliary", max_steps=self.config['optim']['max_steps'])
+        self.energy_scheduler = LossWeightScheduler(self.config["optim"], 
+                loss_type="energy", max_steps=self.config['optim']['max_steps'])"""
         self.clip_grad_norm = self.config["optim"].get("clip_grad_norm")
         self.ema_decay = self.config["optim"].get("ema_decay")
         if self.ema_decay:
@@ -934,15 +1020,14 @@ class BaseTrainer(ABC):
 
         # Log specific metrics
         if final and self.config["logger"] == "wandb" and dist_utils.is_master():
-            overall_energy_mae = cumulated_energy_mae / len(all_splits)
+            overall_metrics = metrics_dict["overall"]
             self.logger.log({"Eval time": cumulated_time})
-            self.objective = overall_energy_mae
-            self.logger.log({"Eval time": cumulated_time})
-            self.logger.log({"Overall MAE": overall_energy_mae})
+            self.objective = overall_metrics["energy_mae"]["metric"]
+            self.logger.log({"Overall MAE": overall_metrics["energy_mae"]["metric"]})
+            self.logger.log({"Overall Energy Within Threshold": overall_metrics["energy_within_threshold"]["metric"]})
             if self.config["model"].get("regress_forces", False):
-                overall_forces_mae = cumulated_forces_mae / len(all_splits)
-                self.logger.log({"Overall Forces MAE": overall_forces_mae})
-                self.objective = (overall_energy_mae + overall_forces_mae) / 2
+                self.logger.log({"Overall Forces MAE": overall_metrics["forces_mae"]["metric"]})
+                self.objective = (overall_metrics["energy_mae"]["metric"] + overall_metrics["forces_mae"]["metric"]) / 2
             self.logger.log({"Objective": self.objective})
 
         # Run on test split
@@ -968,7 +1053,7 @@ class BaseTrainer(ABC):
                 table = Table(title=f"Results at epoch {epoch}")
             else:
                 table = Table(title="Results")
-            for c, col in enumerate(["Metric / Split"] + all_splits):
+            for c, col in enumerate(["Metric / Split"] + all_splits + ["Average"]):
                 table.add_column(col, justify="left" if c == 0 else "right")
 
             highlights = set()  # {"energy_mae", "forces_mae", "total_loss"}
@@ -979,12 +1064,65 @@ class BaseTrainer(ABC):
                     f"{metrics_dict[split][metric]['metric']:.5f}"
                     for split in all_splits
                 ]
+                # Use the overall metrics stored in metrics_dict["overall"]
+                avg_metric = metrics_dict["overall"][metric]["metric"]
+                row.append(f"{avg_metric:.5f}")
                 table.add_row(*row, style="on white" if metric in highlights else "")
 
             logging.info(f"eval_all_splits time: {time.time() - start_time:.2f}s")
             print()
             console = Console()
             console.print(table)
+            # Second table with conversions
+            conversion_table = Table(title="Converted Results (Energy in meV, Threshold in %)")
+            for c, col in enumerate(["Metric / Split"] + all_splits + ["Average"]):
+                conversion_table.add_column(col, justify="left" if c == 0 else "right")
+
+            for metric in smn:
+                metric = metric[2:] if metric.startswith("z_") else metric
+                if metric in ["energy_mae", "energy_mse"]:
+                    conversion_factor = 1000  # Convert from eV to meV
+                elif metric == "energy_within_threshold":
+                    conversion_factor = 100  # Convert to percentage
+                else:
+                    conversion_factor = 1  # No conversion
+
+                row = [metric] + [
+                    f"{metrics_dict[split][metric]['metric'] * conversion_factor:.5f}"
+                    for split in all_splits
+                ]
+                # Use the overall metrics stored in metrics_dict["overall"]
+                avg_metric = metrics_dict["overall"][metric]["metric"] * conversion_factor
+                row.append(f"{avg_metric:.5f}")
+                conversion_table.add_row(*row, style="on white" if metric in highlights else "")
+
+            console.print(conversion_table)
+
+            # Print LaTeX table
+            latex_table = """
+    \\begin{table*}[ht]
+    \\centering
+    \\resizebox{1\\textwidth}{!}{
+        \\begin{tabular}{l|ccccc|ccccc}
+        & \\multicolumn{5}{c|}{Energy MAE (meV) $\\downarrow$} & \\multicolumn{5}{c}{EwT (\\%) $\\uparrow$}\\\\
+        Model & ID & OOD Ads & OOD Cat & OOD Both & Average & ID & OOD Ads & OOD Cat & OOD Both & Average \\\\
+        \\hline
+        """
+
+            energy_mae_row = ["Energy MAE"] + [f"{metrics_dict[split]['energy_mae']['metric'] * 1000:.0f}" for split in all_splits] + [f"{metrics_dict['overall']['energy_mae']['metric'] * 1000:.0f}"]
+            ewt_row = ["Energy Within Threshold"] + [f"{metrics_dict[split]['energy_within_threshold']['metric'] * 100:.2f}" for split in all_splits] + [f"{metrics_dict['overall']['energy_within_threshold']['metric'] * 100:.2f}"]
+
+            latex_table += "    " + " & ".join(energy_mae_row) + " \\\\\n"
+            latex_table += "    " + " & ".join(ewt_row) + " \\\\\n"
+            latex_table += """
+        \\end{tabular}
+        }
+    \\caption{Comparison of model performance on different validation splits.}
+    \\label{table:eval_splits_performance}
+    \\end{table*}
+    """
+            print(latex_table)
+
             print()
             print("\n• Trainer objective set to:", self.objective, end="\n\n")
 

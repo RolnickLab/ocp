@@ -1,0 +1,87 @@
+job:
+  mem: 80GB
+  cpus: 4
+  gres: gpu:1
+  partition: long
+  # time: 15:00:00
+
+default:
+  mode: train
+  optim:
+    batch_size: 64
+    eval_batch_size: 64
+    optimizer: AdamW
+    lr_initial: 0.002
+    scheduler: LinearWarmupCosineAnnealingLR
+    max_epochs: 50
+    loss_position: "mae"
+    loss_energy: "mae"
+    # loss weights
+    auxiliary_decay: True
+    auxiliary_task_weight: 15
+    auxiliary_min_weight: 1
+    auxiliary_scheduler_type: linear
+    energy_decay: False
+    energy_coefficient: 1.0
+  cp_data_to_tmpdir: True
+  normalizer: null
+  model:
+    otf_graph: False
+    max_num_neighbors: 40
+    noisy_nodes: True
+    num_interactions: 16
+  trainer: single
+  logger: wandb
+  early_stop: False
+  test_ri: True
+  frame_averaging: 2D
+  fa_method: se3-random
+
+  task:
+    dataset: lmdb_noisy
+    description: "Relaxed state energy prediction from initial structure."
+    type: regression
+    metric: mae
+    labels:
+      - relaxed energy
+
+runs:
+  - config: faenet-is2re_aux-all
+    note: "usual interp and gaussian magnitude"
+    dataset:
+      train:
+        noisy_nodes:
+          type: rand
+          interpolate_threshold: 0.5
+          min_interpolate_factor: 0.0
+          gaussian_noise_std: 0.3
+
+  - config: faenet-is2re_aux-all
+    note: "usual interp and lower gaussian magnitude"
+    dataset:
+      train:
+        noisy_nodes:
+          type: rand
+          interpolate_threshold: 0.5
+          min_interpolate_factor: 0.0
+          gaussian_noise_std: 0.1
+
+  - config: faenet-is2re_aux-all
+    note: "no interp"
+    dataset:
+      train:
+        noisy_nodes:
+          type: rand
+          interpolate_threshold: 0.5
+          min_interpolate_factor: 1.0
+          gaussian_noise_std: 0.3
+
+  - config: faenet-is2re_aux-all
+    note: "only interps, no init positions"
+    dataset:
+      train:
+        noisy_nodes:
+          type: rand
+          interpolate_threshold: 1.0
+          min_interpolate_factor: 0.0
+          gaussian_noise_std: 0.3

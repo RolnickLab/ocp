@@ -438,7 +438,10 @@ class FAENet(BaseModel):
         energy_head: Optional[str] = None,
         regress_forces: Optional[str] = None,
         force_decoder_type: Optional[str] = "mlp",
+        position_decoder_type: Optional[str] = "mlp",
         force_decoder_model_config: Optional[dict] = {"hidden_channels": 128},
+        position_decoder_model_config: Optional[dict] = {"hidden_channels": 128},
+        noisy_nodes: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -448,7 +451,9 @@ class FAENet(BaseModel):
         self.cutoff = cutoff
         self.energy_head = energy_head
         self.force_decoder_type = force_decoder_type
+        self.position_decoder_type = position_decoder_type
         self.force_decoder_model_config = force_decoder_model_config
+        self.position_decoder_model_config = position_decoder_model_config
         self.graph_norm = graph_norm
         self.hidden_channels = hidden_channels
         self.max_num_neighbors = max_num_neighbors
@@ -460,6 +465,7 @@ class FAENet(BaseModel):
         self.phys_embeds = phys_embeds
         self.phys_hidden_channels = phys_hidden_channels
         self.regress_forces = regress_forces
+        self.regress_positions=noisy_nodes
         self.second_layer_MLP = second_layer_MLP
         self.skip_co = skip_co
         self.tag_hidden_channels = tag_hidden_channels
@@ -552,7 +558,7 @@ class FAENet(BaseModel):
             self.w_lin = Linear(self.hidden_channels, 1)
 
         # Force head
-        self.decoder = (
+        self.force_decoder = (
             ForceDecoder(
                 self.force_decoder_type,
                 self.hidden_channels,
@@ -560,6 +566,18 @@ class FAENet(BaseModel):
                 self.act,
             )
             if "direct" in self.regress_forces
+            else None
+        )
+
+        # Position head
+        self.position_decoder = (
+            ForceDecoder(
+                self.position_decoder_type,
+                self.hidden_channels,
+                self.position_decoder_model_config,
+                self.act,
+            )
+            if noisy_nodes
             else None
         )
 
@@ -646,8 +664,22 @@ class FAENet(BaseModel):
         Returns:
             dict: additional predicted properties, at an atom-level (e.g. forces)
         """
-        if self.decoder:
-            return self.decoder(preds["hidden_state"])
+        if self.force_decoder:
+            return self.force_decoder(preds["hidden_state"])
+
+    @conditional_grad(torch.enable_grad())
+    def positions_forward(self, preds):
+        """Predicts forces for 3D atomic systems.
+        Can be utilised to predict any atom-level property.
+
+        Args:
+            preds (dict): dictionnary with predicted properties for each graph.
+
+        Returns:
+            dict: additional predicted properties, at an atom-level (e.g. forces)
+        """
+        if self.position_decoder:
+            return self.position_decoder(preds["hidden_state"])
 
     @conditional_grad(torch.enable_grad())
     def energy_forward(self, data, q=None):

@@ -1,6 +1,7 @@
 default:
   trainer: single
   logger: wandb
+  cp_data_to_tmpdir: True
 
   task:
     dataset: single_point_lmdb

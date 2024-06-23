@@ -24,7 +24,7 @@ class Flags:
         self.parser.add_argument_group("Core Arguments")
         self.parser.add_argument(
             "--mode",
-            choices=["train", "predict", "run-relaxations", "validate"],
+            choices=["train", "predict", "run-relaxations", "validate", "is2re_aux-to-is2re"],
             default="train",
             help="Whether to train the model, make predictions, or to run relaxations",
         )
@@ -117,7 +117,7 @@ class Flags:
         )
         self.parser.add_argument(
             "--no_cpus_to_workers",
-            action="store_true",
+            action="store_true",#important
             default=False,
             help="Match dataloader workers to available cpus "
             + "(may be divided by number of GPUs)",
@@ -190,7 +190,7 @@ class Flags:
         self.parser.add_argument(
             "--wandb_project",
             type=str,
-            default="ocp-5",
+            default="faenet++",
             help="WandB project name to use",
         )
         self.parser.add_argument(
@@ -292,6 +292,13 @@ class Flags:
             default=3,
             help="Number of validation loops to run in order to collect inference"
             + " timing stats",
+        )
+        self.parser.add_argument(
+            "--noisy_nodes",
+            action="store_true",
+            default=False,
+            help="If True, noise the input positions and add a position decoding" 
+            +"head to the output block and add auxiliary position denoising loss",
         )
 
 

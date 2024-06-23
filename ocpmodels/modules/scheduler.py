@@ -2,6 +2,7 @@
 """
 import inspect
 import torch.optim.lr_scheduler as lr_scheduler
+import numpy as np
 
 from ocpmodels.common.utils import warmup_lr_lambda
 import pytorch_warmup as warmup
@@ -93,6 +94,67 @@ class LRScheduler:
         for group in self.optimizer.param_groups:
             return group["lr"]
 
+class LossWeightScheduler:
+    def __init__(self, optim_config, loss_type='auxiliary', max_steps=10000):
+        """
+        Initializes the scheduler with a specified weight decay strategy.
+
+        Args:
+            optim_config (dict): Configuration dictionary containing the settings for the scheduler.
+            loss_type (str): Specifies the type of weight ('auxiliary' or 'energy').
+            max_steps (int): Total steps over which the weight should be adjusted.
+        """
+        self.loss_type = loss_type
+        self.max_steps = max_steps
+        self.current_step = 0
+
+        if loss_type == 'auxiliary':
+            self.initial_weight = optim_config.get('auxiliary_task_weight', 1.0)
+            self.min_weight = optim_config.get('auxiliary_min_weight', 0.1)
+            self.decay = optim_config.get('auxiliary_decay', True)
+            self.warmup_steps = optim_config.get('auxiliary_warmup_steps', 0)
+            self.warmup_start_weight = optim_config.get('auxiliary_warmup_start_weight', 0)
+            self.eta_min = optim_config.get('auxiliary_eta_min', 0.1)
+            self.scheduler_type = optim_config.get('auxiliary_scheduler_type', 'linear')
+        elif loss_type == 'energy':
+            self.initial_weight = optim_config.get('energy_coefficient', 1.0)
+            self.min_weight = optim_config.get('min_energy_weight', 1.0)
+            self.decay = optim_config.get('energy_decay', False)
+            self.warmup_steps = optim_config.get('energy_warmup_steps', 0)
+            self.warmup_start_weight = optim_config.get('energy_warmup_start_weight', 0)
+            self.eta_min = optim_config.get('energy_eta_min', 0.1)
+            self.scheduler_type = optim_config.get('energy_scheduler_type', '')
+
+        self.current_weight = self.warmup_start_weight if self.warmup_steps > 0 else self.initial_weight
+
+    def step(self):
+        """
+        Update the weight based on the specified scheduler type.
+        Adjusts the weight according to the current step and scheduling strategy,
+        including handling of warmup phase if configured.
+        """
+        if not self.decay:
+            return
+
+        if self.current_step < self.warmup_steps:
+            self.current_weight += (self.initial_weight - self.warmup_start_weight) / self.warmup_steps
+        else:
+            if self.scheduler_type == 'linear':
+                weight_range = self.initial_weight - self.min_weight
+                decay_step = weight_range / (self.max_steps - self.warmup_steps)
+                self.current_weight = max(self.min_weight, self.current_weight - decay_step)
+            elif self.scheduler_type == 'cosine':
+                adjusted_step = self.current_step - self.warmup_steps
+                adjusted_max_steps = self.max_steps - self.warmup_steps
+                self.current_weight = self.eta_min + 0.5 * (self.initial_weight - self.eta_min) * (1 + np.cos(np.pi * adjusted_step / adjusted_max_steps))
+
+        self.current_step += 1
+
+    def get_weight(self):
+        """
+        Returns the current weight of the loss component being scheduled.
+        """
+        return self.current_weight
 
 class EarlyStopper:
     """

@@ -53,6 +53,11 @@ class Evaluator:
             "energy_mse",
             "energy_within_threshold",
         ],
+        "is2re_aux": [
+            "energy_mae",
+            "energy_mse",
+            "energy_within_threshold",
+        ],
         "qm9": [
             "energy_mae",
             "energy_mse",
@@ -72,6 +77,7 @@ class Evaluator:
         "s2ef": ["energy", "forces", "natoms"],
         "is2rs": ["positions", "cell", "pbc", "natoms"],
         "is2re": ["energy"],
+        "is2re_aux": ["energy"],
         "qm9": ["energy"],
         "qm7x": ["energy"],
         "deup_is2re": ["energy"],
@@ -81,13 +87,14 @@ class Evaluator:
         "s2ef": "energy_force_within_threshold",
         "is2rs": "average_distance_within_threshold",
         "is2re": "energy_mae",
+        "is2re_aux": "energy_mae",
         "qm9": "energy_mae",
         "qm7x": "energy_mae",
         "deup_is2re": "energy_mse",
     }
 
     def __init__(self, task=None, model_regresses_forces=""):
-        assert task in ["s2ef", "is2rs", "is2re", "qm9", "qm7x", "deup_is2re"]
+        assert task in ["s2ef", "is2rs", "is2re", "is2re_aux", "qm9", "qm7x", "deup_is2re"]
         self.task = task
 
         self.metric_fn = self.task_metrics[task]

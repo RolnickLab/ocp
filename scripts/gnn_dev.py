@@ -21,7 +21,7 @@ if __name__ == "__main__":
     config["fa_method"] = "random"  # "random"
     config["test_ri"] = False
     config["optim"] = {"max_epochs": 1}
-    config["model"] = {"use_pbc": True}
+    config["model"] = {"use_pbc": True, "noisy_nodes": True}
 
     checkpoint_path = None
     # "checkpoints/2022-04-28-11-42-56-dimenetplusplus/" + "best_checkpoint.pt"

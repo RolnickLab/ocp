@@ -41,6 +41,21 @@ default:
       res_updown:
         hidden_channels: 128
         norm: batch1d # batch1d, layer or null
+    position_decoder_type: "mlp"
+    position_decoder_model_config:
+      simple:
+        hidden_channels: 128
+        norm: batch1d # batch1d, layer or null
+      mlp:
+        hidden_channels: 256
+        norm: batch1d # batch1d, layer or null
+      res:
+        hidden_channels: 128
+        norm: batch1d # batch1d, layer or null
+      res_updown:
+        hidden_channels: 128
+        norm: batch1d # batch1d, layer or null
+    noisy_nodes: False
   optim:
     batch_size: 256
     eval_batch_size: 256
@@ -70,6 +85,46 @@ is2re:
     graph_rewiring: remove-tag-0
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
     fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  # *** Important note ***
+  #   The total number of gpus used for this run was 1.
+  #   If the global batch size (num_gpus * batch_size) is modified
+  #   the lr_milestones and warmup_steps need to be adjusted accordingly.
+  10k:
+    optim:
+      lr_initial: 0.005
+      lr_milestones:
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  100k:
+    model:
+      hidden_channels: 256
+    optim:
+      lr_initial: 0.005
+      lr_milestones:
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  all: {}
+
+# -------------------------------------------------
+# --- OC20 IS2RE with Node-level auxiliary task ---
+# -------------------------------------------------
+
+is2re_aux:
+  default:
+    graph_rewiring: remove-tag-0
+    frame_averaging: "2D" # {"2D", "3D", "DA", ""}
+    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    model:
+      num_interactions: 5
+      noisy_nodes: True
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified

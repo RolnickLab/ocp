@@ -79,7 +79,9 @@ class ParallelCollater:
 
     def __call__(self, data_list):
         if self.num_gpus in [0, 1]:  # adds cpu-only case
+            # print("data_list in ParallelCollater:",data_list)
             batch = data_list_collater(data_list, otf_graph=self.otf_graph)
+            # print("batch in ParallelCollater:",batch)
             return [batch]
 
         else:
@@ -185,6 +187,7 @@ class BalancedBatchSampler(Sampler):
             shuffle=shuffle,
             drop_last=drop_last,
         )
+        # print("batch_size in BalacendBatchSampler:",batch_size)
         self.batch_sampler = BatchSampler(
             self.single_sampler,
             batch_size,
@@ -198,12 +201,14 @@ class BalancedBatchSampler(Sampler):
         self.single_sampler.set_epoch(epoch)
 
     def __iter__(self):
+        # print("iter in BalancedBatchSampler")
         for batch_idx in self.batch_sampler:
             if self.balance_batches:
+                # print("self.balance_batches")
                 if self.sizes is None:
                     # Unfortunately, we need to load the data to know the image sizes
                     data_list = [self.dataset[idx] for idx in batch_idx]
-
+                    # print("data_list",data_list)
                     if self.mode == "atoms":
                         sizes = [data.num_nodes for data in data_list]
                     elif self.mode == "neighbors":
@@ -228,6 +233,7 @@ class BalancedBatchSampler(Sampler):
                 # this should always have an entry for each replica.
                 result = idx_all[local_idx_balanced[self.rank]]
             else:
+                # print("else")
                 result = batch_idx
 
             if any(r > 1e7 for r in result):

@@ -1,0 +1,5 @@
+# Overwrites defaults.yaml for user `basile.terver`.
+# Create your own $USER.yaml in order to overwrite defaults.yaml systematically to your own taste.
+virtualenv: True
+env: /home/mila/b/basile.terver/ocp/ocp/venv
+modules: cuda/11.2, python/3.8

@@ -41,7 +41,7 @@ else
     conda activate {env}
 fi
 {wandb_offline}
-srun --gpus-per-task=1 --output={output} {python_command}
+srun --output={output} {python_command}
 """
 
 
@@ -257,10 +257,11 @@ if __name__ == "__main__":
     wandb_offline = ""
     sbatch_py_vars = {}
     minydra_defaults = discover_minydra_defaults()
-
+    # print(f"minydra_defaults: {minydra_defaults}")
     # parse and resolve args.
     # defaults are loaded and overwritten from the command-line as `arg=value`
     args = resolved_args(defaults=minydra_defaults)
+    # print(f"args: {args}")
 
     if args.restart_from_dir or args.continue_from_dir:
         if args.restart_from_dir and args.continue_from_dir:
