@@ -1,13 +1,13 @@
 default:
   cano_args:
-    equivariance_module: "untrained_cano" # untrained_cano, trained_cano, fa, sign_equiv_sfa, trained_sign_inv_sfa, untrained_sign_inv_sfa
-    cano_type: "3D"
-    cano_method: "pointnet" # pointnet, deep_pointnet, dgcnn
+    equivariance_module: "" # "", fa, untrained_cano, trained_cano, sign_equiv_sfa, trained_sign_inv_sfa, untrained_sign_inv_sfa, trained_sign_inv_sfa_E3, untrained_sign_inv_sfa_E3
+    cano_type: "3D" # "2D", "3D", "DA", ""
+    cano_method: "" # "", pointnet, simple (= 0 hidden layer pointnet), dgcnn
     # Frame averaging specific arguments
-    fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    fa_method: "random" # {"", all, random, det, se3-all, se3-random, se3-det}
   # Legacy FA arguments:
   frame_averaging: "" # {"2D", "3D", "DA", ""}
-  fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  fa_method: "" # {"", all, random, det, se3-all, se3-random, se3-det}
   model:
     name: faenet
     act: swish
@@ -76,7 +76,7 @@ is2re:
   default:
     graph_rewiring: remove-tag-0
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
-    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    fa_method: "se3-random" # {"", all, random, det, se3-all, se3-random, se3-det}
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified

@@ -413,7 +413,7 @@ class BaseTrainer(ABC):
             self.cano_model = get_learnable_model(
                 self.config['cano_args']['cano_method'],
             ).to(self.device)
-        elif self.config['cano_args']['equivariance_module'] in ['trained_sign_inv_sfa']:
+        elif self.config['cano_args']['equivariance_module'] in ['trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
             self.cano_model = get_learnable_model(
                 self.config['cano_args']['equivariance_module'],
             ).to(self.device)
@@ -427,7 +427,7 @@ class BaseTrainer(ABC):
         self.model.set_deup_inference(False)
 
         total_num_params = self.model.num_params
-        if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+        if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
             total_num_params += sum(p.numel() for p in self.cano_model.parameters())
 
         if dist_utils.is_master() and not self.silent:
@@ -452,7 +452,7 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if dist_utils.initialized():
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 self.cano_model = DistributedDataParallel(
                     self.cano_model, device_ids=[self.device], output_device=self.device
                 )
@@ -577,7 +577,7 @@ class BaseTrainer(ABC):
                     else:
                         params_decay += [param]
 
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for name, param in self.cano_model.named_parameters():
                     if param.requires_grad:
                         if "embedding" in name:
@@ -604,7 +604,7 @@ class BaseTrainer(ABC):
                 **self.config["optim"].get("optimizer_params", {}),
             )
         else:
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 combined_params = \
                     list(self.model.parameters()) + list(self.cano_model.parameters())
             else:
@@ -1075,14 +1075,14 @@ class BaseTrainer(ABC):
 
             g_list = batch_rotated.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa', 'untrained_sign_inv_sfa_E3']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
-            elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
             else:
                 raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
 
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
             else: 
@@ -1122,15 +1122,14 @@ class BaseTrainer(ABC):
             delattr(batch_reflected, "cano_rot")
             g_list = batch_reflected.to_data_list()
 
-            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['', 'fa', 'untrained_cano', 'sign_equiv_sfa', 'untrained_sign_inv_sfa', 'untrained_sign_inv_sfa_E3']:
                 cano_transform = BaseUntrainableCanonicalisation(self.config["cano_args"])
-            elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
-                cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
+            elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
             else:
                 raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
             
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:
+            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
             else: 

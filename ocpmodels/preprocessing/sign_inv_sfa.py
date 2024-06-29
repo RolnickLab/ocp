@@ -43,31 +43,31 @@ class VNTunedPointnet(torch.nn.Module):
         out = self.dropout(out)
         return out.mean(dim=-1)[:, :3].squeeze(0)
 
-class SignNet(nn.Module):
+class SignNetE3(nn.Module):
     def __init__(self, input_dim=3, output_dim=3):
-        super(SignNet, self).__init__()
+        super(SignNetE3, self).__init__()
         self.mu = VNTunedPointnet()
         self.kappa = VNTunedPointnet()
 
     def forward(self, x):
         return self.mu(self.kappa(x) + self.kappa(-x))
 
-# class SignNet(nn.Module):
-#     def __init__(self, input_dim=3, output_dim=3):
-#         super(SignNet, self).__init__()
-#         self.mu = nn.Sequential(
-#             nn.Linear(input_dim, 32),
-#             nn.ReLU(),
-#             nn.Linear(32, output_dim)
-#         )
-#         self.kappa = nn.Sequential(
-#             nn.Linear(input_dim, 32),
-#             nn.ReLU(),
-#             nn.Linear(32, output_dim)
-#         )
+class SignNet(nn.Module):
+    def __init__(self, input_dim=3, output_dim=3):
+        super(SignNet, self).__init__()
+        self.mu = nn.Sequential(
+            nn.Linear(input_dim, 32),
+            nn.ReLU(),
+            nn.Linear(32, output_dim)
+        )
+        self.kappa = nn.Sequential(
+            nn.Linear(input_dim, 32),
+            nn.ReLU(),
+            nn.Linear(32, output_dim)
+        )
 
-#     def forward(self, x):
-#         return self.mu(self.kappa(x) + self.kappa(-x))
+    def forward(self, x):
+        return self.mu(self.kappa(x) + self.kappa(-x))
 
 class SignEquivariantNet(nn.Module):
     def __init__(self, input_dim=3, output_dim=3):
