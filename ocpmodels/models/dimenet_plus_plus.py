@@ -40,6 +40,7 @@ from torch import nn
 from torch.nn import Embedding, Linear
 from torch_geometric.nn import radius_graph
 from torch_geometric.nn.inits import glorot_orthogonal
+from torch_geometric.nn.models.schnet import GaussianSmearing, InteractionBlock
 from torch_geometric.nn.models.dimenet import (
     Envelope,
     ResidualLayer,
@@ -58,7 +59,16 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.pos_encodings import PositionalEncoding
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
+from ocpmodels.models.gemnet.layers.embedding_block import AtomEmbedding
+from ocpmodels.models.gemnet.layers.base_layers import Dense
 from ocpmodels.models.utils.activations import swish
+from ocpmodels.modules.ewald_block import (
+    EwaldBlock,
+    x_to_k_cell,
+    get_k_index_product_set,
+    get_k_voxel_grid,
+    x_to_k_cell,
+)
 
 try:
     import sympy as sym
@@ -327,14 +337,25 @@ class EHOutputPPBlock(torch.nn.Module):
         num_layers,
         energy_head,
         act=swish,
+        use_ewald=False,
     ):
         super(EHOutputPPBlock, self).__init__()
         self.act = act
         self.energy_head = energy_head
+        self.use_ewald = use_ewald
 
         self.lin_rbf = nn.Linear(num_radial, hidden_channels, bias=False)
         self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
         self.lins = torch.nn.ModuleList()
+
+        if self.use_ewald:
+            # Combine Ewald-updated atom encodings with the remaining hidden state
+            # of the model by the concatenating Ewald and short-range embeddings
+            # before the linear upprojection layer of each output block
+            self.lin_up = nn.Linear(2 * hidden_channels, out_emb_channels, bias=True)
+
+        else:
+            self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
         for _ in range(num_layers):
             self.lins.append(nn.Linear(out_emb_channels, out_emb_channels))
         self.lin = nn.Linear(out_emb_channels, out_channels, bias=False)
@@ -356,9 +377,14 @@ class EHOutputPPBlock(torch.nn.Module):
             self.w_lin.bias.data.fill_(0)
             torch.nn.init.xavier_uniform_(self.w_lin.weight)
 
-    def forward(self, x, rbf, i, edge_index, edge_weight, batch, num_nodes=None):
+    def forward(
+        self, x, rbf, i, edge_index, edge_weight, batch, num_nodes=None, h=None
+    ):
         x = self.lin_rbf(rbf) * x
         x = scatter(x, i, dim=0, dim_size=num_nodes)
+
+        if self.use_ewald:
+            x = torch.cat([x, h], dim=-1)
 
         if self.energy_head == "weighted-av-final-embeds":
             alpha = self.w_lin(x)
@@ -383,12 +409,22 @@ class OutputPPBlock(torch.nn.Module):
         out_channels,
         num_layers,
         act=swish,
+        use_ewald=False,
     ):
         super(OutputPPBlock, self).__init__()
         self.act = act
+        self.use_ewald = use_ewald
 
         self.lin_rbf = nn.Linear(num_radial, hidden_channels, bias=False)
-        self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
+
+        if self.use_ewald:
+            # Combine Ewald-updated atom encodings with the remaining hidden state
+            # of the model by the concatenating Ewald and short-range embeddings
+            # before the linear upprojection layer of each output block
+            self.lin_up = nn.Linear(2 * hidden_channels, out_emb_channels, bias=True)
+        else:
+            self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
+
         self.lins = torch.nn.ModuleList()
         for _ in range(num_layers):
             self.lins.append(nn.Linear(out_emb_channels, out_emb_channels))
@@ -404,9 +440,12 @@ class OutputPPBlock(torch.nn.Module):
             lin.bias.data.fill_(0)
         self.lin.weight.data.fill_(0)
 
-    def forward(self, x, rbf, i, num_nodes=None):
+    def forward(self, x, rbf, i, num_nodes=None, h=None):
         x = self.lin_rbf(rbf) * x
         x = scatter(x, i, dim=0, dim_size=num_nodes)
+        # Combine Ewald part of the model with output
+        if self.use_ewald:
+            x = torch.cat([x, h], dim=-1)
         x = self.lin_up(x)
         for lin in self.lins:
             x = self.act(lin(x))
@@ -467,6 +506,9 @@ class DimeNetPlusPlus(BaseModel):
         self.energy_head = kwargs["energy_head"]
         use_tag = kwargs["tag_hidden_channels"] > 0
         use_pg = kwargs["pg_hidden_channels"] > 0
+        self.use_ewald = kwargs.get("use_ewald", False)
+        self.detach_ewald = kwargs.get("detach_ewald", True)
+        self.use_atom_to_atom_mp = kwargs.get("use_atom_to_atom_mp", False)
         act = (
             getattr(nn.functional, kwargs["act"]) if kwargs["act"] != "swish" else swish
         )
@@ -515,6 +557,7 @@ class DimeNetPlusPlus(BaseModel):
                         kwargs["num_output_layers"],
                         self.energy_head,
                         act,
+                        self.use_ewald,
                     )
                     for _ in range(kwargs["num_blocks"] + 1)
                 ]
@@ -529,6 +572,7 @@ class DimeNetPlusPlus(BaseModel):
                         kwargs["num_targets"],
                         kwargs["num_output_layers"],
                         act,
+                        self.use_ewald,
                     )
                     for _ in range(kwargs["num_blocks"] + 1)
                 ]
@@ -549,6 +593,88 @@ class DimeNetPlusPlus(BaseModel):
                 for _ in range(kwargs["num_blocks"])
             ]
         )
+
+        if kwargs.get("use_ewald", False):
+            # Initialize k-space structure
+            if self.use_pbc:
+                # Get the reciprocal lattice indices of included k-vectors
+                (
+                    self.k_index_product_set,
+                    self.num_k_degrees_of_freedom,
+                ) = get_k_index_product_set(
+                    kwargs["ewald_hyperparams"]["num_k_x"],
+                    kwargs["ewald_hyperparams"]["num_k_y"],
+                    kwargs["ewald_hyperparams"]["num_k_z"],
+                )
+                self.k_rbf_values = None
+                self.delta_k = None
+
+            else:
+                # Get the k-space voxel and evaluate Gaussian RBF (can be done at
+                # initialization time as voxel grid stays fixed for all structures)
+                (
+                    self.k_grid,
+                    self.k_rbf_values,
+                    self.num_k_degrees_of_freedom,
+                ) = get_k_voxel_grid(
+                    kwargs["ewald_hyperparams"]["k_cutoff"],
+                    self.delta_k,
+                    kwargs["ewald_hyperparams"]["num_k_rbf"],
+                )
+
+            # Initialize atom embedding block
+            self.atom_emb = AtomEmbedding(kwargs["hidden_channels"], num_elements=83)
+
+            # Downprojection layer, weights are shared among all interaction blocks
+            self.down = Dense(
+                self.num_k_degrees_of_freedom,
+                kwargs["ewald_hyperparams"]["downprojection_size"],
+                activation=None,
+                bias=False,
+            )
+
+            self.ewald_blocks = torch.nn.ModuleList(
+                [
+                    EwaldBlock(
+                        self.down,
+                        kwargs["hidden_channels"],  # Embedding size of short-range GNN
+                        kwargs["ewald_hyperparams"]["downprojection_size"],
+                        kwargs["ewald_hyperparams"][
+                            "num_hidden"
+                        ],  # Number of residuals in update function
+                        activation="silu",
+                        use_pbc=self.use_pbc,
+                        delta_k=self.delta_k,
+                        k_rbf_values=self.k_rbf_values,
+                    )
+                    for i in range(kwargs["num_blocks"])
+                ]
+            )
+
+        if self.use_atom_to_atom_mp:
+            self.atom_emb = AtomEmbedding(kwargs["hidden_channels"], num_elements=83)
+            if self.use_pbc:
+                # Compute neighbor threshold from cutoff assuming uniform atom density
+                self.max_neighbors_at = int((self.cutoff / 6.0) ** 3 * 50)
+            else:
+                self.max_neighbors_at = 100
+            # SchNet interactions for atom-to-atom message passing
+            self.interactions_at = torch.nn.ModuleList(
+                [
+                    InteractionBlock(
+                        kwargs["hidden_channels"],
+                        200,  # num Gaussians
+                        256,  # num filters
+                        self.cutoff,
+                    )
+                    for i in range(kwargs["num_blocks"])
+                ]
+            )
+            self.distance_expansion_at = GaussianSmearing(0.0, self.cutoff, 200)
+
+        self.skip_connection_factor = (
+            1.0 + float(self.use_ewald) + float(self.use_atom_to_atom_mp)
+        ) ** (-0.5)
 
         if self.energy_head == "weighted-av-initial-embeds":
             self.w_lin = Linear(kwargs["hidden_channels"], 1)
@@ -622,6 +748,7 @@ class DimeNetPlusPlus(BaseModel):
         # Rewire the graph
         pos = data.pos
         batch = data.batch
+        batch_size = int(batch.max()) + 1
         if not hasattr(data, "subnodes"):
             data.subnodes = False
 
@@ -679,14 +806,57 @@ class DimeNetPlusPlus(BaseModel):
         rbf = self.rbf(dist)
         sbf = self.sbf(dist, angle, idx_kj)
 
+        if self.use_ewald:
+            if self.use_pbc:
+                # Compute reciprocal lattice basis of structure
+                k_cell, _ = x_to_k_cell(data.cell)
+                # Translate lattice indices to k-vectors
+                k_grid = torch.matmul(self.k_index_product_set.to(batch.device), k_cell)
+            else:
+                k_grid = (
+                    self.k_grid.to(batch.device).unsqueeze(0).expand(batch_size, -1, -1)
+                )
+
+        if self.use_atom_to_atom_mp:
+            # Use separate graph (larger cutoff) for atom-to-atom long-range block
+            (
+                edge_index_at,
+                edge_weight_at,
+                distance_vec_at,
+                cell_offsets_at,
+                _,  # cell offset distances
+                neighbors_at,
+            ) = self.generate_graph(
+                data,
+                cutoff=self.cutoff,
+                max_neighbors=self.max_neighbors_at,
+            )
+
+            edge_attr_at = self.distance_expansion_at(edge_weight_at)
+
         # Embedding block.
         x = self.emb(data.atomic_numbers.long(), rbf, i, j, data.tags, data.subnodes)
+
+        if self.use_ewald:
+            # If Ewald MP is used, we have to create atom embeddings borrowing
+            # the atomic embedding block from the GemNet architecture
+            h = self.atom_emb(data.atomic_numbers.long())
+            dot = None  # These will be computed in first Ewald block and then passed
+            sinc_damping = (
+                None  # on between later Ewald blocks (avoids redundant recomputation)
+            )
+            pos_detach = pos.detach() if self.detach_ewald else pos
+        elif self.use_atom_to_atom_mp:
+            h = self.atom_emb(data.atomic_numbers.long())
+        else:
+            h = None
+
         if self.energy_head:
             P, batch = self.output_blocks[0](
-                x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0)
+                x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0), h=h
             )
         else:
-            P = self.output_blocks[0](x, rbf, i, num_nodes=pos.size(0))
+            P = self.output_blocks[0](x, rbf, i, num_nodes=pos.size(0), h=h)
 
         if self.energy_head == "weighted-av-initial-embeds":
             alpha = self.w_lin(scatter(x, i, dim=0, dim_size=pos.size(0)))
@@ -695,21 +865,62 @@ class DimeNetPlusPlus(BaseModel):
 
         energy_Ps = []
 
-        for interaction_block, output_block in zip(
-            self.interaction_blocks, self.output_blocks[1:]
-        ):
-            x = interaction_block(x, rbf, sbf, idx_kj, idx_ji)
-            if self.energy_head:
-                P_bis, _ = output_block(
-                    x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0)
-                )
-                energy_Ps.append(
-                    P_bis.sum(0) / len(P)
-                    if batch is None
-                    else scatter(P_bis, batch, dim=0)
-                )
-            else:
-                P += output_block(x, rbf, i, num_nodes=pos.size(0))
+        if self.use_ewald or self.use_atom_to_atom_mp:
+            for block_ind in range(len(self.interaction_blocks)):
+                x = self.interaction_blocks[block_ind](x, rbf, sbf, idx_kj, idx_ji)
+
+                if self.use_ewald:
+                    h_ewald, dot, sinc_damping = self.ewald_blocks[block_ind](
+                        h,
+                        pos_detach,
+                        k_grid,
+                        batch_size,
+                        batch,
+                        dot,
+                        sinc_damping,
+                    )
+                else:
+                    h_ewald = 0
+
+                if self.use_atom_to_atom_mp:
+                    h_at = self.interactions_at[block_ind](
+                        h, edge_index_at, edge_weight_at, edge_attr_at
+                    )
+                else:
+                    h_at = 0
+
+                h = self.skip_connection_factor * (h + h_ewald + h_at)
+                if self.energy_head:
+                    P_bis, _ = self.output_blocks[block_ind + 1](
+                        x, rbf, i, num_nodes=pos.size(0), h=h
+                    )
+                    energy_Ps.append(
+                        P_bis.sum(0) / len(P)
+                        if batch is None
+                        else scatter(P_bis, batch, dim=0)
+                    )
+                else:
+                    P += self.output_blocks[block_ind + 1](
+                        x, rbf, i, num_nodes=pos.size(0), h=h
+                    )
+
+        else:
+            for block_ind, (interaction_block, output_block) in enumerate(
+                zip(self.interaction_blocks, self.output_blocks[1:])
+            ):
+                x = interaction_block(x, rbf, sbf, idx_kj, idx_ji)
+
+                if self.energy_head:
+                    P_bis, _ = output_block(
+                        x, rbf, i, edge_index, dist, data.batch, num_nodes=pos.size(0)
+                    )
+                    energy_Ps.append(
+                        P_bis.sum(0) / len(P)
+                        if batch is None
+                        else scatter(P_bis, batch, dim=0)
+                    )
+                else:
+                    P += output_block(x, rbf, i, num_nodes=pos.size(0))
 
         P_bis = sum(energy_Ps or [0])
 
