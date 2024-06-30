@@ -12,12 +12,15 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch_geometric
 from torch_geometric.data import Data
 from tqdm import tqdm
+from torch_geometric.data import Batch
+
 
 from ocpmodels.common import dist_utils
 from ocpmodels.common.registry import registry
@@ -26,7 +29,11 @@ from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import OCP_AND_DEUP_TASKS, check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
+from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.trainers.base_trainer import BaseTrainer
+from ocpmodels.common.scaling.util import ensure_fitted
+
+from ocpmodels.datasets.data_transforms import get_learnable_transforms
 
 is_test_env = os.environ.get("ocp_test_env", False)
 
@@ -53,8 +60,12 @@ class SingleTrainer(BaseTrainer):
         # force_trainer:
 
         if "relax_dataset" in self.config["task"]:
+            transform = get_transforms(self.config)  # TODO: train/val/test behavior
             self.relax_dataset = registry.get_dataset_class("lmdb")(
-                self.config["task"]["relax_dataset"]
+                self.config["task"]["relax_dataset"],
+                transform=transform,
+                adsorbates=self.config.get("adsorbates"),
+                adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
             )
             self.relax_sampler = self.get_sampler(
                 self.relax_dataset,
@@ -130,7 +141,7 @@ class SingleTrainer(BaseTrainer):
             disable=disable_tqdm,
         ):
             with torch.cuda.amp.autocast(enabled=self.scaler is not None):
-                preds = self.model_forward(batch_list)
+                preds = self.model_forward(batch_list, mode="inference")
 
             if self.normalizers is not None and "target" in self.normalizers:
                 hofs = None
@@ -505,53 +516,71 @@ class SingleTrainer(BaseTrainer):
         Returns:
             (dict): model predictions tensor for "energy" and "forces".
         """
-        # Distinguish frame averaging from base case.
-        if self.config["frame_averaging"] and self.config["frame_averaging"] != "DA":
+        # Apply the learnable canonicalization method
+        # (default behaviour is to do nothing, if no learnable transform is picked)
+        if not torch.is_grad_enabled() and mode == "train":
+            print("\nWarning: enabling in preprocessing.\n")
+            torch.set_grad_enabled(True)
+        if self.config["cano_args"].get("equivariance_module", "") == "trained_cano":
+            learnable_transform = get_learnable_transforms(self.cano_model, self.config)
+            batch_list_list = batch_list[0].to_data_list()
+            for b in batch_list_list:
+                b = learnable_transform(b.to(self.device))
+            batch_list = self.parallel_collater(batch_list_list)
+
+        # Canonicalisation case.
+        if (
+            self.config["cano_args"]["cano_type"]
+            and self.config["cano_args"]["cano_type"] != "DA"
+        ):
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
             e_all, f_all, gt_all = [], [], []
 
-            # Compute model prediction for each frame
-            for i in range(len(batch_list[0].fa_pos)):
-                batch_list[0].pos = batch_list[0].fa_pos[i]
+            # Compute model prediction after canonicalisation
+            for i in range(len(batch_list[0].cano_pos)):
+                batch_list[0].pos = batch_list[0].cano_pos[i]
                 if self.task_name in OCP_AND_DEUP_TASKS:
-                    batch_list[0].cell = batch_list[0].fa_cell[i]
+                    batch_list[0].cell = batch_list[0].cano_cell[i]
 
                 # forward pass
                 preds = self.model(
-                    deepcopy(batch_list),
+                    # deepcopy(batch_list),
+                    # [t.clone() for t in batch_list],
+                    # [t.detach() for t in batch_list],
+                    batch_list,
                     mode=mode,
                     regress_forces=self.config["model"]["regress_forces"],
                     q=q,
                 )
                 e_all.append(preds["energy"])
 
-                fa_rot = None
+                cano_rot = None
 
                 if preds.get("forces") is not None:
-                    # Transform forces to guarantee equivariance of FA method
-                    fa_rot = torch.repeat_interleave(
-                        batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
+                    # Transform forces to guarantee equivariance of canonicalisation method
+                    cano_rot = torch.repeat_interleave(
+                        batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
                     g_forces = (
                         preds["forces"]
                         .view(-1, 1, 3)
-                        .bmm(fa_rot.transpose(1, 2).to(preds["forces"].device))
+                        .bmm(cano_rot.transpose(1, 2).to(preds["forces"].device))
                         .view(-1, 3)
                     )
                     f_all.append(g_forces)
                 if preds.get("forces_grad_target") is not None:
-                    # Transform gradients to stay consistent with FA
-                    if fa_rot is None:
-                        fa_rot = torch.repeat_interleave(
-                            batch_list[0].fa_rot[i], batch_list[0].natoms, dim=0
+                    # Transform gradients to stay consistent with canonicalisation
+                    if cano_rot is None:
+                        cano_rot = torch.repeat_interleave(
+                            batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                         )
                     g_grad_target = (
                         preds["forces_grad_target"]
                         .view(-1, 1, 3)
                         .bmm(
-                            fa_rot.transpose(1, 2).to(
+                            cano_rot.transpose(1, 2).to(
                                 preds["forces_grad_target"].device
                             )
                         )
@@ -569,12 +598,12 @@ class SingleTrainer(BaseTrainer):
                 preds["forces"] = sum(f_all) / len(f_all)
             if len(gt_all) > 0 and all(y is not None for y in gt_all):
                 preds["forces_grad_target"] = sum(gt_all) / len(gt_all)
+
         else:
             preds = self.model(batch_list)
 
         if preds["energy"].shape[-1] == 1:
             preds["energy"] = preds["energy"].view(-1)
-
         return preds
 
     def compute_loss(self, preds, batch_list):
@@ -583,11 +612,15 @@ class SingleTrainer(BaseTrainer):
         # Energy loss
         energy_target = torch.cat(
             [
-                batch.y_relaxed.to(self.device)
-                if self.task_name == "is2re"
-                else batch.deup_loss.to(self.device)
-                if self.task_name == "deup_is2re"
-                else batch.y.to(self.device)
+                (
+                    batch.y_relaxed.to(self.device)
+                    if self.task_name == "is2re"
+                    else (
+                        batch.deup_loss.to(self.device)
+                        if self.task_name == "deup_is2re"
+                        else batch.y.to(self.device)
+                    )
+                )
                 for batch in batch_list
             ],
             dim=0,
@@ -700,11 +733,15 @@ class SingleTrainer(BaseTrainer):
         target = {
             "energy": torch.cat(
                 [
-                    batch.y_relaxed.to(self.device)
-                    if self.task_name == "is2re"
-                    else batch.deup_loss.to(self.device)
-                    if self.task_name == "deup_is2re"
-                    else batch.y.to(self.device)
+                    (
+                        batch.y_relaxed.to(self.device)
+                        if self.task_name == "is2re"
+                        else (
+                            batch.deup_loss.to(self.device)
+                            if self.task_name == "deup_is2re"
+                            else batch.y.to(self.device)
+                        )
+                    )
                     for batch in batch_list
                 ],
                 dim=0,
@@ -826,89 +863,109 @@ class SingleTrainer(BaseTrainer):
         n_batches = 0
         n_atoms = 0
 
-        for i, batch in enumerate(self.loaders[self.config["dataset"]["default_val"]]):
-            if self.sigterm:
-                return "SIGTERM"
-            if debug_batches > 0 and i == debug_batches:
-                break
+        with torch.no_grad():
+            for i, batch in enumerate(
+                self.loaders[self.config["dataset"]["default_val"]]
+            ):
+                if self.sigterm:
+                    return "SIGTERM"
+                if debug_batches > 0 and i == debug_batches:
+                    break
 
-            n_batches += len(batch[0].natoms)
-            n_atoms += batch[0].natoms.sum()
+                n_batches += len(batch[0].natoms)
+                n_atoms += batch[0].natoms.sum()
 
-            # Compute model prediction
-            preds1 = self.model_forward(deepcopy(batch), mode="inference")
-
-            # Compute prediction on rotated graph
-            rotated = self.rotate_graph(batch, rotation="z")
-            preds2 = self.model_forward(
-                deepcopy(rotated["batch_list"]), mode="inference"
-            )
-
-            # Difference in predictions, for energy and forces
-            energy_diff_z += torch.abs(preds1["energy"] - preds2["energy"]).sum()
-
-            if self.task_name == "s2ef":
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y).to(preds1["energy"].device)
-                ).sum()
-                forces_diff_z += torch.abs(
-                    preds1["forces"] @ rotated["rot"].to(preds1["forces"].device)
-                    - preds2["forces"]
-                ).sum()
-                assert torch.allclose(
-                    torch.abs(
-                        batch[0].force @ rotated["rot"].to(batch[0].force.device)
-                        - rotated["batch_list"][0].force
-                    ).sum(),
-                    torch.tensor([0.0]),
-                    atol=1e-05,
+                # Compute model prediction
+                preds1 = self.model_forward(
+                    # [t.detach() for t in batch],
+                    batch,
+                    mode="inference",
                 )
-            elif self.task_name == "is2re":
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
-                ).sum()
-            else:
-                energy_diff_z_percentage += (
-                    torch.abs(preds1["energy"] - preds2["energy"])
-                    / torch.abs(batch[0].y).to(preds1["energy"].device)
-                ).sum()
 
-            # Diff in positions
-            pos_diff = -1
-            if hasattr(batch[0], "fa_pos"):
-                pos_diff = 0
-                # Compute total difference across frames
-                for pos1, pos2 in zip(batch[0].fa_pos, rotated["batch_list"][0].fa_pos):
-                    pos_diff += pos1 - pos2
-                # Manhattan distance of pos matrix wrt 0 matrix.
-                pos_diff_total += torch.abs(pos_diff).sum()
+                # Compute prediction on rotated graph
+                rotated = self.rotate_graph(batch, rotation="z")
+                preds2 = self.model_forward(
+                    # [t.detach() for t in rotated["batch_list"]],
+                    rotated["batch_list"],
+                    mode="inference",
+                )
 
-            # Reflect graph and compute diff in prediction
-            reflected = self.reflect_graph(batch)
-            preds3 = self.model_forward(reflected["batch_list"], mode="inference")
-            energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
-            if self.task_name == "s2ef":
-                forces_diff_refl += torch.abs(
-                    preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
-                    - preds3["forces"]
-                ).sum()
-                # assert torch.allclose(
-                #     torch.abs(
-                #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
-                #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
-                #     ).sum(),
-                #     torch.tensor([0.0]),   # .to(batch[0].force.device)
-                #     atol=1e-05,
-                # )
+                # Difference in predictions, for energy and forces
+                energy_diff_z += torch.abs(preds1["energy"] - preds2["energy"]).sum()
 
-            # 3D Rotation and compute diff in prediction
-            rotated = self.rotate_graph(batch)
-            preds4 = self.model_forward(rotated["batch_list"], mode="inference")
-            energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
-            if self.task_name == "s2ef":
-                forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
+                if self.task_name == "s2ef":
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y).to(preds1["energy"].device)
+                    ).sum()
+                    forces_diff_z += torch.abs(
+                        preds1["forces"] @ rotated["rot"].to(preds1["forces"].device)
+                        - preds2["forces"]
+                    ).sum()
+                    assert torch.allclose(
+                        torch.abs(
+                            batch[0].force @ rotated["rot"].to(batch[0].force.device)
+                            - rotated["batch_list"][0].force
+                        ).sum(),
+                        torch.tensor([0.0], device=batch[0].force.device),
+                        atol=1e-05,
+                    )
+                elif self.task_name == "is2re":
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y_relaxed).to(preds1["energy"].device)
+                    ).sum()
+                else:
+                    energy_diff_z_percentage += (
+                        torch.abs(preds1["energy"] - preds2["energy"])
+                        / torch.abs(batch[0].y).to(preds1["energy"].device)
+                    ).sum()
+
+                # Diff in positions
+                pos_diff = -1
+
+                if hasattr(batch[0], "cano_pos"):
+                    pos_diff = 0
+                    # Compute total difference across frames
+                    for pos1, pos2 in zip(
+                        batch[0].cano_pos, rotated["batch_list"][0].cano_pos
+                    ):
+                        pos_diff += pos1 - pos2
+                    # Manhattan distance of pos matrix wrt 0 matrix.
+                    pos_diff_total += torch.abs(pos_diff).sum()
+
+                # Reflect graph and compute diff in prediction
+                reflected = self.reflect_graph(batch)
+                preds3 = self.model_forward(
+                    # [t.detach() for t in reflected["batch_list"]],
+                    reflected["batch_list"],
+                    mode="inference",
+                )
+                energy_diff_refl += torch.abs(preds1["energy"] - preds3["energy"]).sum()
+                if self.task_name == "s2ef":
+                    forces_diff_refl += torch.abs(
+                        preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
+                        - preds3["forces"]
+                    ).sum()
+                    # assert torch.allclose(
+                    #     torch.abs(
+                    #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
+                    #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
+                    #     ).sum(),
+                    #     torch.tensor([0.0]),   # .to(batch[0].force.device)
+                    #     atol=1e-05,
+                    # )
+
+                # 3D Rotation and compute diff in prediction
+                rotated = self.rotate_graph(batch)
+                preds4 = self.model_forward(
+                    # [t.detach() for t in rotated["batch_list"]],
+                    rotated["batch_list"],
+                    mode="inference",
+                )
+                energy_diff += torch.abs(preds1["energy"] - preds4["energy"]).sum()
+                if self.task_name == "s2ef":
+                    forces_diff += torch.abs(preds1["forces"] - preds4["forces"]).sum()
 
         # Aggregate the results
         energy_diff_z = energy_diff_z / n_batches
@@ -947,27 +1004,33 @@ class SingleTrainer(BaseTrainer):
         return symmetry
 
     def run_relaxations(self, split="val"):
-        assert self.task_name == "s2ef"
+        ensure_fitted(self._unwrapped_model)
+
+        # When set to true, uses deterministic CUDA scatter ops, if available.
+        # https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html#torch.use_deterministic_algorithms
+        # Only implemented for GemNet-OC currently.
+        registry.register(
+            "set_deterministic_scatter",
+            self.config["task"].get("set_deterministic_scatter", False),
+        )
+
         logging.info("Running ML-relaxations")
         self.model.eval()
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
 
-        evaluator_is2rs = Evaluator(
-            task="is2rs",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
-        evaluator_is2re = Evaluator(
-            task="is2re",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
+        evaluator_is2rs, metrics_is2rs = Evaluator(task="is2rs"), {}
+        evaluator_is2re, metrics_is2re = Evaluator(task="is2re"), {}
 
-        metrics_is2rs = {}
-        metrics_is2re = {}
-
-        if hasattr(self.relax_dataset[0], "pos_relaxed") and hasattr(
-            self.relax_dataset[0], "y_relaxed"
+        # Need both `pos_relaxed` and `y_relaxed` to compute val IS2R* metrics.
+        # Else just generate predictions.
+        if (
+            hasattr(self.relax_dataset[0], "pos_relaxed")
+            and self.relax_dataset[0].pos_relaxed is not None
+        ) and (
+            hasattr(self.relax_dataset[0], "y_relaxed")
+            and self.relax_dataset[0].y_relaxed is not None
         ):
             split = "val"
         else:
@@ -989,14 +1052,35 @@ class SingleTrainer(BaseTrainer):
                 logging.info(f"Skipping batch: {batch[0].sid.tolist()}")
                 continue
 
+            transform = None
+            try:
+                if self.config["cano_args"].get("equivariance_module", "") in [
+                    "trained_cano",
+                ]:
+                    transform = get_learnable_transforms(self.cano_model, self.config)
+                elif self.config["cano_args"].get("equivariance_module", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
+                    if (
+                        self.config["cano_args"].get("equivariance_module", "")
+                        != "untrainable_cano"
+                    ):
+                        transform.equivariance_module.cano_model = (
+                            transform.equivariance_module.cano_model.to(self.device)
+                        )
+            except:
+                # old version
+                if self.config.get("frame_averaging", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
+
             relaxed_batch = ml_relax(
                 batch=batch,
                 model=self,
                 steps=self.config["task"].get("relaxation_steps", 200),
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
+                save_full_traj=self.config["task"].get("save_full_traj", True),
                 device=self.device,
-                transform=None,
+                transform=transform,
             )
 
             if self.config["task"].get("write_pos", False):
@@ -1049,6 +1133,8 @@ class SingleTrainer(BaseTrainer):
             pos_filename = os.path.join(
                 self.config["results_dir"], f"relaxed_pos_{rank}.npz"
             )
+            if not os.path.exists(pos_filename):
+                os.makedirs(Path(pos_filename).parent, exist_ok=True)
             np.savez_compressed(
                 pos_filename,
                 ids=ids,
@@ -1080,7 +1166,7 @@ class SingleTrainer(BaseTrainer):
                 _, idx = np.unique(gather_results["ids"], return_index=True)
                 gather_results["ids"] = np.array(gather_results["ids"])[idx]
                 gather_results["pos"] = np.concatenate(
-                    np.array(gather_results["pos"])[idx]
+                    np.array(gather_results["pos"], dtype=object)[idx]
                 )
                 gather_results["chunk_idx"] = np.cumsum(
                     np.array(gather_results["chunk_idx"])[idx]
@@ -1127,3 +1213,5 @@ class SingleTrainer(BaseTrainer):
 
         if self.ema:
             self.ema.restore()
+
+        registry.unregister("set_deterministic_scatter")

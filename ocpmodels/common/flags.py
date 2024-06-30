@@ -24,7 +24,13 @@ class Flags:
         self.parser.add_argument_group("Core Arguments")
         self.parser.add_argument(
             "--mode",
-            choices=["train", "predict", "run-relaxations", "validate"],
+            choices=[
+                "train",
+                "predict",
+                "run-relaxations",
+                "validate",
+                "s2ef-to-is2re",
+            ],
             default="train",
             help="Whether to train the model, make predictions, or to run relaxations",
         )
@@ -94,6 +100,12 @@ class Flags:
             type=str,
             help="Run to restart, loading its config and overwriting "
             + "from the command-line",
+        )
+        self.parser.add_argument(
+            "--reload_config",
+            action="store_true",
+            help="Reload the config from the checkpoint",
+            default=False,
         )
         self.parser.add_argument(
             "--keep_orion_config",
@@ -190,7 +202,7 @@ class Flags:
         self.parser.add_argument(
             "--wandb_project",
             type=str,
-            default="ocp-5",
+            default="faenet++",
             help="WandB project name to use",
         )
         self.parser.add_argument(
