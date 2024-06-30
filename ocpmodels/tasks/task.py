@@ -158,13 +158,14 @@ class S2EFtoIS2RE(BaseTask):
                         + "Consider removing it from the model."
                     )
 
-    def setup(self, trainer, config_name):
+    def setup(self, trainer):
         self.trainer = trainer
+        config_name = self.trainer.config["config"]
+        freeze_backbone = self.trainer.config.get("freeze_backbone", False)
+        freeze_output = self.trainer.config.get("freeze_output", False)
         if self.config.get("checkpoint") is not None:
             print("\n🔵 Resuming:\n  • ", end="", flush=True)
-            cp_tmp = self.config["cp_data_to_tmp_dir"]
             self.trainer.load_checkpoint(self.config["checkpoint"])
-            self.config["cp_data_to_tmp_dir"] = cp_tmp
             print()
 
         # save checkpoint path to runner state for slurm resubmissions
@@ -200,6 +201,12 @@ class S2EFtoIS2RE(BaseTask):
         self.trainer.load_extras()
 
         self.trainer.config["model"]["regress_forces"] = ""
+
+        if freeze_backbone:
+            self.trainer.model.module.freeze("output")
+
+        if freeze_output:
+            self.trainer.model.module.freeze("none")
 
         self.trainer.evaluator = Evaluator(
             task="is2re",
