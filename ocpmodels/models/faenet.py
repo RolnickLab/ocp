@@ -8,17 +8,22 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import Embedding, Linear
-from torch_geometric.utils import dropout_edge
 from torch_geometric.nn import MessagePassing, radius_graph
 from torch_geometric.nn.norm import GraphNorm
+from torch_geometric.utils import dropout_edge
 from torch_scatter import scatter
 
 from ocpmodels.common.registry import registry
+from ocpmodels.common.utils import conditional_grad, get_pbc_distances
 from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.activations import swish
+from ocpmodels.modules.ewald_block import (
+    EwaldBlock,
+    get_ewald_params,
+    x_to_k_cell,
+)
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
-from ocpmodels.common.utils import get_pbc_distances, conditional_grad
 
 
 class GaussianSmearing(nn.Module):
@@ -472,6 +477,13 @@ class FAENet(BaseModel):
         self.dropout_lowest_layer = kwargs.get("dropout_lowest_layer", "output") or ""
         self.first_trainable_layer = kwargs.get("first_trainable_layer", "") or ""
 
+        # Ewald summation
+        self.use_ewald = kwargs.get("use_ewald", False)
+        if self.use_ewald:
+            self.ewald_params = get_ewald_params(
+                kwargs["ewald_hyperparams"], self.use_pbc, self.hidden_channels
+            )
+
         if not isinstance(self.regress_forces, str):
             assert self.regress_forces is False or self.regress_forces is None, (
                 "regress_forces must be a string "
@@ -534,6 +546,25 @@ class FAENet(BaseModel):
                 for i in range(self.num_interactions)
             ]
         )
+
+        # Ewald block
+        if self.use_ewald:
+            self.ewald_blocks = nn.ModuleList(
+                [
+                    EwaldBlock(
+                        self.ewald_params["downproj_layer"],
+                        self.hidden_channels,
+                        self.ewald_params["downprojection_size"],
+                        self.ewald_params["num_hidden"],
+                        activation=self.ewald_params["activation"],
+                        use_pbc=self.use_pbc,
+                        delta_k=self.ewald_params["delta_k"],
+                        k_rbf_values=self.ewald_params["k_rbf_values"],
+                        # name=f"ewald_block_{i}",
+                    )
+                    for i in range(self.num_interactions)
+                ]
+            )
 
         # Output block
         self.output_block = OutputBlock(
@@ -670,6 +701,7 @@ class FAENet(BaseModel):
         z = data.atomic_numbers.long()
         pos = data.pos
         batch = data.batch
+        batch_size = int(batch.max()) + 1
         energy_skip_co = []
 
         # Use periodic boundary conditions
@@ -719,6 +751,25 @@ class FAENet(BaseModel):
                 edge_attr = edge_attr[edge_mask]
                 rel_pos = rel_pos[edge_mask]
 
+        if self.use_ewald:
+            if self.use_pbc:
+                if self.ewald_params["k_index_product_set"].device != pos.device:
+                    self.ewald_params["k_index_product_set"] = self.ewald_params[
+                        "k_index_product_set"
+                    ].to(pos.device)
+                # Compute reciprocal lattice basis of structure
+                k_cell, _ = x_to_k_cell(data.cell)
+                # Translate lattice indices to k-vectors
+                k_grid = torch.matmul(self.ewald_params["k_index_product_set"], k_cell)
+            else:
+                if self.ewald_params["k_grid"].device != pos.device:
+                    self.ewald_params["k_grid"] = self.ewald_params["k_grid"].to(pos.device)
+                k_grid = (
+                    self.ewald_params["k_grid"]
+                    .unsqueeze(0)
+                    .expand(batch_size, -1, -1)
+                )
+
         if q is None:
             # Embedding block
             h, e = self.embed_block(z, rel_pos, edge_attr, data.tags)
@@ -733,6 +784,8 @@ class FAENet(BaseModel):
                 alpha = None
 
             # Interaction blocks
+            if self.use_ewald:
+                dot, sinc_damping = None, None  # avoid redundant computation
             energy_skip_co = []
             for ib, interaction in enumerate(self.interaction_blocks):
                 if self.skip_co == "concat_atom":
@@ -747,7 +800,19 @@ class FAENet(BaseModel):
                     self.first_trainable_layer.split("_")[1]
                 ):
                     q = h.clone().detach()
+                if self.use_ewald:
+                    h_ewald, dot, sinc_damping = self.ewald_blocks[ib](
+                        h,
+                        pos,
+                        k_grid,
+                        batch_size,
+                        batch,
+                        dot,
+                        sinc_damping,
+                    )
                 h = h + interaction(h, edge_index, e)
+                if self.use_ewald:
+                    h = (1 / 2) ** 0.5 * (h + h_ewald)
 
             # Atom skip-co
             if self.skip_co == "concat_atom":

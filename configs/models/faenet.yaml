@@ -48,6 +48,15 @@ default:
       res_updown:
         hidden_channels: 128
         norm: batch1d # batch1d, layer or null
+    ######################################### Ewald message passing hyperparameters
+    use_ewald: False
+    ewald_hyperparams:
+      num_k_x: 1                              # Frequency cutoff [Å^-1]
+      num_k_y: 1                              # Voxel grid resolution [Å^-1]
+      num_k_z: 3                              # Gaussian radial basis size (Fourier filter)
+      downprojection_size: 8                  # Size of linear bottleneck layer
+      num_hidden: 3                           # Number of residuals in update function
+    #########################################
   optim:
     batch_size: 256
     eval_batch_size: 256
