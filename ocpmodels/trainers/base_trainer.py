@@ -97,13 +97,13 @@ class BaseTrainer(ABC):
         )
         self.config["commit"] = self.config.get("commit", get_commit_hash())
 
-        # if self.is_debug:
-        #     del self.config["checkpoint_dir"]
-        #     del self.config["results_dir"]
-        #     del self.config["logdir"]
-        #     del self.config["logs_dir"]
-        #     del self.config["run_dir"]
-        #     del self.config["early_stopping_file"]
+        if self.is_debug:
+            del self.config["checkpoint_dir"]
+            del self.config["results_dir"]
+            del self.config["logdir"]
+            del self.config["logs_dir"]
+            del self.config["run_dir"]
+            del self.config["early_stopping_file"]
 
         if torch.cuda.is_available() and not self.cpu:
             self.device = torch.device("cuda:0")
@@ -415,7 +415,10 @@ class BaseTrainer(ABC):
             **self.config["model"],
         }
 
-        if self.config["cano_args"]["equivariance_module"] == "trained_cano":
+        if (
+            self.config.get("cano_args", {}).get("equivariance_module", "")
+            == "trained_cano"
+        ):
             self.cano_model = get_learnable_model(
                 self.config["cano_args"]["cano_method"],
             ).to(self.device)
@@ -429,7 +432,10 @@ class BaseTrainer(ABC):
         self.model.set_deup_inference(False)
 
         total_num_params = self.model.num_params
-        if self.config["cano_args"]["equivariance_module"] == "trained_cano":
+        if (
+            self.config.get("cano_args", {}).get("equivariance_module", "")
+            == "trained_cano"
+        ):
             total_num_params += sum(p.numel() for p in self.cano_model.parameters())
 
         if dist_utils.is_master() and not self.silent:
@@ -603,7 +609,10 @@ class BaseTrainer(ABC):
                 **self.config["optim"].get("optimizer_params", {}),
             )
         else:
-            if self.config["cano_args"]["equivariance_module"] == "trained_cano":
+            if (
+                self.config.get("cano_args", {}).get("equivariance_module", "")
+                == "trained_cano"
+            ):
                 combined_params = list(self.model.parameters()) + list(
                     self.cano_model.parameters()
                 )
