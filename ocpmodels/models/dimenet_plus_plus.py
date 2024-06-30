@@ -610,7 +610,7 @@ class DimeNetPlusPlus(BaseModel):
         return col, row, idx_i, idx_j, idx_k, idx_kj, idx_ji
 
     @conditional_grad(torch.enable_grad())
-    def energy_forward(self, data):
+    def energy_forward(self, data, q=None):
         if self.otf_graph:
             edge_index, cell_offsets, neighbors = radius_graph_pbc(
                 data, self.cutoff, 50
