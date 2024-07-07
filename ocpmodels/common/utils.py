@@ -33,12 +33,12 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from torch_geometric.data import Data
 from torch_geometric.utils import remove_self_loops
-from torch_scatter import segment_coo, segment_csr, scatter
+from torch_scatter import scatter, segment_coo, segment_csr
 
 import ocpmodels
-from ocpmodels.common.flags import flags, Flags
-from ocpmodels.common.registry import registry
 import ocpmodels.common.dist_utils as dist_utils
+from ocpmodels.common.flags import Flags, flags
+from ocpmodels.common.registry import registry
 
 
 class Cluster:
@@ -948,6 +948,37 @@ def set_cpus_to_workers(config, silent=None):
     return config
 
 
+def set_dataset_split(config):
+    """
+    Set the split for all datasets in the config to the one specified in the
+    config's name.
+
+    Resulting dict:
+    {
+        "dataset": {
+            "train": {
+                "split": "all"
+                ...
+            },
+            ...
+        }
+    }
+
+    Args:
+        config (dict): The full trainer config dict
+
+    Returns:
+        dict: The updated config dict
+    """
+    split = config["config"].split("-")[-1]
+    for d, dataset in config["dataset"].items():
+        if d == "default_val":
+            continue
+        assert isinstance(dataset, dict)
+        config["dataset"][d]["split"] = split
+    return config
+
+
 def check_regress_forces(config):
     if "regress_forces" in config["model"]:
         if config["model"]["regress_forces"] == "":
@@ -1023,7 +1054,7 @@ def load_config(config_str):
     return config
 
 
-def build_config(args, args_override=[], silent=None):
+def build_config(args, args_override=[], dict_overrides={}, silent=None):
     config, overrides, loaded_config = {}, {}, {}
 
     if hasattr(args, "config_yml") and args.config_yml:
@@ -1034,6 +1065,7 @@ def build_config(args, args_override=[], silent=None):
     args_dict_with_defaults = {k: v for k, v in vars(args).items() if v is not None}
     if args_override != []:
         overrides = create_dict_from_args(args_override)
+    overrides = merge_dicts(overrides, dict_overrides)
 
     if args.continue_from_dir or args.restart_from_dir:
         # make sure it's either continue xor restart
@@ -1051,8 +1083,19 @@ def build_config(args, args_override=[], silent=None):
         # find configs: from checkpoints first, from the dropped config file
         # otherwise
         ckpts = list(load_dir.glob("checkpoints/checkpoint-*.pt"))
-        if not ckpts and not already_ckpt:
-            print(f"💥 Could not find checkpoints in {str(load_dir)}.")
+        if (not ckpts and not already_ckpt) or (args.reload_config):
+            if args.reload_config:
+                print(
+                    "🔄 Reloading config from the specified directory (not from the model .pt file)."
+                )
+                if already_ckpt:
+                    latest_ckpt = load_dir
+                else:
+                    latest_ckpt = str(
+                        sorted(ckpts, key=lambda c: float(c.stem.split("-")[-1]))[-1]
+                    )
+            else:
+                print(f"💥 Could not find checkpoints in {str(load_dir)}.")
             configs = list(load_dir.glob("config-*.y*ml"))
             if not configs:
                 print(f"💥 Could not find configs in {str(load_dir)}.")
@@ -1071,6 +1114,7 @@ def build_config(args, args_override=[], silent=None):
             load_path = latest_ckpt
             loaded_config = torch.load(latest_ckpt, map_location="cpu")["config"]
 
+
         # config has been found. We need to prune/modify it depending on whether
         # we're restarting or continuing.
         if args.continue_from_dir:
@@ -1088,7 +1132,7 @@ def build_config(args, args_override=[], silent=None):
                 k: v for k, v in loaded_config.items() if k not in remove_keys
             }
             loaded_config["checkpoint"] = str(latest_ckpt)
-            loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
+            # loaded_config["job_ids"] = loaded_config["job_ids"] + f", {JOB_ID}"
             loaded_config["job_id"] = JOB_ID
             loaded_config["local_rank"] = config.get("local_rank", 0)
         else:
@@ -1230,6 +1274,7 @@ def build_config(args, args_override=[], silent=None):
     config = override_drac_paths(config)
     config = continue_from_slurm_job_id(config)
     config = read_slurm_env(config)
+    config = set_dataset_split(config)
     config["optim"]["eval_batch_size"] = config["optim"]["batch_size"]
     dist_utils.setup(config)
 
@@ -1351,15 +1396,32 @@ def get_pbc_distances(
     return out
 
 
-def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
+def radius_graph_pbc(
+    data,
+    radius,
+    max_num_neighbors_threshold,
+    enforce_max_neighbors_strictly: bool = False,
+    pbc=[True, True, True],
+):
     device = data.pos.device
     batch_size = len(data.natoms)
+
+    if hasattr(data, "pbc"):
+        data.pbc = torch.atleast_2d(data.pbc)
+        for i in range(3):
+            if not torch.any(data.pbc[:, i]).item():
+                pbc[i] = False
+            elif torch.all(data.pbc[:, i]).item():
+                pbc[i] = True
+            else:
+                raise RuntimeError(
+                    "Different structures in the batch have different PBC configurations. This is not currently supported."
+                )
 
     # position of the atoms
     atom_pos = data.pos
 
-    # Before computing the pairwise distances between atoms, first create a list
-    # of atom indices to compare for the entire batch
+    # Before computing the pairwise distances between atoms, first create a list of atom indices to compare for the entire batch
     num_atoms_per_image = data.natoms
     num_atoms_per_image_sqr = (num_atoms_per_image**2).long()
 
@@ -1370,15 +1432,12 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     num_atoms_per_image_expand = torch.repeat_interleave(
         num_atoms_per_image, num_atoms_per_image_sqr
     )
-    # Compute a tensor containing sequences of numbers that range from 0 to
-    # num_atoms_per_image_sqr for each image that is used to compute indices for
-    # the pairs of atoms. This is a very convoluted way to implement the following
-    # (but 10x faster since it removes the for loop)
+
+    # Compute a tensor containing sequences of numbers that range from 0 to num_atoms_per_image_sqr for each image
+    # that is used to compute indices for the pairs of atoms. This is a very convoluted way to implement
+    # the following (but 10x faster since it removes the for loop)
     # for batch_idx in range(batch_size):
-    #    batch_count = torch.cat([
-    #        batch_count,
-    #        torch.arange(num_atoms_per_image_sqr[batch_idx], device=device)
-    #    ], dim=0)
+    #    batch_count = torch.cat([batch_count, torch.arange(num_atoms_per_image_sqr[batch_idx], device=device)], dim=0)
     num_atom_pairs = torch.sum(num_atoms_per_image_sqr)
     index_sqr_offset = (
         torch.cumsum(num_atoms_per_image_sqr, dim=0) - num_atoms_per_image_sqr
@@ -1389,12 +1448,10 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     atom_count_sqr = torch.arange(num_atom_pairs, device=device) - index_sqr_offset
 
     # Compute the indices for the pairs of atoms (using division and mod)
-    # If the systems get too large this approach could run into numerical
-    # precision issues
+    # If the systems get too large this apporach could run into numerical precision issues
     index1 = (
-        torch.div(atom_count_sqr, num_atoms_per_image_expand, rounding_mode="trunc")
-        + index_offset_expand
-    )
+        torch.div(atom_count_sqr, num_atoms_per_image_expand, rounding_mode="floor")
+    ) + index_offset_expand
     index2 = (atom_count_sqr % num_atoms_per_image_expand) + index_offset_expand
     # Get the positions for each atom
     pos1 = torch.index_select(atom_pos, 0, index1)
@@ -1406,22 +1463,30 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     # Note that the unit cell volume V = a1 * (a2 x a3) and that
     # (a2 x a3) / V is also the reciprocal primitive vector
     # (crystallographer's definition).
+
     cross_a2a3 = torch.cross(data.cell[:, 1], data.cell[:, 2], dim=-1)
     cell_vol = torch.sum(data.cell[:, 0] * cross_a2a3, dim=-1, keepdim=True)
-    inv_min_dist_a1 = torch.norm(cross_a2a3 / cell_vol, p=2, dim=-1)
-    rep_a1 = torch.ceil(radius * inv_min_dist_a1)
 
-    cross_a3a1 = torch.cross(data.cell[:, 2], data.cell[:, 0], dim=-1)
-    inv_min_dist_a2 = torch.norm(cross_a3a1 / cell_vol, p=2, dim=-1)
-    rep_a2 = torch.ceil(radius * inv_min_dist_a2)
+    if pbc[0]:
+        inv_min_dist_a1 = torch.norm(cross_a2a3 / cell_vol, p=2, dim=-1)
+        rep_a1 = torch.ceil(radius * inv_min_dist_a1)
+    else:
+        rep_a1 = data.cell.new_zeros(1)
 
-    if radius >= 20:
-        # Cutoff larger than the vacuum layer of 20A
+    if pbc[1]:
+        cross_a3a1 = torch.cross(data.cell[:, 2], data.cell[:, 0], dim=-1)
+        inv_min_dist_a2 = torch.norm(cross_a3a1 / cell_vol, p=2, dim=-1)
+        rep_a2 = torch.ceil(radius * inv_min_dist_a2)
+    else:
+        rep_a2 = data.cell.new_zeros(1)
+
+    if pbc[2]:
         cross_a1a2 = torch.cross(data.cell[:, 0], data.cell[:, 1], dim=-1)
         inv_min_dist_a3 = torch.norm(cross_a1a2 / cell_vol, p=2, dim=-1)
         rep_a3 = torch.ceil(radius * inv_min_dist_a3)
     else:
         rep_a3 = data.cell.new_zeros(1)
+
     # Take the max over all images for uniformity. This is essentially padding.
     # Note that this can significantly increase the number of computed distances
     # if the required repetitions are very different between images
@@ -1433,9 +1498,7 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     cells_per_dim = [
         torch.arange(-rep, rep + 1, device=device, dtype=torch.float) for rep in max_rep
     ]
-    unit_cell = torch.cat(torch.meshgrid(cells_per_dim, indexing="ij"), dim=-1).reshape(
-        -1, 3
-    )
+    unit_cell = torch.cartesian_prod(*cells_per_dim)
     num_cells = len(unit_cell)
     unit_cell_per_atom = unit_cell.view(1, num_cells, 3).repeat(len(index2), 1, 1)
     unit_cell = torch.transpose(unit_cell, 0, 1)
@@ -1478,11 +1541,11 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
         index=index1,
         atom_distance=atom_distance_sqr,
         max_num_neighbors_threshold=max_num_neighbors_threshold,
+        enforce_max_strictly=enforce_max_neighbors_strictly,
     )
 
     if not torch.all(mask_num_neighbors):
-        # Mask out the atoms to ensure each atom has at most
-        # max_num_neighbors_threshold neighbors
+        # Mask out the atoms to ensure each atom has at most max_num_neighbors_threshold neighbors
         index1 = torch.masked_select(index1, mask_num_neighbors)
         index2 = torch.masked_select(index2, mask_num_neighbors)
         unit_cell = torch.masked_select(
@@ -1495,12 +1558,29 @@ def radius_graph_pbc(data, radius, max_num_neighbors_threshold):
     return edge_index, unit_cell, num_neighbors_image
 
 
-def get_max_neighbors_mask(natoms, index, atom_distance, max_num_neighbors_threshold):
+def get_max_neighbors_mask(
+    natoms,
+    index,
+    atom_distance,
+    max_num_neighbors_threshold,
+    degeneracy_tolerance: float = 0.01,
+    enforce_max_strictly: bool = False,
+):
     """
     Give a mask that filters out edges so that each atom has at most
     `max_num_neighbors_threshold` neighbors.
     Assumes that `index` is sorted.
+
+    Enforcing the max strictly can force the arbitrary choice between
+    degenerate edges. This can lead to undesired behaviors; for
+    example, bulk formation energies which are not invariant to
+    unit cell choice.
+
+    A degeneracy tolerance can help prevent sudden changes in edge
+    existence from small changes in atom position, for example,
+    rounding errors, slab relaxation, temperature, etc.
     """
+
     device = natoms.device
     num_atoms = natoms.sum()
 
@@ -1526,8 +1606,7 @@ def get_max_neighbors_mask(natoms, index, atom_distance, max_num_neighbors_thres
         )
         return mask_num_neighbors, num_neighbors_image
 
-    # Create a tensor of size [num_atoms, max_num_neighbors] to sort the distances
-    # of the neighbors.
+    # Create a tensor of size [num_atoms, max_num_neighbors] to sort the distances of the neighbors.
     # Fill with infinity so we can easily remove unused distances later.
     distance_sort = torch.full([num_atoms * max_num_neighbors], np.inf, device=device)
 
@@ -1547,13 +1626,36 @@ def get_max_neighbors_mask(natoms, index, atom_distance, max_num_neighbors_thres
 
     # Sort neighboring atoms based on distance
     distance_sort, index_sort = torch.sort(distance_sort, dim=1)
+
     # Select the max_num_neighbors_threshold neighbors that are closest
-    distance_sort = distance_sort[:, :max_num_neighbors_threshold]
-    index_sort = index_sort[:, :max_num_neighbors_threshold]
+    if enforce_max_strictly:
+        distance_sort = distance_sort[:, :max_num_neighbors_threshold]
+        index_sort = index_sort[:, :max_num_neighbors_threshold]
+        max_num_included = max_num_neighbors_threshold
+
+    else:
+        effective_cutoff = (
+            distance_sort[:, max_num_neighbors_threshold] + degeneracy_tolerance
+        )
+        is_included = torch.le(distance_sort.T, effective_cutoff)
+
+        # Set all undesired edges to infinite length to be removed later
+        distance_sort[~is_included.T] = np.inf
+
+        # Subselect tensors for efficiency
+        num_included_per_atom = torch.sum(is_included, dim=0)
+        max_num_included = torch.max(num_included_per_atom)
+        distance_sort = distance_sort[:, :max_num_included]
+        index_sort = index_sort[:, :max_num_included]
+
+        # Recompute the number of neighbors
+        num_neighbors_thresholded = num_neighbors.clamp(max=num_included_per_atom)
+
+        num_neighbors_image = segment_csr(num_neighbors_thresholded, image_indptr)
 
     # Offset index_sort so that it indexes into index
     index_sort = index_sort + index_neighbor_offset.view(-1, 1).expand(
-        -1, max_num_neighbors_threshold
+        -1, max_num_included
     )
     # Remove "unused pairs" with infinite distances
     mask_finite = torch.isfinite(distance_sort)
@@ -1825,17 +1927,17 @@ def make_trainer_from_dir(path, mode, overrides={}, silent=None):
     return registry.get_trainer_class(config["trainer"])(**config)
 
 
-def make_trainer_from_conf_str(conf_str, overrides={}):
+def make_trainer_from_conf_str(conf_str, overrides={}, silent=None):
     assert isinstance(
         overrides, dict
     ), f"Overrides must be a dict. Received {overrides}"
 
-    config = make_config_from_conf_str(conf_str)
+    config = make_config_from_conf_str(conf_str, overrides, silent)
     config = merge_dicts(config, overrides)
     return registry.get_trainer_class(config["trainer"])(**config)
 
 
-def make_config_from_conf_str(conf_str):
+def make_config_from_conf_str(conf_str, overrides={}, silent=None):
     argv = deepcopy(sys.argv)
     sys.argv[1:] = []
     default_args = Flags().get_parser().parse_args()
@@ -1843,7 +1945,7 @@ def make_config_from_conf_str(conf_str):
 
     default_args.config = conf_str
 
-    config = build_config(default_args)
+    config = build_config(default_args, dict_overrides=overrides, silent=silent)
 
     setup_imports()
     return config

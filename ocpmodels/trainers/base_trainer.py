@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
 import datetime
 import errno
 import logging
@@ -14,6 +15,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
+from uuid import uuid4
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -25,7 +28,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch_geometric.data import Batch
 from tqdm import tqdm
-from uuid import uuid4
+
 from ocpmodels.common import dist_utils
 from ocpmodels.common.data_parallel import (
     BalancedBatchSampler,
@@ -262,7 +265,10 @@ class BaseTrainer(ABC):
 
             if "deup" in split:
                 self.datasets[split] = registry.get_dataset_class("deup_lmdb")(
-                    self.config["dataset"], split, transform=transform
+                    self.config["dataset"],
+                    split,
+                    transform=transform,
+                    silent=self.silent,
                 )
             else:
                 try:
@@ -409,9 +415,13 @@ class BaseTrainer(ABC):
             **self.config["model"],
         }
 
-        if self.config['cano_args']['equivariance_module'] in ['trained_cano']:
+
+        if (
+            self.config.get("cano_args", {}).get("equivariance_module", "")
+            in ["trained_cano"]
+        ):
             self.cano_model = get_learnable_model(
-                self.config['cano_args']['cano_method'],
+                self.config["cano_args"]["cano_method"],
             ).to(self.device)
         elif self.config['cano_args']['equivariance_module'] in ['trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
             self.cano_model = get_learnable_model(
@@ -427,7 +437,12 @@ class BaseTrainer(ABC):
         self.model.set_deup_inference(False)
 
         total_num_params = self.model.num_params
-        if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
+
+        if (
+            self.config.get("cano_args", {}).get("equivariance_module", "")
+            in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']
+        ):
+
             total_num_params += sum(p.numel() for p in self.cano_model.parameters())
 
         if dist_utils.is_master() and not self.silent:
@@ -439,12 +454,6 @@ class BaseTrainer(ABC):
         # if self.logger is not None:
         #     self.logger.watch(self.model)
 
-        # if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa']:        
-        #     self.cano_model = OCPDataParallel(
-        #         self.cano_model,
-        #         output_device=self.device,
-        #         num_gpus=1 if not self.cpu else 0,
-        #     )
 
         self.model = OCPDataParallel(
             self.model,
@@ -452,7 +461,7 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if dist_utils.initialized():
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
+            if self.config["cano_args"]["equivariance_module"] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 self.cano_model = DistributedDataParallel(
                     self.cano_model, device_ids=[self.device], output_device=self.device
                 )
@@ -577,7 +586,7 @@ class BaseTrainer(ABC):
                     else:
                         params_decay += [param]
 
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
+            if self.config["cano_args"]["equivariance_module"] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for name, param in self.cano_model.named_parameters():
                     if param.requires_grad:
                         if "embedding" in name:
@@ -591,10 +600,7 @@ class BaseTrainer(ABC):
 
             self.optimizer = optimizer(
                 [
-                    {
-                        "params": params_no_decay, 
-                        "weight_decay": 0
-                    },
+                    {"params": params_no_decay, "weight_decay": 0},
                     {
                         "params": params_decay,
                         "weight_decay": self.config["optim"]["weight_decay"],
@@ -604,9 +610,13 @@ class BaseTrainer(ABC):
                 **self.config["optim"].get("optimizer_params", {}),
             )
         else:
-            if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
-                combined_params = \
-                    list(self.model.parameters()) + list(self.cano_model.parameters())
+            if (
+                self.config.get("cano_args", {}).get("equivariance_module", "")
+                in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']
+            ):
+                combined_params = list(self.model.parameters()) + list(
+                    self.cano_model.parameters()
+                )
             else:
                 combined_params = self.model.parameters()
 
@@ -632,6 +642,13 @@ class BaseTrainer(ABC):
         else:
             self.ema = None
 
+    @property
+    def _unwrapped_model(self):
+        module = self.model
+        while isinstance(module, DistributedDataParallel):
+            module = module.module
+        return module
+
     def save(
         self,
         metrics=None,
@@ -645,9 +662,11 @@ class BaseTrainer(ABC):
                     "step": self.step,
                     "state_dict": self.model.state_dict(),
                     "optimizer": self.optimizer.state_dict(),
-                    "scheduler": self.scheduler.scheduler.state_dict()
-                    if self.scheduler.scheduler_type != "Null"
-                    else None,
+                    "scheduler": (
+                        self.scheduler.scheduler.state_dict()
+                        if self.scheduler.scheduler_type != "Null"
+                        else None
+                    ),
                     "normalizers": {
                         key: value.state_dict()
                         for key, value in self.normalizers.items()
@@ -658,9 +677,9 @@ class BaseTrainer(ABC):
                     "amp": self.scaler.state_dict() if self.scaler else None,
                 }
                 if self.scheduler.warmup_scheduler is not None:
-                    ckpt_dict[
-                        "warmup_scheduler"
-                    ] = self.scheduler.warmup_scheduler.state_dict()
+                    ckpt_dict["warmup_scheduler"] = (
+                        self.scheduler.warmup_scheduler.state_dict()
+                    )
 
                 save_checkpoint(
                     ckpt_dict,
@@ -1066,7 +1085,7 @@ class BaseTrainer(ABC):
         # Rotate graph
         batch_rotated, rot, inv_rot = transform(deepcopy(batch))
         assert not torch.allclose(batch.pos, batch_rotated.pos, atol=1e-05)
-        
+
         # Recompute cano-pos for batch_rotated
         if hasattr(batch, "cano_pos"):
             delattr(batch_rotated, "cano_pos")
@@ -1080,14 +1099,16 @@ class BaseTrainer(ABC):
             elif self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 cano_transform = BaseTrainableCanonicalisation(self.cano_model, self.config["cano_args"])
             else:
-                raise ValueError(f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}")
+                raise ValueError(
+                    f"Unknown equivariance_module (at reflection time): {self.config['cano_args']['equivariance_module']}"
+                )
 
             if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
-            else: 
+            else:
                 for g in g_list:
-                    g = cano_transform(g.to('cpu'))
+                    g = cano_transform(g.to("cpu"))
 
             batch_rotated = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
@@ -1132,14 +1153,14 @@ class BaseTrainer(ABC):
             if self.config['cano_args']['equivariance_module'] in ['trained_cano', 'trained_sign_inv_sfa', 'trained_sign_inv_sfa_E3']:
                 for g in g_list:
                     g = cano_transform(g.to(self.device))
-            else: 
+            else:
                 for g in g_list:
-                    g = cano_transform(g.to('cpu'))
+                    g = cano_transform(g.to("cpu"))
 
             batch_reflected = Batch.from_data_list(g_list)
             if hasattr(batch, "neighbors"):
                 batch_reflected.neighbors = batch.neighbors
-        
+
         return {"batch_list": [batch_reflected], "rot": rot}
 
     def scheduler_step(self, eval_every, metrics):

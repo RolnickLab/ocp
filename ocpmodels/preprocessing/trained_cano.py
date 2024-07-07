@@ -2,7 +2,8 @@ from copy import deepcopy
 from ocpmodels.common.graph_transforms import RandomRotate
 import torch
 
-def modified_gram_schmidt(vectors): # From Kaba et al. 2023
+
+def modified_gram_schmidt(vectors):  # From Kaba et al. 2023
     v1 = vectors[:, 0]
     v1 = v1 / torch.norm(v1, dim=1, keepdim=True)
     v2 = vectors[:, 1] - torch.sum(vectors[:, 1] * v1, dim=1, keepdim=True) * v1

@@ -12,6 +12,7 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -28,7 +29,9 @@ from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import OCP_AND_DEUP_TASKS, check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
+from ocpmodels.datasets.data_transforms import FrameAveraging, get_transforms
 from ocpmodels.trainers.base_trainer import BaseTrainer
+from ocpmodels.common.scaling.util import ensure_fitted
 
 from ocpmodels.datasets.data_transforms import get_learnable_transforms
 
@@ -57,8 +60,12 @@ class SingleTrainer(BaseTrainer):
         # force_trainer:
 
         if "relax_dataset" in self.config["task"]:
+            transform = get_transforms(self.config)  # TODO: train/val/test behavior
             self.relax_dataset = registry.get_dataset_class("lmdb")(
-                self.config["task"]["relax_dataset"]
+                self.config["task"]["relax_dataset"],
+                transform=transform,
+                adsorbates=self.config.get("adsorbates"),
+                adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
             )
             self.relax_sampler = self.get_sampler(
                 self.relax_dataset,
@@ -134,7 +141,7 @@ class SingleTrainer(BaseTrainer):
             disable=disable_tqdm,
         ):
             with torch.cuda.amp.autocast(enabled=self.scaler is not None):
-                preds = self.model_forward(batch_list)
+                preds = self.model_forward(batch_list, mode="inference")
 
             if self.normalizers is not None and "target" in self.normalizers:
                 hofs = None
@@ -514,11 +521,12 @@ class SingleTrainer(BaseTrainer):
         if not torch.is_grad_enabled() and mode == "train":
             print("\nWarning: enabling in preprocessing.\n")
             torch.set_grad_enabled(True)
-        learnable_transform = get_learnable_transforms(self.cano_model, self.config)
-        batch_list_list = batch_list[0].to_data_list()
-        for b in batch_list_list:
-            b = learnable_transform(b.to(self.device))
-        batch_list = self.parallel_collater(batch_list_list)
+        if self.config["cano_args"].get("equivariance_module", "") == "trained_cano":
+            learnable_transform = get_learnable_transforms(self.cano_model, self.config)
+            batch_list_list = batch_list[0].to_data_list()
+            for b in batch_list_list:
+                b = learnable_transform(b.to(self.device))
+            batch_list = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
         # if (
@@ -1017,27 +1025,33 @@ class SingleTrainer(BaseTrainer):
         return symmetry
 
     def run_relaxations(self, split="val"):
-        assert self.task_name == "s2ef"
+        ensure_fitted(self._unwrapped_model)
+
+        # When set to true, uses deterministic CUDA scatter ops, if available.
+        # https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html#torch.use_deterministic_algorithms
+        # Only implemented for GemNet-OC currently.
+        registry.register(
+            "set_deterministic_scatter",
+            self.config["task"].get("set_deterministic_scatter", False),
+        )
+
         logging.info("Running ML-relaxations")
         self.model.eval()
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
 
-        evaluator_is2rs = Evaluator(
-            task="is2rs",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
-        evaluator_is2re = Evaluator(
-            task="is2re",
-            model_regresses_forces=self.config["model"].get("regress_forces", ""),
-        )
+        evaluator_is2rs, metrics_is2rs = Evaluator(task="is2rs"), {}
+        evaluator_is2re, metrics_is2re = Evaluator(task="is2re"), {}
 
-        metrics_is2rs = {}
-        metrics_is2re = {}
-
-        if hasattr(self.relax_dataset[0], "pos_relaxed") and hasattr(
-            self.relax_dataset[0], "y_relaxed"
+        # Need both `pos_relaxed` and `y_relaxed` to compute val IS2R* metrics.
+        # Else just generate predictions.
+        if (
+            hasattr(self.relax_dataset[0], "pos_relaxed")
+            and self.relax_dataset[0].pos_relaxed is not None
+        ) and (
+            hasattr(self.relax_dataset[0], "y_relaxed")
+            and self.relax_dataset[0].y_relaxed is not None
         ):
             split = "val"
         else:
@@ -1059,14 +1073,35 @@ class SingleTrainer(BaseTrainer):
                 logging.info(f"Skipping batch: {batch[0].sid.tolist()}")
                 continue
 
+            transform = None
+            try:
+                if self.config["cano_args"].get("equivariance_module", "") in [
+                    "trained_cano",
+                ]:
+                    transform = get_learnable_transforms(self.cano_model, self.config)
+                elif self.config["cano_args"].get("equivariance_module", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
+                    if (
+                        self.config["cano_args"].get("equivariance_module", "")
+                        != "untrainable_cano"
+                    ):
+                        transform.equivariance_module.cano_model = (
+                            transform.equivariance_module.cano_model.to(self.device)
+                        )
+            except:
+                # old version
+                if self.config.get("frame_averaging", "") != "":
+                    transform = self.relax_dataset.transform.transforms[-1]
+
             relaxed_batch = ml_relax(
                 batch=batch,
                 model=self,
                 steps=self.config["task"].get("relaxation_steps", 200),
                 fmax=self.config["task"].get("relaxation_fmax", 0.0),
                 relax_opt=self.config["task"]["relax_opt"],
+                save_full_traj=self.config["task"].get("save_full_traj", True),
                 device=self.device,
-                transform=None,
+                transform=transform,
             )
 
             if self.config["task"].get("write_pos", False):
@@ -1119,6 +1154,8 @@ class SingleTrainer(BaseTrainer):
             pos_filename = os.path.join(
                 self.config["results_dir"], f"relaxed_pos_{rank}.npz"
             )
+            if not os.path.exists(pos_filename):
+                os.makedirs(Path(pos_filename).parent, exist_ok=True)
             np.savez_compressed(
                 pos_filename,
                 ids=ids,
@@ -1150,7 +1187,7 @@ class SingleTrainer(BaseTrainer):
                 _, idx = np.unique(gather_results["ids"], return_index=True)
                 gather_results["ids"] = np.array(gather_results["ids"])[idx]
                 gather_results["pos"] = np.concatenate(
-                    np.array(gather_results["pos"])[idx]
+                    np.array(gather_results["pos"], dtype=object)[idx]
                 )
                 gather_results["chunk_idx"] = np.cumsum(
                     np.array(gather_results["chunk_idx"])[idx]
@@ -1197,3 +1234,5 @@ class SingleTrainer(BaseTrainer):
 
         if self.ema:
             self.ema.restore()
+
+        registry.unregister("set_deterministic_scatter")
