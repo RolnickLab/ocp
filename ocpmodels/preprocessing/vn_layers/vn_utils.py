@@ -1,8 +1,5 @@
 import torch
 import torch.nn as nn
-# import torch_scatter as ts
-# import pytorch_lightning as pl
-
 from typing import Optional
 
 import torch
@@ -83,17 +80,6 @@ def get_graph_feature_cross(
         torch.Tensor: The computed graph feature cross tensor of shape (batch_size, num_dims*3, num_points, k).
 
     """
-    # breakpoint()
-    # nb_atoms = x.size(0)
-    # if idx is None:
-    #     idx = knn(x.squeeze(1), k=k)
-
-    # feature = x.squeeze(1)[idx, :]
-    # x_rep = x.repeat(1, k, 1)
-    # cross = torch.cross(feature, x_rep, dim=2)
-    # feature = torch.cat((feature - x_rep, x_rep, cross), dim=2)
-    # return feature.view(nb_atoms, -1, k)
-
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)
