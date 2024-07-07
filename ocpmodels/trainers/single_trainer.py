@@ -532,10 +532,7 @@ class SingleTrainer(BaseTrainer):
             batch_list = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
-        if (
-            self.config.get("cano_args", {}).get("cano_type", "") != ""
-            and self.config.get("cano_args", {}).get("cano_type", "") != "DA"
-        ):
+        if self.config.get("cano_args", {}).get("cano_type", "") not in {"", "DA"}:
             original_pos = batch_list[0].pos
             if self.task_name in OCP_AND_DEUP_TASKS:
                 original_cell = batch_list[0].cell
@@ -568,7 +565,7 @@ class SingleTrainer(BaseTrainer):
                     )
 
                     if (
-                        self.config["cano_args"]["equivariance_module"]
+                        self.config.get("cano_args", {}).get("equivariance_module", "")
                         == "sign_equiv_sfa"
                     ):
                         # Multiply by rotated X (with no sign change, hence (-1)**i to compensate)
@@ -597,7 +594,7 @@ class SingleTrainer(BaseTrainer):
                         )
 
                     if (
-                        self.config["cano_args"]["equivariance_module"]
+                        self.config.get("cano_args", "").get("equivariance_module", "")
                         == "sign_equiv_sfa"
                     ):
                         preds_grad_target = (
@@ -1088,11 +1085,14 @@ class SingleTrainer(BaseTrainer):
 
             transform = None
             try:
-                if self.config["cano_args"].get("equivariance_module", "") in [
+                if self.config.get("cano_args", {}).get("equivariance_module", "") in [
                     "trained_cano",
                 ]:
                     transform = get_learnable_transforms(self.cano_model, self.config)
-                elif self.config["cano_args"].get("equivariance_module", "") != "":
+                elif (
+                    self.config.get("cano_args", {}).get("equivariance_module", "")
+                    != ""
+                ):
                     transform = self.relax_dataset.transform.transforms[-1]
                     if (
                         self.config["cano_args"].get("equivariance_module", "")

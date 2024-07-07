@@ -1114,7 +1114,6 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
             load_path = latest_ckpt
             loaded_config = torch.load(latest_ckpt, map_location="cpu")["config"]
 
-
         # config has been found. We need to prune/modify it depending on whether
         # we're restarting or continuing.
         if args.continue_from_dir:
@@ -1275,6 +1274,15 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
     config = continue_from_slurm_job_id(config)
     config = read_slurm_env(config)
     config = set_dataset_split(config)
+
+    # -- Handle new frame_averaging config -- (move into separate function)
+    if "frame_averaging" in config:
+        config["cano_args"] = {
+            "equivariance_module": "fa",
+            "cano_method": config["fa_method"],
+            "cano_type": config["frame_averaging"],
+        }
+
     config["optim"]["eval_batch_size"] = config["optim"]["batch_size"]
     dist_utils.setup(config)
 
