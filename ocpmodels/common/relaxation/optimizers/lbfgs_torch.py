@@ -225,20 +225,20 @@ class TorchCalc:
         return energy, forces
 
     def update_graph(self, atoms):
-        atoms = atoms.to_data_list()
-        for a in atoms:
-            if self.transform is not None:
-                a = self.transform(a)
-            # atoms = data_list_collater([self.transform(a) for a in atoms])
-            # atoms = Batch.from_data_list([self.transform(a) for a in atoms])
-            edge_index, cell_offsets, num_neighbors = radius_graph_pbc(a, 6, 50)
-            a.edge_index = edge_index
-            a.cell_offsets = cell_offsets
-            a.neighbors = num_neighbors
-        atoms = data_list_collater(atoms)
-        # edge_index, cell_offsets, num_neighbors = radius_graph_pbc(atoms, 6, 50)
-        # atoms.edge_index = edge_index
-        # atoms.cell_offsets = cell_offsets
-        # atoms.neighbors = num_neighbors
+        if self.transform is not None:
+            atoms = atoms.to_data_list()
+            for a in atoms:
+                if self.transform is not None:
+                    a = self.transform(a)
+                edge_index, cell_offsets, num_neighbors = radius_graph_pbc(a, 6, 50)
+                a.edge_index = edge_index
+                a.cell_offsets = cell_offsets
+                a.neighbors = num_neighbors
+            atoms = data_list_collater(atoms)
+        else:
+            edge_index, cell_offsets, num_neighbors = radius_graph_pbc(atoms, 6, 50)
+            atoms.edge_index = edge_index
+            atoms.cell_offsets = cell_offsets
+            atoms.neighbors = num_neighbors
         torch.cuda.empty_cache()
-        return atoms
+        return atoms.detach()

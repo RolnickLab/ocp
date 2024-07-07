@@ -152,6 +152,7 @@ def get_ewald_params(ewald_hyperparams, use_pbc, hidden_channels):
             delta_k,
             num_k_rbf,
         )
+        k_index_product_set = None
 
     # Downprojection layer, weights are shared among all interaction blocks
     downproj_layer = Dense(

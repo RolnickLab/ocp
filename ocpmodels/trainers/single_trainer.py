@@ -521,7 +521,10 @@ class SingleTrainer(BaseTrainer):
         if not torch.is_grad_enabled() and mode == "train":
             print("\nWarning: enabling in preprocessing.\n")
             torch.set_grad_enabled(True)
-        if self.config["cano_args"].get("equivariance_module", "") == "trained_cano":
+        if (
+            self.config.get("cano_args", {}).get("equivariance_module", "")
+            == "trained_cano"
+        ):
             learnable_transform = get_learnable_transforms(self.cano_model, self.config)
             batch_list_list = batch_list[0].to_data_list()
             for b in batch_list_list:
@@ -529,85 +532,95 @@ class SingleTrainer(BaseTrainer):
             batch_list = self.parallel_collater(batch_list_list)
 
         # Canonicalisation case.
-        # if (
-        #     "cano_type" in self.config["cano_args"] 
-        #     and self.config["cano_args"]["cano_type"] != "DA"
-        #     ):
+        if (
+            self.config.get("cano_args", {}).get("cano_type", "") != ""
+            and self.config.get("cano_args", {}).get("cano_type", "") != "DA"
+        ):
+            original_pos = batch_list[0].pos
+            if self.task_name in OCP_AND_DEUP_TASKS:
+                original_cell = batch_list[0].cell
+            e_all, f_all, gt_all = [], [], []
 
-        if "cano_args" in self.config and "cano_pos" in self.config["cano_args"]:
-            cano_type = self.config["cano_args"]["cano_type"]
-            if cano_type and cano_type != "DA":
-                original_pos = batch_list[0].pos
+            # Compute model prediction after canonicalisation
+            for i in range(len(batch_list[0].cano_pos)):
+                batch_list[0].pos = batch_list[0].cano_pos[i]
                 if self.task_name in OCP_AND_DEUP_TASKS:
-                    original_cell = batch_list[0].cell
-                e_all, f_all, gt_all = [], [], []
+                    batch_list[0].cell = batch_list[0].cano_cell[i]
 
-                # Compute model prediction after canonicalisation
-                for i in range(len(batch_list[0].cano_pos)):
-                    batch_list[0].pos = batch_list[0].cano_pos[i]
-                    if self.task_name in OCP_AND_DEUP_TASKS:
-                        batch_list[0].cell = batch_list[0].cano_cell[i]
+                # forward pass
+                preds = self.model(
+                    # deepcopy(batch_list),
+                    # [t.clone() for t in batch_list],
+                    # [t.detach() for t in batch_list],
+                    batch_list,
+                    mode=mode,
+                    regress_forces=self.config["model"]["regress_forces"],
+                    q=q,
+                )
+                e_all.append(preds["energy"])
 
-                    # forward pass
-                    preds = self.model(
-                        # deepcopy(batch_list),
-                        # [t.clone() for t in batch_list],
-                        # [t.detach() for t in batch_list],
-                        batch_list,
-                        mode=mode,
-                        regress_forces=self.config["model"]["regress_forces"],
-                        q=q,
+                cano_rot = None
+
+                if preds.get("forces") is not None:
+                    # Transform forces to guarantee equivariance of canonicalisation method
+                    cano_rot = torch.repeat_interleave(
+                        batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                     )
-                    e_all.append(preds["energy"])
 
-                    cano_rot = None
+                    if (
+                        self.config["cano_args"]["equivariance_module"]
+                        == "sign_equiv_sfa"
+                    ):
+                        # Multiply by rotated X (with no sign change, hence (-1)**i to compensate)
+                        preds_forces = (
+                            preds["forces"]
+                            * (-1) ** i
+                            * (
+                                batch_list[0].pos
+                                - batch_list[0].pos.mean(dim=0, keepdim=True)
+                            )
+                        )
+                    else:
+                        preds_forces = preds["forces"]
 
-                    if preds.get("forces") is not None:
-                        # Transform forces to guarantee equivariance of canonicalisation method
+                    g_forces = (
+                        preds_forces.view(-1, 1, 3)
+                        .bmm(cano_rot.transpose(1, 2).to(preds["forces"].device))
+                        .view(-1, 3)
+                    )
+                    f_all.append(g_forces)
+                if preds.get("forces_grad_target") is not None:
+                    # Transform gradients to stay consistent with canonicalisation
+                    if cano_rot is None:
                         cano_rot = torch.repeat_interleave(
                             batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
                         )
-                        
-                        if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
-                            # Multiply by rotated X (with no sign change, hence (-1)**i to compensate)
-                            preds_forces = preds["forces"] * (-1)**i * (
-                                batch_list[0].pos - batch_list[0].pos.mean(dim=0, keepdim=True)
+
+                    if (
+                        self.config["cano_args"]["equivariance_module"]
+                        == "sign_equiv_sfa"
+                    ):
+                        preds_grad_target = (
+                            preds["forces_grad_target"]
+                            * (-1) ** i
+                            * (
+                                batch_list[0].pos
+                                - batch_list[0].pos.mean(dim=0, keepdim=True)
                             )
-                        else:
-                            preds_forces = preds["forces"]
-                        
-                        g_forces = (
-                            preds_forces
-                            .view(-1, 1, 3)
-                            .bmm(cano_rot.transpose(1, 2).to(preds["forces"].device))
-                            .view(-1, 3)
                         )
-                        f_all.append(g_forces)
-                    if preds.get("forces_grad_target") is not None:
-                        # Transform gradients to stay consistent with canonicalisation
-                        if cano_rot is None:
-                            cano_rot = torch.repeat_interleave(
-                                batch_list[0].cano_rot[i], batch_list[0].natoms, dim=0
+                    else:
+                        preds_grad_target = preds["forces_grad_target"]
+
+                    g_grad_target = (
+                        preds_grad_target.view(-1, 1, 3)
+                        .bmm(
+                            cano_rot.transpose(1, 2).to(
+                                preds["forces_grad_target"].device
                             )
-                        
-                        if self.config["cano_args"]["equivariance_module"] == "sign_equiv_sfa":
-                            preds_grad_target = preds["forces_grad_target"] * (-1)**i * (
-                                batch_list[0].pos - batch_list[0].pos.mean(dim=0, keepdim=True)
-                            )
-                        else:
-                            preds_grad_target = preds["forces_grad_target"]
-                        
-                        g_grad_target = (
-                            preds_grad_target
-                            .view(-1, 1, 3)
-                            .bmm(
-                                cano_rot.transpose(1, 2).to(
-                                    preds["forces_grad_target"].device
-                                )
-                            )
-                            .view(-1, 3)
                         )
-                        gt_all.append(g_grad_target)
+                        .view(-1, 3)
+                    )
+                    gt_all.append(g_grad_target)
 
             batch_list[0].pos = original_pos
             if self.task_name in OCP_AND_DEUP_TASKS:
@@ -1088,21 +1101,26 @@ class SingleTrainer(BaseTrainer):
                         transform.equivariance_module.cano_model = (
                             transform.equivariance_module.cano_model.to(self.device)
                         )
-            except:
+            except Exception as e:
                 # old version
+                print(
+                    e,
+                    "Error in getting learnable transforms because using the old version of equivariance args",
+                )
                 if self.config.get("frame_averaging", "") != "":
                     transform = self.relax_dataset.transform.transforms[-1]
 
-            relaxed_batch = ml_relax(
-                batch=batch,
-                model=self,
-                steps=self.config["task"].get("relaxation_steps", 200),
-                fmax=self.config["task"].get("relaxation_fmax", 0.0),
-                relax_opt=self.config["task"]["relax_opt"],
-                save_full_traj=self.config["task"].get("save_full_traj", True),
-                device=self.device,
-                transform=transform,
-            )
+            with torch.no_grad():
+                relaxed_batch = ml_relax(
+                    batch=batch,
+                    model=self,
+                    steps=self.config["task"].get("relaxation_steps", 200),
+                    fmax=self.config["task"].get("relaxation_fmax", 0.0),
+                    relax_opt=self.config["task"]["relax_opt"],
+                    save_full_traj=self.config["task"].get("save_full_traj", True),
+                    device=self.device,
+                    transform=transform,
+                )
 
             if self.config["task"].get("write_pos", False):
                 systemids = [str(i) for i in relaxed_batch.sid.tolist()]
