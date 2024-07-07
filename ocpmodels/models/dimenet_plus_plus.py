@@ -618,9 +618,11 @@ class DimeNetPlusPlus(BaseModel):
                     self.num_k_degrees_of_freedom,
                 ) = get_k_voxel_grid(
                     kwargs["ewald_hyperparams"]["k_cutoff"],
-                    self.delta_k,
+                    kwargs["ewald_hyperparams"]["delta_k"],
                     kwargs["ewald_hyperparams"]["num_k_rbf"],
                 )
+                self.delta_k = kwargs["ewald_hyperparams"]["delta_k"]
+                self.k_cutoff = kwargs["ewald_hyperparams"]["k_cutoff"]
 
             # Initialize atom embedding block
             self.atom_emb = AtomEmbedding(kwargs["hidden_channels"], num_elements=83)

@@ -56,6 +56,10 @@ default:
       num_k_z: 3                              # Gaussian radial basis size (Fourier filter)
       downprojection_size: 8                  # Size of linear bottleneck layer
       num_hidden: 3                           # Number of residuals in update function
+      # params for qm9
+      k_cutoff: 0.4                           # Frequency cutoff [Å^-1]
+      delta_k: 0.2                            # Voxel grid resolution [Å^-1]
+      num_k_rbf: 48                           # Gaussian radial basis size (Fourier filter)
     #########################################
   optim:
     batch_size: 256
