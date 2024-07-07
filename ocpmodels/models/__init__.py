@@ -13,3 +13,4 @@ from .forcenet import ForceNet  # noqa: F401
 from .schnet import SchNet  # noqa: F401
 from .sfarinet import SfariNet  # noqa: F401
 from .spinconv import spinconv  # noqa: F401
+from .equiformer_v2.equiformer_v2_oc20 import EquiformerV2_OC20  # noqa: F401

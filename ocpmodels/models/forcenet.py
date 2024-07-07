@@ -478,7 +478,7 @@ class ForceNet(BaseModel):
         self.energy_mlp = nn.Linear(kwargs["decoder_hidden_channels"], 1)
 
     @conditional_grad(torch.enable_grad())
-    def energy_forward(self, data):
+    def energy_forward(self, data, q=None):
         # Rewire the graph
         z = data.atomic_numbers.long()
         pos = data.pos
