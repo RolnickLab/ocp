@@ -1,16 +1,20 @@
 import torch
 
-from ocpmodels.preprocessing.frame_averaging import (
-    data_augmentation,
-    frame_averaging_2D,
-    frame_averaging_3D,
-)
+import ocpmodels.preprocessing.frame_averaging as frame_averaging
+
 from ocpmodels.preprocessing.graph_rewiring import (
     one_supernode_per_atom_type,
     one_supernode_per_atom_type_dist,
     one_supernode_per_graph,
     remove_tag0_nodes,
 )
+
+import ocpmodels.preprocessing.trained_cano as trained_cano
+import ocpmodels.preprocessing.sign_inv_sfa as sign_inv_sfa
+import ocpmodels.preprocessing.sign_equiv_stoch_fa as sign_equiv_stoch_fa
+
+from ocpmodels.preprocessing.sign_inv_sfa import SignNet, SignNetE3
+from ocpmodels.preprocessing.vn_pointcloud import VNSmall, VNPointnet, VN_dgcnn
 
 
 class Transform:
@@ -30,14 +34,223 @@ class Transform:
         return s
 
 
-class FrameAveraging(Transform):
+class BaseUntrainableCanonicalisation(Transform):
+    r"""
+    Base class for untrainable canonicalisation. This class is used to apply canonicalisation
+    functions to (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args (cano_args):
+        equivariance_module (str):
+            Which equivariance module to use, can be "fa", "untrained_cano", "sign_equiv_sfa",
+            "untrained_sign_inv_sfa" or "untrained_sign_inv_sfa_E3".
+            Default: `"fa"`
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+            Default: `""`
+
+    Returns:
+        (data.Data): updated data object with new positions (+ cell) attributes
+        and the rotation matrices used for the frame averaging transform.
+    """
+
+    def __init__(self, cano_args=None):
+        self.equivariance_module = cano_args.get("equivariance_module", "fa")
+        self.cano_type = cano_args.get("cano_type", "")
+
+        if self.equivariance_module == "fa":
+            self.equivariance_module = FrameAveraging(**cano_args)
+        elif self.equivariance_module == "untrained_cano":
+            self.equivariance_module = UntrainedCanonicalisation(**cano_args)
+        elif self.equivariance_module == "sign_equiv_sfa":
+            self.equivariance_module = SignEquivSFA(**cano_args)
+        elif self.equivariance_module == "untrained_sign_inv_sfa":
+            self.equivariance_module = SignInvariantSFA(training=False, cano_model=None, **cano_args)
+        elif self.equivariance_module == "untrained_sign_inv_sfa_E3":
+            self.equivariance_module = SignInvariantE3SFA(training=False, cano_model=None, **cano_args)
+        else: # No untrained canonicalisation used
+            self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
+
+    def __call__(self, data):
+        # If no equivariance is imposed, return the data as is
+        if type(self.equivariance_module) == str:
+            return data
+        return self.equivariance_module.call(data)
+
+
+class BaseTrainableCanonicalisation(Transform):
+    r"""
+
+    Base class for trainable canonicalisation. This class is used to apply trainable canonicalisation
+    functions to (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args (cano_args):
+        cano_model (nn.Module):
+            The canonicalisation model used.
+        equivariance_module (str):
+            Which equivariance module to use, can be "trained_cano", "trained_sign_inv_sfa"
+            or "trained_sign_inv_sfa_E3".
+            Default: `"trained_cano"`
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+            Default: `""`
+
+    Returns:
+        (data.Data): updated data object with new positions (+ unit cell) attributes
+        and the rotation matrices used for the frame averaging transform.
+    """
+
+    def __init__(self, cano_model, cano_args=None):
+        self.equivariance_module = cano_args.get("equivariance_module", "fa")
+        self.cano_type = cano_args.get("cano_type", "")
+
+        if self.equivariance_module == "trained_cano":
+            self.equivariance_module = TrainedCanonicalisation(cano_model, **cano_args)
+        elif self.equivariance_module == "trained_sign_inv_sfa":
+            self.equivariance_module = SignInvariantSFA(training=True, cano_model=cano_model, **cano_args)
+        elif self.equivariance_module == "trained_sign_inv_sfa_E3":
+            self.equivariance_module = SignInvariantE3SFA(training=True, cano_model=cano_model, **cano_args)
+        else: # No trainable canonicalisation used
+            self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
+
+    def __call__(self, data):
+        if type(self.equivariance_module) == str:
+            return data
+        return self.equivariance_module.call(data)
+
+
+class UntrainedCanonicalisation:
+    r"""Untrained canonicalisation: VN-Pointnet (simple or deeper), or VN-DGCNN.
+
+    Args:
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        cano_method (str): 
+            The canonicalisation method used, can be "pointnet", "dgcnn", "simple".
+        
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the canonicalisation transform.
+    """
+
+    def __init__(self, cano_type=None, cano_method=None, **kwargs):
+        self.cano_method = (
+            "default" if (cano_method is None or cano_method == "") else cano_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+
+        # Get the canonicalisation model - it will not be trained
+        self.cano_model = get_cano_model(cano_method)
+
+        for param in self.cano_model.parameters():
+            param.requires_grad = False
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.cano_func = (
+                    trained_cano.cano_fct_3D
+                )  # To be changed if 2D becomes implemented
+            elif self.cano_type == "3D":
+                self.cano_func = trained_cano.cano_fct_3D
+            elif self.cano_type == "DA":
+                self.cano_func = trained_cano.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.cano_func(data, self.cano_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
+                self.cano_model,
+                data.pos,
+                data.cell if hasattr(data, "cell") else None,
+                self.cano_method,
+                data.edge_index if hasattr(data, "edge_index") else None,
+            )
+            return data
+
+
+class TrainedCanonicalisation:
+    r"""Trained canonicalisation: VN-Pointnet (simple or deeper), or VN-DGCNN.
+
+    Args:
+        cano_model (nn.Module):
+            The canonicalisation model used.
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        cano_method (str):
+            The canonicalisation method used, can be "pointnet", "dgcnn", "simple".
+
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the canonicalisation transform.
+    """
+
+    def __init__(self, cano_model, cano_type=None, cano_method=None, **kwargs):
+        self.cano_method = (
+            "default" if (cano_method is None or cano_method == "") else cano_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+
+        # Get the model - it will be trained
+        self.cano_model = cano_model
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.cano_func = (
+                    trained_cano.cano_fct_3D
+                )  # To be changed if 2D becomes implemented
+            elif self.cano_type == "3D":
+                self.cano_func = trained_cano.cano_fct_3D
+            elif self.cano_type == "DA":
+                self.cano_func = trained_cano.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.cano_func(data, self.cano_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.cano_func(
+                self.cano_model,
+                data.pos,
+                data.cell if hasattr(data, "cell") else None,
+                self.cano_method,
+                data.edge_index if hasattr(data, "edge_index") else None,
+            )
+            return data
+
+
+class FrameAveraging:
     r"""Frame Averaging (FA) Transform for (PyG) Data objects (e.g. 3D atomic graphs).
     Computes new atomic positions (`fa_pos`) for all datapoints, as well as new unit
     cells (`fa_cell`) attributes for crystal structures, when applicable. The rotation
     matrix (`fa_rot`) used for the frame averaging is also stored.
 
     Args:
-        frame_averaging (str): Transform method used.
+        cano_type (str): Transform method used.
             Can be 2D FA, 3D FA, Data Augmentation or no FA, respectively denoted by
             (`"2D"`, `"3D"`, `"DA"`, `""`)
         fa_method (str): the actual frame averaging technique used.
@@ -48,17 +261,17 @@ class FrameAveraging(Transform):
             `"det"`, `"se3-stochastic"`, `"se3-all"`, `"se3-det"`)
 
     Returns:
-        (data.Data): updated data object with new positions (+ unit cell) attributes
-        and the rotation matrices used for the frame averaging transform.
+        (data.Data): updated data object with new position, cell, and rotation attributes
+        used for the frame averaging transform.
     """
 
-    def __init__(self, frame_averaging=None, fa_method=None):
+    def __init__(self, cano_type=None, fa_method=None, **kw_args):
         self.fa_method = (
             "random" if (fa_method is None or fa_method == "") else fa_method
         )
-        self.frame_averaging = "" if frame_averaging is None else frame_averaging
-        self.inactive = not self.frame_averaging
-        assert self.frame_averaging in {
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        assert self.cano_type in {
             "",
             "2D",
             "3D",
@@ -74,26 +287,224 @@ class FrameAveraging(Transform):
             "se3-all",
         }
 
-        if self.frame_averaging:
-            if self.frame_averaging == "2D":
-                self.fa_func = frame_averaging_2D
-            elif self.frame_averaging == "3D":
-                self.fa_func = frame_averaging_3D
-            elif self.frame_averaging == "DA":
-                self.fa_func = data_augmentation
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.fa_func = frame_averaging.frame_averaging_2D
+            elif self.cano_type == "3D":
+                self.fa_func = frame_averaging.frame_averaging_3D
+            elif self.cano_type == "DA":
+                self.fa_func = frame_averaging.data_augmentation
             else:
-                raise ValueError(f"Unknown frame averaging: {self.frame_averaging}")
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
 
-    def __call__(self, data):
+    def call(self, data):
         if self.inactive:
             return data
-        elif self.frame_averaging == "DA":
+        elif self.cano_type == "DA":
             return self.fa_func(data, self.fa_method)
         else:
-            data.fa_pos, data.fa_cell, data.fa_rot = self.fa_func(
+            data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
                 data.pos, data.cell if hasattr(data, "cell") else None, self.fa_method
             )
             return data
+
+class SignInvariantSFA():
+    r"""Sign Invariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+    It starts as SFA, and then a MLP is used to make the model sign invariant.
+
+    Args:
+        training (bool): Whether the model is being trained or not.
+        cano_model (nn.Module): The canonicalisation model used.
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+    
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
+    """
+    def __init__(self, training, cano_model=None, cano_type=None, fa_method=None, **kw_args):
+        self.fa_method = (
+            "random" if (fa_method is None or fa_method == "") else fa_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        self.training = training
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+        assert self.fa_method in {
+            "",
+            "random",
+            "det",
+            "all",
+            "se3-random",
+            "se3-det",
+            "se3-all",
+        }
+        
+        # Get the canonicalisation model
+        if not self.training:
+            self.cano_model = get_cano_model("trained_sign_inv_sfa")
+            for param in self.cano_model.parameters():
+                param.requires_grad = False
+        elif self.training:
+            if cano_model is None:
+                raise ValueError("Sign equivariant SFA requires a canonicalisation model")
+            self.cano_model = cano_model
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.fa_func = sign_inv_sfa.frame_averaging_3D # to be implemented properly
+            elif self.cano_type == "3D":
+                self.fa_func = sign_inv_sfa.frame_averaging_3D
+            elif self.cano_type == "DA":
+                self.fa_func = sign_inv_sfa.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.fa_func(data, self.fa_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
+                self.cano_model,
+                self.training,
+                data.pos, 
+                data.cell if hasattr(data, "cell") else None, 
+                self.fa_method, 
+            )
+            return data
+
+
+
+class SignInvariantE3SFA():
+    r"""Sign Invariant SFA E3-equivariant Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+    It starts as SFA, and then a Vector Neuron network (VNN) is used to make the model sign invariant.
+
+    Args:
+        training (bool): Whether the model is being trained or not.
+        cano_model (nn.Module): The canonicalisation model used.
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
+    """
+    def __init__(self, training, cano_model=None, cano_type=None, fa_method=None, **kw_args):
+        self.fa_method = (
+            "random" if (fa_method is None or fa_method == "") else fa_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        self.training = training
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+        assert self.fa_method in {
+            "",
+            "random",
+            "det",
+            "all",
+            "se3-random",
+            "se3-det",
+            "se3-all",
+        }
+        
+        # Get the canonicalisation model
+        if not self.training:
+            self.cano_model = get_cano_model("trained_sign_inv_sfa_E3")
+            for param in self.cano_model.parameters():
+                param.requires_grad = False
+        elif self.training:
+            if cano_model is None:
+                raise ValueError("Sign equivariant SFA requires a canonicalisation model")
+            self.cano_model = cano_model
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.fa_func = sign_inv_sfa.frame_averaging_3D # to be implemented properly
+            elif self.cano_type == "3D":
+                self.fa_func = sign_inv_sfa.frame_averaging_3D
+            elif self.cano_type == "DA":
+                self.fa_func = sign_inv_sfa.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.fa_func(data, self.fa_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
+                self.cano_model,
+                self.training,
+                data.pos, 
+                data.cell if hasattr(data, "cell") else None, 
+                self.fa_method, 
+            )
+            return data
+
+
+
+class SignEquivSFA():
+    r"""Sign Equivariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args:
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
+    """
+    def __init__(self, cano_model=None, cano_type=None, fa_method=None, **kw_args):
+        self.fa_method = (
+            "random" if (fa_method is None or fa_method == "") else fa_method
+        )
+        self.cano_type = "" if cano_type is None else cano_type
+        self.inactive = not self.cano_type
+        assert self.cano_type in {
+            "",
+            "2D",
+            "3D",
+            "DA",
+        }
+
+        if self.cano_type:
+            if self.cano_type == "2D":
+                self.fa_func = sign_equiv_stoch_fa.frame_averaging_2D
+            elif self.cano_type == "3D":
+                self.fa_func = sign_equiv_stoch_fa.frame_averaging_3D
+            elif self.cano_type == "DA":
+                self.fa_func = sign_equiv_stoch_fa.data_augmentation
+            else:
+                raise ValueError(f"Unknown frame averaging: {self.cano_type}")
+
+    def call(self, data):
+        if self.inactive:
+            return data
+        elif self.cano_type == "DA":
+            return self.fa_func(data, self.fa_method)
+        else:
+            data.cano_pos, data.cano_cell, data.cano_rot = self.fa_func(
+                data.pos, data.cell if hasattr(data, "cell") else None, self.fa_method
+            )
+            return data
+
+
 
 
 class GraphRewiring(Transform):
@@ -162,10 +573,32 @@ class AddAttributes:
         return data
 
 
-def get_transforms(trainer_config):
+def get_cano_model(cano_method):
+    if cano_method == "pointnet":
+        return VNPointnet()
+    elif cano_method == "dgcnn":
+        return VN_dgcnn()
+    elif cano_method == "simple":
+        return VNSmall()
+    elif cano_method in ["trained_sign_inv_sfa", "untrained_sign_inv_sfa"]:
+        return SignNet()
+    elif cano_method in ["trained_sign_inv_sfa_E3", "untrained_sign_inv_sfa_E3"]:
+        return SignNetE3()
+    else:
+        raise ValueError(f"Unknown canonicalisation method: {cano_method}")
+
+
+def get_transforms(trainer_config): # Get non-trainable transforms
     transforms = [
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
-        FrameAveraging(trainer_config["frame_averaging"], trainer_config["fa_method"]),
+        BaseUntrainableCanonicalisation(trainer_config.get("cano_args", {})),
+    ]
+    return Compose(transforms)
+
+
+def get_learnable_transforms(cano_model, trainer_config): # Get trainable transforms
+    transforms = [
+        BaseTrainableCanonicalisation(cano_model, trainer_config["cano_args"]),
     ]
     return Compose(transforms)

@@ -1,6 +1,13 @@
 default:
+  cano_args:
+    equivariance_module: "" # "", fa, untrained_cano, trained_cano, sign_equiv_sfa, trained_sign_inv_sfa, untrained_sign_inv_sfa, trained_sign_inv_sfa_E3, untrained_sign_inv_sfa_E3
+    cano_type: "3D" # "2D", "3D", "DA", ""
+    cano_method: "" # "", pointnet, simple (= 0 hidden layer pointnet), dgcnn
+    # Frame averaging specific arguments
+    fa_method: "random" # {"", all, random, det, se3-all, se3-random, se3-det}
+  # Legacy FA arguments:
   frame_averaging: "" # {"2D", "3D", "DA", ""}
-  fa_method: "" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+  fa_method: "" # {"", all, random, det, se3-all, se3-random, se3-det}
   model:
     name: faenet
     act: swish
@@ -41,6 +48,19 @@ default:
       res_updown:
         hidden_channels: 128
         norm: batch1d # batch1d, layer or null
+    ######################################### Ewald message passing hyperparameters
+    use_ewald: False
+    ewald_hyperparams:
+      num_k_x: 1                              # Frequency cutoff [Å^-1]
+      num_k_y: 1                              # Voxel grid resolution [Å^-1]
+      num_k_z: 3                              # Gaussian radial basis size (Fourier filter)
+      downprojection_size: 8                  # Size of linear bottleneck layer
+      num_hidden: 3                           # Number of residuals in update function
+      # params for qm9
+      k_cutoff: 0.4                           # Frequency cutoff [Å^-1]
+      delta_k: 0.2                            # Voxel grid resolution [Å^-1]
+      num_k_rbf: 48                           # Gaussian radial basis size (Fourier filter)
+    #########################################
   optim:
     batch_size: 256
     eval_batch_size: 256
@@ -69,7 +89,7 @@ is2re:
   default:
     graph_rewiring: remove-tag-0
     frame_averaging: "2D" # {"2D", "3D", "DA", ""}
-    fa_method: "se3-random" # {"", all, randon, det, se3-all, se3-randon, se3-det}
+    fa_method: "se3-random" # {"", all, random, det, se3-all, se3-random, se3-det}
   # *** Important note ***
   #   The total number of gpus used for this run was 1.
   #   If the global batch size (num_gpus * batch_size) is modified

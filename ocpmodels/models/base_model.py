@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
 import logging
 
 import torch
@@ -135,6 +136,7 @@ class BaseModel(nn.Module):
         max_neighbors=None,
         use_pbc=None,
         otf_graph=None,
+        enforce_max_neighbors_strictly=None,
     ):
         # from https://github.com/Open-Catalyst-Project/ocp/blob/main/ocpmodels/models/base.py
         # after importing gemnet_oc
@@ -142,6 +144,15 @@ class BaseModel(nn.Module):
         max_neighbors = max_neighbors or self.max_neighbors
         use_pbc = use_pbc or self.use_pbc
         otf_graph = otf_graph or self.otf_graph
+
+        if enforce_max_neighbors_strictly is not None:
+            pass
+        elif hasattr(self, "enforce_max_neighbors_strictly"):
+            # Not all models will have this attribute
+            enforce_max_neighbors_strictly = self.enforce_max_neighbors_strictly
+        else:
+            # Default to old behavior
+            enforce_max_neighbors_strictly = True
 
         if not otf_graph:
             try:
@@ -161,7 +172,10 @@ class BaseModel(nn.Module):
         if use_pbc:
             if otf_graph:
                 edge_index, cell_offsets, neighbors = radius_graph_pbc(
-                    data, cutoff, max_neighbors
+                    data,
+                    cutoff,
+                    max_neighbors,
+                    enforce_max_neighbors_strictly,
                 )
 
             out = get_pbc_distances(
