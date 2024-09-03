@@ -282,7 +282,6 @@ class SingleTrainer(BaseTrainer):
                 if self.sigterm:
                     return "SIGTERM"
                 i_for_epoch += 1
-                # print(self.now, "i_for_epoch: ", i_for_epoch, flush=True)
                 self.epoch = epoch_int + (i + 1) / n_train
                 self.step = epoch_int * n_train + i + 1
 
@@ -546,9 +545,6 @@ class SingleTrainer(BaseTrainer):
 
                 # forward pass
                 preds = self.model(
-                    # deepcopy(batch_list),
-                    # [t.clone() for t in batch_list],
-                    # [t.detach() for t in batch_list],
                     batch_list,
                     mode=mode,
                     regress_forces=self.config["model"]["regress_forces"],
@@ -908,7 +904,6 @@ class SingleTrainer(BaseTrainer):
 
                 # Compute model prediction
                 preds1 = self.model_forward(
-                    # [t.detach() for t in batch],
                     batch,
                     mode="inference",
                 )
@@ -916,7 +911,6 @@ class SingleTrainer(BaseTrainer):
                 # Compute prediction on rotated graph
                 rotated = self.rotate_graph(batch, rotation="z")
                 preds2 = self.model_forward(
-                    # [t.detach() for t in rotated["batch_list"]],
                     rotated["batch_list"],
                     mode="inference",
                 )
@@ -968,7 +962,6 @@ class SingleTrainer(BaseTrainer):
                 # Reflect graph and compute diff in prediction
                 reflected = self.reflect_graph(batch)
                 preds3 = self.model_forward(
-                    # [t.detach() for t in reflected["batch_list"]],
                     reflected["batch_list"],
                     mode="inference",
                 )
@@ -978,19 +971,10 @@ class SingleTrainer(BaseTrainer):
                         preds1["forces"] @ reflected["rot"].to(preds1["forces"].device)
                         - preds3["forces"]
                     ).sum()
-                    # assert torch.allclose(
-                    #     torch.abs(
-                    #         batch[0].force @ reflected["rot"].to(batch[0].force.device)
-                    #         - reflected["batch_list"][0].force #.to(batch[0].force.device)
-                    #     ).sum(),
-                    #     torch.tensor([0.0]),   # .to(batch[0].force.device)
-                    #     atol=1e-05,
-                    # )
 
                 # 3D Rotation and compute diff in prediction
                 rotated = self.rotate_graph(batch)
                 preds4 = self.model_forward(
-                    # [t.detach() for t in rotated["batch_list"]],
                     rotated["batch_list"],
                     mode="inference",
                 )
