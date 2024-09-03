@@ -36,10 +36,22 @@ class Transform:
 
 class BaseUntrainableCanonicalisation(Transform):
     r"""
-    Base Untrainable Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
-    Args:
-        equivariance_module: which equivariance module to use, can be "fa" or "untrained_cano"
-        cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
+    Base class for untrainable canonicalisation. This class is used to apply canonicalisation
+    functions to (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args (cano_args):
+        equivariance_module (str):
+            Which equivariance module to use, can be "fa", "untrained_cano", "sign_equiv_sfa",
+            "untrained_sign_inv_sfa" or "untrained_sign_inv_sfa_E3".
+            Default: `"fa"`
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+            Default: `""`
+
+    Returns:
+        (data.Data): updated data object with new positions (+ cell) attributes
+        and the rotation matrices used for the frame averaging transform.
     """
 
     def __init__(self, cano_args=None):
@@ -60,6 +72,7 @@ class BaseUntrainableCanonicalisation(Transform):
             self.equivariance_module = FrameAveraging(cano_type=None, fa_method=None)
 
     def __call__(self, data):
+        # If no equivariance is imposed, return the data as is
         if type(self.equivariance_module) == str:
             return data
         return self.equivariance_module.call(data)
@@ -67,10 +80,25 @@ class BaseUntrainableCanonicalisation(Transform):
 
 class BaseTrainableCanonicalisation(Transform):
     r"""
-    Base Trainable Canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
-    Args:
-        equivariance_module: which equivariance module to use, can be "trained_cano"
-        cano_type: "3D", "2D", "DA" or "" (no equivariance imposed)
+
+    Base class for trainable canonicalisation. This class is used to apply trainable canonicalisation
+    functions to (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args (cano_args):
+        cano_model (nn.Module):
+            The canonicalisation model used.
+        equivariance_module (str):
+            Which equivariance module to use, can be "trained_cano", "trained_sign_inv_sfa"
+            or "trained_sign_inv_sfa_E3".
+            Default: `"trained_cano"`
+        cano_type (str):
+            Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
+            by (`"2D"`, `"3D"`, `"DA"`, `""`)
+            Default: `""`
+
+    Returns:
+        (data.Data): updated data object with new positions (+ unit cell) attributes
+        and the rotation matrices used for the frame averaging transform.
     """
 
     def __init__(self, cano_model, cano_args=None):
@@ -93,17 +121,18 @@ class BaseTrainableCanonicalisation(Transform):
 
 
 class UntrainedCanonicalisation:
-    r"""Untrained canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
+    r"""Untrained canonicalisation: VN-Pointnet (simple or deeper), or VN-DGCNN.
+
     Args:
         cano_type (str):
             Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
             by (`"2D"`, `"3D"`, `"DA"`, `""`)
-        cano_method (str): currently not used, in case several canonicalisation methods are
-        implemented.
-
+        cano_method (str): 
+            The canonicalisation method used, can be "pointnet", "dgcnn", "simple".
+        
     Returns:
-        (data.Data): updated data object with new positions (+ unit cell) attributes
-        and the rotation matrices used for the frame averaging transform.
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the canonicalisation transform.
     """
 
     def __init__(self, cano_type=None, cano_method=None, **kwargs):
@@ -119,7 +148,8 @@ class UntrainedCanonicalisation:
             "DA",
         }
 
-        self.cano_model = get_learnable_model(cano_method)
+        # Get the canonicalisation model - it will not be trained
+        self.cano_model = get_cano_model(cano_method)
 
         for param in self.cano_model.parameters():
             param.requires_grad = False
@@ -153,17 +183,20 @@ class UntrainedCanonicalisation:
 
 
 class TrainedCanonicalisation:
-    r"""Trained canonicalisation functions for (PyG) Data objects (e.g. 3D atomic graphs).
+    r"""Trained canonicalisation: VN-Pointnet (simple or deeper), or VN-DGCNN.
+
     Args:
+        cano_model (nn.Module):
+            The canonicalisation model used.
         cano_type (str):
             Can be 2D, 3D, Data Augmentation or no equivariance imposed, respectively denoted
             by (`"2D"`, `"3D"`, `"DA"`, `""`)
-        cano_method (str): currently not used, in case several canonicalisation methods are
-        implemented.
+        cano_method (str):
+            The canonicalisation method used, can be "pointnet", "dgcnn", "simple".
 
     Returns:
-        (data.Data): updated data object with new positions (+ unit cell) attributes
-        and the rotation matrices used for the frame averaging transform.
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the canonicalisation transform.
     """
 
     def __init__(self, cano_model, cano_type=None, cano_method=None, **kwargs):
@@ -179,6 +212,7 @@ class TrainedCanonicalisation:
             "DA",
         }
 
+        # Get the model - it will be trained
         self.cano_model = cano_model
 
         if self.cano_type:
@@ -227,8 +261,8 @@ class FrameAveraging:
             `"det"`, `"se3-stochastic"`, `"se3-all"`, `"se3-det"`)
 
     Returns:
-        (data.Data): updated data object with new positions (+ unit cell) attributes
-        and the rotation matrices used for the frame averaging transform.
+        (data.Data): updated data object with new position, cell, and rotation attributes
+        used for the frame averaging transform.
     """
 
     def __init__(self, cano_type=None, fa_method=None, **kw_args):
@@ -276,6 +310,18 @@ class FrameAveraging:
 
 class SignInvariantSFA():
     r"""Sign Invariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+    It starts as SFA, and then a MLP is used to make the model sign invariant.
+
+    Args:
+        training (bool): Whether the model is being trained or not.
+        cano_model (nn.Module): The canonicalisation model used.
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+    
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
     """
     def __init__(self, training, cano_model=None, cano_type=None, fa_method=None, **kw_args):
         self.fa_method = (
@@ -300,8 +346,9 @@ class SignInvariantSFA():
             "se3-all",
         }
         
+        # Get the canonicalisation model
         if not self.training:
-            self.cano_model = get_learnable_model("trained_sign_inv_sfa")
+            self.cano_model = get_cano_model("trained_sign_inv_sfa")
             for param in self.cano_model.parameters():
                 param.requires_grad = False
         elif self.training:
@@ -338,6 +385,18 @@ class SignInvariantSFA():
 
 class SignInvariantE3SFA():
     r"""Sign Invariant SFA E3-equivariant Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+    It starts as SFA, and then a Vector Neuron network (VNN) is used to make the model sign invariant.
+
+    Args:
+        training (bool): Whether the model is being trained or not.
+        cano_model (nn.Module): The canonicalisation model used.
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
     """
     def __init__(self, training, cano_model=None, cano_type=None, fa_method=None, **kw_args):
         self.fa_method = (
@@ -362,8 +421,9 @@ class SignInvariantE3SFA():
             "se3-all",
         }
         
+        # Get the canonicalisation model
         if not self.training:
-            self.cano_model = get_learnable_model("trained_sign_inv_sfa_E3")
+            self.cano_model = get_cano_model("trained_sign_inv_sfa_E3")
             for param in self.cano_model.parameters():
                 param.requires_grad = False
         elif self.training:
@@ -400,6 +460,15 @@ class SignInvariantE3SFA():
 
 class SignEquivSFA():
     r"""Sign Equivariant SFA Transform for (PyG) Data objects (e.g. 3D atomic graphs).
+
+    Args:
+        cano_type (str): Can be 2D, 3D, Data Augmentation or no equivariance imposed,
+            respectively denoted by (`"2D"`, `"3D"`, `"DA"`, `""`)
+        fa_method (str): the frame averaging technique used for the SFA step.
+
+    Returns:
+        (data.Data): updated data object with new positions, cell, and rotation attributes
+        used for the frame averaging transform.
     """
     def __init__(self, cano_model=None, cano_type=None, fa_method=None, **kw_args):
         self.fa_method = (
@@ -504,7 +573,7 @@ class AddAttributes:
         return data
 
 
-def get_learnable_model(cano_method):
+def get_cano_model(cano_method):
     if cano_method == "pointnet":
         return VNPointnet()
     elif cano_method == "dgcnn":
@@ -519,8 +588,7 @@ def get_learnable_model(cano_method):
         raise ValueError(f"Unknown canonicalisation method: {cano_method}")
 
 
-# Both will be called, but in different places
-def get_transforms(trainer_config):
+def get_transforms(trainer_config): # Get non-trainable transforms
     transforms = [
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
@@ -529,7 +597,7 @@ def get_transforms(trainer_config):
     return Compose(transforms)
 
 
-def get_learnable_transforms(cano_model, trainer_config):
+def get_learnable_transforms(cano_model, trainer_config): # Get trainable transforms
     transforms = [
         BaseTrainableCanonicalisation(cano_model, trainer_config["cano_args"]),
     ]

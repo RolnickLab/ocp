@@ -41,7 +41,7 @@ from ocpmodels.common.timer import Times
 from ocpmodels.common.utils import JOB_ID, get_commit_hash, save_checkpoint, resolve
 from ocpmodels.datasets.data_transforms import (
     get_transforms,
-    get_learnable_model,
+    get_cano_model,
     BaseTrainableCanonicalisation,
     BaseUntrainableCanonicalisation,
 )
@@ -418,14 +418,14 @@ class BaseTrainer(ABC):
         if self.config.get("cano_args", {}).get("equivariance_module", "") in [
             "trained_cano"
         ]:
-            self.cano_model = get_learnable_model(
+            self.cano_model = get_cano_model(
                 self.config["cano_args"]["cano_method"],
             ).to(self.device)
         elif self.config.get("cano_args", {}).get("equivariance_module", "") in [
             "trained_sign_inv_sfa",
             "trained_sign_inv_sfa_E3",
         ]:
-            self.cano_model = get_learnable_model(
+            self.cano_model = get_cano_model(
                 self.config["cano_args"]["equivariance_module"],
             ).to(self.device)
         else:
