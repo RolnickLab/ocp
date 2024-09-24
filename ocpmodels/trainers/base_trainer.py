@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
 import datetime
 import errno
 import logging
@@ -56,7 +57,7 @@ from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
 
 @registry.register_trainer("base")
 class BaseTrainer(ABC):
-    def __init__(self, load=True, **kwargs):
+    def __init__(self, **kwargs):
         run_dir = kwargs["run_dir"]
 
         model_name = kwargs["model"].pop(
@@ -76,9 +77,14 @@ class BaseTrainer(ABC):
         }
 
         self.sigterm = False
-        self.objective = None
         self.epoch = 0
         self.step = 0
+        self.objective = None
+        self.logger = None
+        self.parallel_collater = None
+        self.ema_decay = None
+        self.clip_grad_norm = None
+        self.scheduler = None
         self.cpu = self.config["cpu"]
         self.task_name = self.config["task"].get("name", self.config.get("name"))
         assert self.task_name, "Specify task name (got {})".format(self.task_name)
@@ -90,6 +96,7 @@ class BaseTrainer(ABC):
         self.datasets = {}
         self.samplers = {}
         self.loaders = {}
+        self.normalizers = {}
         self.early_stopper = EarlyStopper(
             patience=self.config["optim"].get("es_patience") or 15,
             min_abs_change=self.config["optim"].get("es_min_abs_change") or 1e-5,
@@ -189,21 +196,49 @@ class BaseTrainer(ABC):
                 )
                 self.config["is_disconnected"] = True
 
-        self.load()
+        self.load(self.config.get("prevent_load"))
         self.evaluator = Evaluator(
             task=self.task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
 
-    def load(self):
-        self.load_seed_from_config()
-        self.load_logger()
-        self.load_datasets()
-        self.load_task()
-        self.load_model()
-        self.load_loss()
-        self.load_optimizer()
-        self.load_extras()
+    def load(self, prevent_load={}):
+        """Load all components of the trainer.
+
+        Arbitrary components can be prevented from loading by specifying them in the
+        ``prevent_load`` dictionary. Allowed keys are:
+
+        - ``seed``
+        - ``logger``
+        - ``datasets``
+        - ``task``
+        - ``model``
+        - ``checkpoint``
+        - ``optimizer``
+        - ``extras``
+
+        Parameters
+        ----------
+        prevent_load : dict, optional
+            Dictionary describing loading events that should be prevented, by default {}
+        """
+        prevent_load = prevent_load or {}
+        if "seed" not in prevent_load:
+            self.load_seed_from_config()
+        if "logger" not in prevent_load:
+            self.load_logger()
+        if "datasets" not in prevent_load:
+            self.load_datasets()
+        if "task" not in prevent_load:
+            self.load_task()
+        if "model" not in prevent_load:
+            self.load_model()
+        if "checkpoint" not in prevent_load:
+            self.load_loss()
+        if "optimizer" not in prevent_load:
+            self.load_optimizer()
+        if "extras" not in prevent_load:
+            self.load_extras()
 
     def load_seed_from_config(self):
         # https://pytorch.org/docs/stable/notes/randomness.html
@@ -220,7 +255,6 @@ class BaseTrainer(ABC):
             torch.backends.cudnn.benchmark = False
 
     def load_logger(self):
-        self.logger = None
         if not self.is_debug and dist_utils.is_master() and not self.is_hpo:
             assert self.config["logger"] is not None, "Specify logger in config"
 
@@ -380,7 +414,6 @@ class BaseTrainer(ABC):
 
         # Normalizer for the dataset.
         # Compute mean, std of training set labels.
-        self.normalizers = {}
         if self.normalizer.get("normalize_labels", False):
             if "target_mean" in self.normalizer:
                 self.normalizers["target"] = Normalizer(
@@ -619,9 +652,11 @@ class BaseTrainer(ABC):
                     "step": self.step,
                     "state_dict": self.model.state_dict(),
                     "optimizer": self.optimizer.state_dict(),
-                    "scheduler": self.scheduler.scheduler.state_dict()
-                    if self.scheduler.scheduler_type != "Null"
-                    else None,
+                    "scheduler": (
+                        self.scheduler.scheduler.state_dict()
+                        if self.scheduler.scheduler_type != "Null"
+                        else None
+                    ),
                     "normalizers": {
                         key: value.state_dict()
                         for key, value in self.normalizers.items()
@@ -632,9 +667,9 @@ class BaseTrainer(ABC):
                     "amp": self.scaler.state_dict() if self.scaler else None,
                 }
                 if self.scheduler.warmup_scheduler is not None:
-                    ckpt_dict[
-                        "warmup_scheduler"
-                    ] = self.scheduler.warmup_scheduler.state_dict()
+                    ckpt_dict["warmup_scheduler"] = (
+                        self.scheduler.warmup_scheduler.state_dict()
+                    )
 
                 save_checkpoint(
                     ckpt_dict,
