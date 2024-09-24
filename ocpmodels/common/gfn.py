@@ -295,6 +295,13 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
     config["is_debug"] = True
     config["silent"] = True
     config["cp_data_to_tmpdir"] = False
+    config["prevent_loaders"] = {
+        "logger": True,
+        "loss": True,
+        "datasets": True,
+        "optimizer": True,
+        "extras": True,
+    }
     config = reset_data_paths(config)
     trainer = registry.get_trainer_class(config["trainer"])(**config)
 
