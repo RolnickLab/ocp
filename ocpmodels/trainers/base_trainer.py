@@ -208,36 +208,36 @@ class BaseTrainer(ABC):
         Arbitrary components can be prevented from loading by specifying them in the
         ``prevent_load`` dictionary. Allowed keys are:
 
-        - ``seed``
-        - ``logger``
-        - ``datasets``
-        - ``task``
-        - ``model``
-        - ``checkpoint``
-        - ``optimizer``
-        - ``extras``
+        - "seed"
+        - "logger"
+        - "datasets"
+        - "task"
+        - "model"
+        - "loss"
+        - "optimizer"
+        - "extras"
 
         Parameters
         ----------
         prevent_load : dict, optional
-            Dictionary describing loading events that should be prevented, by default {}
+            Dictionary describing loading events that should be prevented, by default ``{}``
         """
         prevent_load = prevent_load or {}
-        if "seed" not in prevent_load:
+        if prevent_load.get("seed"):
             self.load_seed_from_config()
-        if "logger" not in prevent_load:
+        if prevent_load.get("logger"):
             self.load_logger()
-        if "datasets" not in prevent_load:
+        if prevent_load.get("datasets"):
             self.load_datasets()
-        if "task" not in prevent_load:
+        if prevent_load.get("task"):
             self.load_task()
-        if "model" not in prevent_load:
+        if prevent_load.get("model"):
             self.load_model()
-        if "checkpoint" not in prevent_load:
+        if prevent_load.get("loss"):
             self.load_loss()
-        if "optimizer" not in prevent_load:
+        if prevent_load.get("optimizer"):
             self.load_optimizer()
-        if "extras" not in prevent_load:
+        if prevent_load.get("extras"):
             self.load_extras()
 
     def load_seed_from_config(self):
