@@ -1,6 +1,7 @@
 default:
   trainer: single
   logger: wandb
+  prevent_load: {}
 
   task:
     dataset: single_point_lmdb

@@ -1,6 +1,7 @@
 default:
   trainer: single
   logger: wandb
+  prevent_load: {}
   eval_on_test: True
 
   model:

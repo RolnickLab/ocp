@@ -2,6 +2,7 @@ default:
   trainer: single
   logger: wandb
   eval_on_test: True
+  prevent_load: {}
 
   model:
     otf_graph: False
