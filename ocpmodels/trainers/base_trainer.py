@@ -223,21 +223,21 @@ class BaseTrainer(ABC):
             Dictionary describing loading events that should be prevented, by default ``{}``
         """
         prevent_load = prevent_load or {}
-        if prevent_load.get("seed"):
+        if not prevent_load.get("seed"):
             self.load_seed_from_config()
-        if prevent_load.get("logger"):
+        if not prevent_load.get("logger"):
             self.load_logger()
-        if prevent_load.get("datasets"):
+        if not prevent_load.get("datasets"):
             self.load_datasets()
-        if prevent_load.get("task"):
+        if not prevent_load.get("task"):
             self.load_task()
-        if prevent_load.get("model"):
+        if not prevent_load.get("model"):
             self.load_model()
-        if prevent_load.get("loss"):
+        if not prevent_load.get("loss"):
             self.load_loss()
-        if prevent_load.get("optimizer"):
+        if not prevent_load.get("optimizer"):
             self.load_optimizer()
-        if prevent_load.get("extras"):
+        if not prevent_load.get("extras"):
             self.load_extras()
 
     def load_seed_from_config(self):
