@@ -20,9 +20,17 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-from cosmosis.dataset import CDataset
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import ROOT
+
+CDataset = object
+try:
+    from cosmosis.dataset import CDataset
+except ImportError:
+    print("\nWarning: `cosmosis` is not installed. `QM7X` will not be available.\n")
+    print("See https://github.com/icanswim/cosmosis")
+    print(f"(message from {Path(__file__).resolve()})\n")
+
 
 try:
     import orjson as json  # noqa: F401
