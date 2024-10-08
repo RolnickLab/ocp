@@ -1,9 +1,19 @@
-from dig.threedgraph.method import SphereNet as DIGSphereNet
-from ocpmodels.models.base_model import BaseModel
+from copy import deepcopy
+
 import torch
+
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import conditional_grad
-from copy import deepcopy
+from ocpmodels.models.base_model import BaseModel
+
+DIGSphereNet = None
+try:
+    from dig.threedgraph.method import SphereNet as DIGSphereNet
+except ImportError:
+    from pathlib import Path
+
+    print("Warning: `dig` is not installed. `SphereNet` will not be available.")
+    print(f"(message from {Path(__file__).resolve()})\n")
 
 
 @registry.register_model("spherenet")
