@@ -755,7 +755,16 @@ def add_edge_distance_to_graph(
 
 
 # Copied from https://github.com/facebookresearch/mmf/blob/master/mmf/utils/env.py#L89.
-def setup_imports(skip_imports=[]):
+def setup_imports(skip_modules=[]):
+    """Automatically load all of the modules, so that they register within the registry.
+
+    Parameters
+    ----------
+    skip_modules : list, optional
+        List of modules (as ``str``) to skip while importing, by default []. Use module
+        names not paths, for instance, to skip ``ocpmodels.models.gemnet_oc.gemnet_oc``,
+        use ``skip_modules=["gemnet_oc"]``.
+    """
     from ocpmodels.common.registry import registry
 
     try:
@@ -803,7 +812,7 @@ def setup_imports(skip_imports=[]):
                 splits = f.split(os.sep)
                 file_name = splits[-1]
                 module_name = file_name[: file_name.find(".py")]
-                if module_name not in skip_imports:
+                if module_name not in skip_modules:
                     importlib.import_module("ocpmodels.%s.%s" % (key[1:], module_name))
 
     # manual model imports
@@ -1191,7 +1200,7 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
 
     # load config from `model-task-split` pattern
     config = load_config(args.config)
-    # overwride with command-line args, including default values
+    # override with command-line args, including default values
     config = merge_dicts(config, args_dict_with_defaults)
     # override with build_config()'s overrides
     config = merge_dicts(config, overrides)
@@ -1801,7 +1810,7 @@ def make_script_trainer(str_args=[], overrides={}, silent=False, mode="train"):
     return trainer
 
 
-def make_config_from_dir(path, mode, overrides={}, silent=None, skip_imports=[]):
+def make_config_from_dir(path, mode, overrides={}, silent=None, skip_modules=[]):
     """
     Make a config from a directory. This is useful when restarting or continuing from a
     previous run.
@@ -1838,11 +1847,11 @@ def make_config_from_dir(path, mode, overrides={}, silent=None, skip_imports=[])
     config = build_config(default_args, silent=silent)
     config = merge_dicts(config, overrides)
 
-    setup_imports(skip_imports=skip_imports)
+    setup_imports(skip_modules=skip_modules)
     return config
 
 
-def make_trainer_from_dir(path, mode, overrides={}, silent=None, skip_imports=[]):
+def make_trainer_from_dir(path, mode, overrides={}, silent=None, skip_modules=[]):
     """
     Make a trainer from a directory.
 
@@ -1858,7 +1867,7 @@ def make_trainer_from_dir(path, mode, overrides={}, silent=None, skip_imports=[]
     Returns:
         Trainer: The loaded trainer.
     """
-    config = make_config_from_dir(path, mode, overrides, silent, skip_imports)
+    config = make_config_from_dir(path, mode, overrides, silent, skip_modules)
     return registry.get_trainer_class(config["trainer"])(**config)
 
 

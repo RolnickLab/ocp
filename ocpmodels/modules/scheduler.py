@@ -1,10 +1,11 @@
 """scheduler.py
 """
+
 import inspect
+
 import torch.optim.lr_scheduler as lr_scheduler
 
 from ocpmodels.common.utils import warmup_lr_lambda
-import pytorch_warmup as warmup
 
 
 class LRScheduler:
@@ -54,6 +55,8 @@ class LRScheduler:
                 if not self.silent:
                     print(f"Using fidelity_max_steps for scheduler -> {T_max}")
             if self.optim_config["warmup_steps"] > 0:
+                import pytorch_warmup as warmup
+
                 self.warmup_scheduler = warmup.ExponentialWarmup(
                     self.optimizer, warmup_period=self.optim_config["warmup_steps"]
                 )

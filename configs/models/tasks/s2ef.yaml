@@ -1,6 +1,8 @@
 default:
   trainer: single
   logger: wandb
+  prevent_load: {}
+
   task:
     dataset: trajectory_lmdb
     description: "Regressing to energies and forces for DFT trajectories from OCP"

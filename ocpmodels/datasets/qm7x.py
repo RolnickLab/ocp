@@ -20,9 +20,19 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-from cosmosis.dataset import CDataset
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import ROOT
+
+CDataset = object
+try:
+    from cosmosis.dataset import CDataset
+except ImportError:
+    print(
+        "Warning: `cosmosis` is not installed. `QM7X` will not be available.",
+        "See https://github.com/icanswim/cosmosis",
+    )
+    print(f"(message from {Path(__file__).resolve()})")
+
 
 try:
     import orjson as json  # noqa: F401
@@ -33,6 +43,7 @@ except:  # noqa: E722
         "`orjson` is not installed. ",
         "Consider `pip install orjson` to speed up json loading.",
     )
+    print(f"(message from {Path(__file__).resolve()})")
 
 
 class Molecule:

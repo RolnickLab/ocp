@@ -1,3 +1,57 @@
+[build-system]
+# A list of packages that are needed to build your package:
+requires = ["setuptools"] # REQUIRED if [build-system] table is used
+# The name of the Python object that frontends will use to perform the build:
+build-backend = "setuptools.build_meta" # If not defined, then legacy behavior can happen.
+
+[project]
+
+name = "ocpmodels"                    # REQUIRED, is the only field that cannot be marked as dynamic.
+version = "0.1.0"                     # REQUIRED, although can be dynamic
+description = "RolnickLab's OCP fork"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE.md" }
+
+
+dependencies = [
+  "ase>=3.19.3",
+  "black>=23.1.0",
+  "CatKit @ git+https://github.com/vict0rsch/CatKit.git@df7f1aa7a47eb7b8022452fa77e4ce60cd006a7d",
+  "dive-into-graphs @ git+https://github.com/divelab/DIG.git@55c40a7b0938d3804d9f265193cb45a2fe80da8c",
+  "e3nn==0.5.1",
+  "flake8>=6.0.0",
+  "h5py>=3.8.0",
+  "lmdb>=1.4.0",
+  "matplotlib>=3.7.0",
+  "mendeleev>=0.12",
+  "minydra==0.1.6",
+  "orjson>=3.8",
+  "pytorch-warmup>=0.1",
+  "pymatgen>=2023.2",
+  "PyYAML>=6.0",
+  "rdkit>=2022.9.5",
+  "rich",
+  "ruamel.yaml",
+  "scikit-learn",
+  "scikit-optimize",
+  "tensorboard",
+  "torch>=1.12",
+  "torch_geometric==2.3.0",
+  "tqdm>=4.66",
+  "wandb",
+]
+
+[project.optional-dependencies]
+geom = [
+  "pyg_lib",
+  "torch_scatter",
+  "torch_sparse",
+  "torch_cluster",
+  "torch_spline_conv",
+]
+dev = ["ipdb", "ipython", "pytest"]
+
 [tool.black]
 line-length = 88
 include = '\.pyi?$'
