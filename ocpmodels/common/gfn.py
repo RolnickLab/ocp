@@ -20,6 +20,7 @@ class FAENetWrapper(nn.Module):
         transform: Callable = None,
         frame_averaging: str = None,
         trainer_config: dict = None,
+        normalizers: dict = None,
     ):
         """
         `FAENetWrapper` is a wrapper class for the FAENet model. It is used to perform
@@ -31,6 +32,7 @@ class FAENetWrapper(nn.Module):
             frame_averaging (str, optional): The frame averaging method to use.
             trainer_config (dict, optional): The trainer config used to create the model.
                 Defaults to None.
+            normalizers (dict, optional): The normalizers used to create the model.
         """
         super().__init__()
 
@@ -39,6 +41,7 @@ class FAENetWrapper(nn.Module):
         self.frame_averaging = frame_averaging
         self.trainer_config = trainer_config
         self._is_frozen = None
+        self.normalizers = normalizers
 
     @property
     def frozen(self):
@@ -165,7 +168,15 @@ class FAENetWrapper(nn.Module):
 
         if retrieve_hidden:
             return preds
-        return preds["energy"]  # denormalize?
+        breakpoint()
+
+        # Denormalize predictions
+        preds["energy"] = self.normalizers["target"].denorm(
+                    preds["energy"],
+        )
+        # preds["energy"] = preds["energy"].to(torch.float16)
+
+        return preds["energy"]
 
     def freeze(self):
         """Freeze the model parameters."""
@@ -274,6 +285,7 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
         transform=get_transforms(trainer.config),
         frame_averaging=trainer.config.get("frame_averaging", ""),
         trainer_config=trainer.config,
+        normalizers=trainer.normalizers,
     )
     wrapper.freeze()
     loaders = trainer.loaders
@@ -288,10 +300,10 @@ if __name__ == "__main__":
     from ocpmodels.common.gfn import prepare_for_gfn
 
     ckpt_paths = {"mila": "/path/to/releases_dir"}
-    release = "v2.3_graph_phys"
+    release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/scratch/s/schmidtv/ocp/runs/3789733/checkpoints/best_checkpoint.pt"
+        "mila": "/network/scratch/a/alexandre.duval/ocp/catalyst-ckpts/0.0.1/best_checkpoint.pt"
     }
     release = None
     wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
