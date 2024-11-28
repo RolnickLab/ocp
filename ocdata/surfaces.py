@@ -107,7 +107,7 @@ class Surface:
             ).reduced_formula
         ), "Mismatched bulk and surface"
 
-        self.tag_surface_atoms(self.bulk_object.bulk_atoms, self.surface_atoms)
+        #self.tag_surface_atoms(self.bulk_object.bulk_atoms, self.surface_atoms)
         self.constrained_surface = constrain_surface(self.surface_atoms)
 
     def tile_atoms(self, atoms):
