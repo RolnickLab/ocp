@@ -11,6 +11,7 @@ from torch_geometric.data.batch import Batch
 from ocpmodels.common.utils import make_trainer_from_dir, resolve
 from ocpmodels.models.faenet import FAENet
 from ocpmodels.datasets.data_transforms import get_transforms
+from ocpmodels.modules.normalizer import Normalizer
 
 
 class FAENetWrapper(nn.Module):
@@ -80,7 +81,6 @@ class FAENetWrapper(nn.Module):
         and collate them into a Batch.
 
         .. code-block:: python
-
             In [7]: %timeit wrapper.preprocess(batch)
             The slowest run took 4.94 times longer than the fastest.
             This could mean that an intermediate result is being cached.
@@ -168,8 +168,8 @@ class FAENetWrapper(nn.Module):
 
         if retrieve_hidden:
             return preds
-        breakpoint()
 
+        
         # Denormalize predictions
         preds["energy"] = self.normalizers["target"].denorm(
                     preds["energy"],
@@ -278,7 +278,10 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
             "cp_data_to_tmpdir": False,
         },
         silent=True,
+        skip_imports=["qm7x", "gemnet", "spherenet", "painn", "comenet"]
     )
+    trainer.init_normalizer()
+    trainer.load_checkpoint(ckpt_path)
 
     wrapper = FAENetWrapper(
         faenet=trainer.model,
@@ -303,7 +306,9 @@ if __name__ == "__main__":
     release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/scratch/a/alexandre.duval/ocp/catalyst-ckpts/0.0.1/best_checkpoint.pt"
+        "mila": "/network/scratch/a/alexandre.duval/ocp/catalyst-ckpts/0.0.1/best_checkpoint.pt",
+        "lpodina": "/home/felixt/shared/checkpoints/best_checkpoint.pt",
+        "narval": "/home/felixt/shared/checkpoints/best_checkpoint.pt"
     }
     release = None
     wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
