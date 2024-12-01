@@ -194,11 +194,54 @@ class BaseTrainer(ABC):
             task=self.task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
+    
+    def init_normalizer(self):
+        self.normalizers = {}
+        if self.normalizer.get("normalize_labels", False):
+            if "target_mean" in self.normalizer:
+                self.normalizers["target"] = Normalizer(
+                    mean=self.normalizer["target_mean"],
+                    std=self.normalizer["target_std"],
+                    device=self.device,
+                )
+                if "hof_stats" in self.normalizer:
+                    self.normalizers["target"].set_hof_rescales(
+                        self.normalizer["hof_stats"]
+                    )
 
+
+    def init_normalizer_from_target_mean(self):
+        if not hasattr(self,'normalizers'):
+            self.normalizers = {}
+        self.normalizers["target"] = Normalizer(
+            mean=self.normalizer["target_mean"],
+            std=self.normalizer["target_std"],
+            device=self.device,
+        )
+        if "hof_stats" in self.normalizer:
+            self.normalizers["target"].set_hof_rescales(
+                self.normalizer["hof_stats"]
+            )
+
+    def init_normalizer_from_data(self):
+        if not hasattr(self,'normalizers'):
+            self.normalizers = {}
+        self.normalizers["target"] = Normalizer(
+                    tensor=self.datasets["train"].data.y[
+                        self.datasets["train"].__indices__
+                    ],
+                    device=self.device,
+                )
+    
     def load(self):
         self.load_seed_from_config()
         self.load_logger()
-        self.load_datasets()
+        if self.config["load_datasets"]:
+            self.load_datasets()
+        else:
+            self.init_normalizer_from_target_mean() 
+            # Dataset loader already initializes the normalizer, so if we don't
+            # load the dataset, then we have to initialize the normalizer from target_mean here
         self.load_task()
         self.load_model()
         self.load_loss()
@@ -383,22 +426,9 @@ class BaseTrainer(ABC):
         self.normalizers = {}
         if self.normalizer.get("normalize_labels", False):
             if "target_mean" in self.normalizer:
-                self.normalizers["target"] = Normalizer(
-                    mean=self.normalizer["target_mean"],
-                    std=self.normalizer["target_std"],
-                    device=self.device,
-                )
-                if "hof_stats" in self.normalizer:
-                    self.normalizers["target"].set_hof_rescales(
-                        self.normalizer["hof_stats"]
-                    )
+                self.init_normalizer_from_target_mean()
             else:
-                self.normalizers["target"] = Normalizer(
-                    tensor=self.datasets["train"].data.y[
-                        self.datasets["train"].__indices__
-                    ],
-                    device=self.device,
-                )
+                self.init_normalizer_from_data()
 
     @abstractmethod
     def load_task(self):
