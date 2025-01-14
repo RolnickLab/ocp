@@ -18,6 +18,7 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.activations import swish
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
+from ocpmodels.modules.graphnorm_inference import GraphNormInference
 
 
 class GaussianSmearing(nn.Module):
@@ -191,9 +192,14 @@ class InteractionBlock(MessagePassing):
         self.graph_norm = graph_norm
         self.dropout_lin = float(dropout_lin)
         if graph_norm:
-            self.graph_norm = GraphNorm(
-                hidden_channels if "updown" not in self.mp_type else num_filters
-            )
+            if not self.training:
+                self.graph_norm = GraphNormInference(
+                    hidden_channels if "updown" not in self.mp_type else num_filters
+                )
+            else:
+                self.graph_norm = GraphNorm(
+                    hidden_channels if "updown" not in self.mp_type else num_filters
+                )
 
         if self.mp_type == "simple":
             self.lin_h = nn.Linear(hidden_channels, hidden_channels)
@@ -240,7 +246,7 @@ class InteractionBlock(MessagePassing):
             nn.init.xavier_uniform_(self.lin_h.weight)
             self.lin_h.bias.data.fill_(0)
 
-    def forward(self, h, edge_index, e):
+    def forward(self, h, edge_index, e,ib):
         # Define edge embedding
 
         if self.dropout_lin > 0:
@@ -264,7 +270,10 @@ class InteractionBlock(MessagePassing):
             h = self.act(self.lin_down(h))  # downscale node rep.
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h))
+                if self.training:
+                    h = self.act(self.graph_norm(h))
+                else:
+                    h = self.act(self.graph_norm(h, ib))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )
@@ -279,7 +288,10 @@ class InteractionBlock(MessagePassing):
             e = self.lin_geom(e)
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h))
+                if self.training:
+                    h = self.act(self.graph_norm(h))
+                else:
+                    h = self.act(self.graph_norm(h, ib))
             h = torch.cat((h, chi), dim=1)
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
@@ -289,7 +301,10 @@ class InteractionBlock(MessagePassing):
         elif self.mp_type in {"base", "simple"}:
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h))
+                if self.training:
+                    h = self.act(self.graph_norm(h))
+                else:
+                    h = self.act(self.graph_norm(h, ib))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )
@@ -739,7 +754,8 @@ class FAENet(BaseModel):
                     self.first_trainable_layer.split("_")[1]
                 ):
                     q = h.clone().detach()
-                h = h + interaction(h, edge_index, e)
+                h = h + interaction(h, edge_index, e, ib)
+                
 
             # Atom skip-co
             if self.skip_co == "concat_atom":
