@@ -13,6 +13,9 @@ from ocpmodels.models.faenet import FAENet
 from ocpmodels.datasets.data_transforms import get_transforms
 from ocpmodels.modules.normalizer import Normalizer
 
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
 
 class FAENetWrapper(nn.Module):
     def __init__(
@@ -295,6 +298,13 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
 
     return wrapper, loaders
 
+def to_data_list(batch):
+    '''Better Batch.to_data_list() because it preserves the neighbors which sometimes
+       get dropped when using Batch.to_data_list() only'''
+    batch_to_list = batch.to_data_list()
+    for idx,item in enumerate(batch_to_list):
+        item.neighbors = batch.neighbors[idx]
+    return batch_to_list
 
 if __name__ == "__main__":
     # for instance in ipython:
@@ -312,6 +322,49 @@ if __name__ == "__main__":
     }
     release = None
     wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
-    data_gen = iter(loaders["train"])
-    batch = next(data_gen)
-    preds = wrapper(batch)
+
+    data_gen_ood_cat = iter(loaders["val_ood_cat"])
+    data_gen_id = iter(loaders["val_id"])
+    
+    print("Testing val ood cat 10 batches...")
+    batch_i = 0
+    while batch := next(data_gen_ood_cat):
+        print(f"{batch_i=}")
+        if batch_i < 10:
+            preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
+            true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+            print(f"Test batch {batch_i} val_ood_cat mae: {np.mean(np.abs(preds_1 - true_1))=}")
+        else:
+            break
+        batch_i += 1
+
+    print("Testing val id 10 batches...")
+    batch_i = 0
+    while batch := next(data_gen_id):
+        print(f"{batch_i=}")
+        if batch_i < 10:
+            preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
+            true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+            print(f"Test batch {batch_i} val_id mae: {np.mean(np.abs(preds_1 - true_1))=}")
+        else:
+            break
+        batch_i += 1
+    
+    print("Testing whether the same samples within two different batches in fact give the same outputs...")
+    train_set_iterator = iter(loaders["train"])
+    train_batch_0 = next(train_set_iterator)
+    train_batch_0 = train_batch_0[0]
+    first_5 = to_data_list(train_batch_0)[:5]
+    first_10 = to_data_list(train_batch_0)[:10]
+    batch_first_5 = [Batch.from_data_list(first_5)]
+    batch_first_10 = [Batch.from_data_list(first_10)]
+
+    preds_batch_first_5 = wrapper(deepcopy(batch_first_5)).detach().cpu().numpy()
+    true_batch_first_5 = np.array([b.y_relaxed for b in batch_first_5]).flatten()
+    print(f"Test batch preds first 5: {preds_batch_first_5=}")
+    print(f"Test batch true first 5: {true_batch_first_5=}")
+
+    preds_batch_first_10 = wrapper(deepcopy(batch_first_10)).detach().cpu().numpy()
+    true_batch_first_10 = np.array([b.y_relaxed for b in batch_first_10]).flatten()
+    print(f"Test batch preds first 10: {preds_batch_first_10=}")
+    print(f"Test batch true first 10: {true_batch_first_10=}")
