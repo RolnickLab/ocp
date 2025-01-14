@@ -84,6 +84,8 @@ class BaseModel(nn.Module):
                 data["catalyst"].pos.requires_grad_(True)
             else:
                 data.pos.requires_grad_(True)
+        if mode == "inference":
+            self.training = False
 
         # predict energy
         preds = self.energy_forward(data, q=q)
