@@ -18,7 +18,6 @@ from ocpmodels.models.base_model import BaseModel
 from ocpmodels.models.force_decoder import ForceDecoder
 from ocpmodels.models.utils.activations import swish
 from ocpmodels.modules.phys_embeddings import PhysEmbedding
-from ocpmodels.modules.graphnorm_inference import GraphNormInference
 
 
 class GaussianSmearing(nn.Module):
@@ -192,14 +191,9 @@ class InteractionBlock(MessagePassing):
         self.graph_norm = graph_norm
         self.dropout_lin = float(dropout_lin)
         if graph_norm:
-            if not self.training:
-                self.graph_norm = GraphNormInference(
-                    hidden_channels if "updown" not in self.mp_type else num_filters
-                )
-            else:
-                self.graph_norm = GraphNorm(
-                    hidden_channels if "updown" not in self.mp_type else num_filters
-                )
+            self.graph_norm = GraphNorm(
+                hidden_channels if "updown" not in self.mp_type else num_filters
+            )
 
         if self.mp_type == "simple":
             self.lin_h = nn.Linear(hidden_channels, hidden_channels)
@@ -246,7 +240,7 @@ class InteractionBlock(MessagePassing):
             nn.init.xavier_uniform_(self.lin_h.weight)
             self.lin_h.bias.data.fill_(0)
 
-    def forward(self, h, edge_index, e,ib):
+    def forward(self, h, edge_index, e,batch=None):
         # Define edge embedding
 
         if self.dropout_lin > 0:
@@ -270,10 +264,7 @@ class InteractionBlock(MessagePassing):
             h = self.act(self.lin_down(h))  # downscale node rep.
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                if self.training:
-                    h = self.act(self.graph_norm(h))
-                else:
-                    h = self.act(self.graph_norm(h, ib))
+                h = self.act(self.graph_norm(h,batch=batch))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )
@@ -288,10 +279,7 @@ class InteractionBlock(MessagePassing):
             e = self.lin_geom(e)
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                if self.training:
-                    h = self.act(self.graph_norm(h))
-                else:
-                    h = self.act(self.graph_norm(h, ib))
+                h = self.act(self.graph_norm(h,batch=batch))
             h = torch.cat((h, chi), dim=1)
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
@@ -301,10 +289,7 @@ class InteractionBlock(MessagePassing):
         elif self.mp_type in {"base", "simple"}:
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                if self.training:
-                    h = self.act(self.graph_norm(h))
-                else:
-                    h = self.act(self.graph_norm(h, ib))
+                h = self.act(self.graph_norm(h,batch=batch))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )
@@ -729,7 +714,6 @@ class FAENet(BaseModel):
         if not hasattr(data, "deup_q"):
             # Embedding block
             h, e = self.embed_block(z, rel_pos, edge_attr, data.tags)
-
             if "inter" and "0" in self.first_trainable_layer:
                 q = h.clone().detach()
 
@@ -738,7 +722,6 @@ class FAENet(BaseModel):
                 alpha = self.w_lin(h)
             else:
                 alpha = None
-
             # Interaction blocks
             energy_skip_co = []
             for ib, interaction in enumerate(self.interaction_blocks):
@@ -754,7 +737,7 @@ class FAENet(BaseModel):
                     self.first_trainable_layer.split("_")[1]
                 ):
                     q = h.clone().detach()
-                h = h + interaction(h, edge_index, e, ib)
+                h = h + interaction(h, edge_index, e, batch)
                 
 
             # Atom skip-co
