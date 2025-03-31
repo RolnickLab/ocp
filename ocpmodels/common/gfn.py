@@ -172,13 +172,10 @@ class FAENetWrapper(nn.Module):
         if retrieve_hidden:
             return preds
 
-        
         # Denormalize predictions
         preds["energy"] = self.normalizers["target"].denorm(
                     preds["energy"],
         )
-        # preds["energy"] = preds["energy"].to(torch.float16)
-
         return preds["energy"]
 
     def freeze(self):
@@ -322,49 +319,75 @@ if __name__ == "__main__":
     }
     release = None
     wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
+    wrapper.eval()
 
     data_gen_ood_cat = iter(loaders["val_ood_cat"])
+    data_gen_ood_both = iter(loaders["val_ood_both"])
+    data_gen_ood_ads = iter(loaders["val_ood_ads"])
     data_gen_id = iter(loaders["val_id"])
+    train_set_iterator = iter(loaders["train"])
     
-    print("Testing val ood cat 10 batches...")
+    print("Testing batches...")
     batch_i = 0
-    while batch := next(data_gen_ood_cat):
+    while batch := next(data_gen_ood_both):
         print(f"{batch_i=}")
-        if batch_i < 10:
-            preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
-            true_1 = np.array([b.y_relaxed for b in batch]).flatten()
-            print(f"Test batch {batch_i} val_ood_cat mae: {np.mean(np.abs(preds_1 - true_1))=}")
-        else:
-            break
+        preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
+        true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+        print(f"Test batch {batch_i} mae: {np.mean(np.abs(preds_1 - true_1))=}")
         batch_i += 1
+    exit(1)
 
-    print("Testing val id 10 batches...")
-    batch_i = 0
-    while batch := next(data_gen_id):
-        print(f"{batch_i=}")
-        if batch_i < 10:
-            preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
-            true_1 = np.array([b.y_relaxed for b in batch]).flatten()
-            print(f"Test batch {batch_i} val_id mae: {np.mean(np.abs(preds_1 - true_1))=}")
-        else:
-            break
-        batch_i += 1
+    # print("Testing val id 10 batches...")
+    # batch_i = 0
+    # while batch := next(data_gen_ood_ads):
+    #     print(f"{batch_i=}")
+    #     if batch_i < 5:
+    #         preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy().flatten()
+    #         true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+    #         plt.plot(true_1,preds_1,'o',label=f'Batch {batch_i}')
+    #         plt.plot(true_1,true_1,c='r')
+    #         plt.legend()
+    #         print(f"Test batch {batch_i} val_id mae: {np.mean(np.abs(preds_1 - true_1))=}")
+    #     else:
+    #         break
+    #     batch_i += 1
+    # plt.savefig('val_ood_ads_depfaenet')
+    # exit(1)
     
     print("Testing whether the same samples within two different batches in fact give the same outputs...")
-    train_set_iterator = iter(loaders["train"])
-    train_batch_0 = next(train_set_iterator)
+    
+    train_batch_0 = next(data_gen_ood_ads)
+    # with open('train_batch_0.pickle', 'wb') as handle:
+    #     pickle.dump(train_batch_0, handle, protocol=pickle.HIGHEST_PROTOCOL)
     train_batch_0 = train_batch_0[0]
-    first_5 = to_data_list(train_batch_0)[:5]
-    first_10 = to_data_list(train_batch_0)[:10]
+    first_5 = to_data_list(train_batch_0)[:64]
+    first_10 = to_data_list(train_batch_0)[:128]
     batch_first_5 = [Batch.from_data_list(first_5)]
+    print(f"{batch_first_5=}")
     batch_first_10 = [Batch.from_data_list(first_10)]
+    print(f"{batch_first_10=}")
+    # with open('batch_first_10.pickle', 'wb') as handle:
+    #     pickle.dump(first_10, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # exit(1)
 
+    print("First 5")
     preds_batch_first_5 = wrapper(deepcopy(batch_first_5)).detach().cpu().numpy()
     true_batch_first_5 = np.array([b.y_relaxed for b in batch_first_5]).flatten()
-    print(f"Test batch preds first 5: {preds_batch_first_5=}")
-    print(f"Test batch true first 5: {true_batch_first_5=}")
+    # print(f"Test batch preds first 1: {preds_batch_first_5=}")
+    # print(f"Test batch true first 1: {true_batch_first_5=}")
+    print(f"Test mae: {np.mean(np.abs(preds_batch_first_5 - true_batch_first_5))=}")
 
+    print("First 10")
     preds_batch_first_10 = wrapper(deepcopy(batch_first_10)).detach().cpu().numpy()
     true_batch_first_10 = np.array([b.y_relaxed for b in batch_first_10]).flatten()
-    print(f"Test batch preds first 10: {preds_batch_first_10=}")
-    print(f"Test batch true first 10: {true_batch_first_10=}")
+    # print(f"Test batch preds first 2: {preds_batch_first_10=}")
+    # print(f"Test batch true first 2: {true_batch_first_10=}")
+    print(f"Test mae: {np.mean(np.abs(preds_batch_first_10 - true_batch_first_10))=}")
+
+
+    # print("First 256")
+    # print(f"{train_batch_0=}")
+    # preds_train_batch_0 = wrapper(deepcopy(train_batch_0)).detach().cpu().numpy()
+    # true_train_batch_0 = np.array([b.y_relaxed for b in train_batch_0]).flatten()
+    # print(f"Test batch preds first 2: {preds_train_batch_0=}")
+    # print(f"Test batch true first 2: {true_train_batch_0=}")
