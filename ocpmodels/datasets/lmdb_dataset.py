@@ -62,6 +62,13 @@ class LmdbDataset(Dataset):
         self.silent = silent
 
         self.path = Path(self.config["src"])
+        str_path = str(self.path)
+        if "aliramlaoui" in str_path and 'train' in str_path:
+            self.path = Path("/network/projects/crystalgfn/catalyst/ocp/oc22/train/processed")
+        elif "aliramlaoui"  in str_path and 'val_id' in str_path:
+            self.path = Path("/network/projects/crystalgfn/catalyst/ocp/oc22/val_id/processed")
+        elif "aliramlaoui"  in str_path and 'val_ood' in str_path:
+            self.path = Path("/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/processed")
         if not self.path.is_file():
             db_paths = sorted(self.path.glob("*.lmdb"))
             if lmdb_glob:

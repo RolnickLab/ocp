@@ -313,7 +313,7 @@ if __name__ == "__main__":
     release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/scratch/a/alexandre.duval/ocp/catalyst-ckpts/0.0.1/best_checkpoint.pt",
+        "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_OER.pt",
         "lpodina": "/home/felixt/shared/checkpoints/best_checkpoint.pt",
         "narval": "/home/felixt/shared/checkpoints/best_checkpoint.pt"
     }
@@ -329,10 +329,12 @@ if __name__ == "__main__":
     
     print("Testing batches...")
     batch_i = 0
-    while batch := next(data_gen_ood_both):
+    while batch := next(data_gen_id):
         print(f"{batch_i=}")
         preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
         true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+        print(f"{preds_1=}")
+        print(f"{true_1=}")
         print(f"Test batch {batch_i} mae: {np.mean(np.abs(preds_1 - true_1))=}")
         batch_i += 1
     exit(1)

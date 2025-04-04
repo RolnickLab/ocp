@@ -61,8 +61,8 @@ class DiscOutputBlock(conOutputBlock):
         # We pool separately and then we concatenate.
         ads = self.current_tags == 2
         cat = ~ads
-        ads_out = scatter(h[ads,:], batch[ads], dim=0, reduce="add", dim_size=data.num_graphs)
-        cat_out = scatter(h[cat,:], batch[cat], dim=0, reduce="add", dim_size=data.num_graphs)
+        ads_out = scatter(h[ads,:], batch[ads], dim=0, reduce="add",dim_size=batch.max().item()+1)
+        cat_out = scatter(h[cat,:], batch[cat], dim=0, reduce="add",dim_size=batch.max().item()+1)
 
         if self.disconnected_mlp:
             ads_out = self.ads_lin(ads_out)
