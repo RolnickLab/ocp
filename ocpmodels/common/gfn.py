@@ -313,7 +313,7 @@ if __name__ == "__main__":
     release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/scratch/a/alexandre.duval/ocp/catalyst-ckpts/0.0.1/best_checkpoint.pt",
+        "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_depfaenet.pt",
         "lpodina": "/home/felixt/shared/checkpoints/best_checkpoint.pt",
         "narval": "/home/felixt/shared/checkpoints/best_checkpoint.pt"
     }
@@ -321,15 +321,15 @@ if __name__ == "__main__":
     wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
     wrapper.eval()
 
-    data_gen_ood_cat = iter(loaders["val_ood_cat"])
-    data_gen_ood_both = iter(loaders["val_ood_both"])
-    data_gen_ood_ads = iter(loaders["val_ood_ads"])
+    # data_gen_ood_cat = iter(loaders["val_ood_cat"])
+    # data_gen_ood_both = iter(loaders["val_ood_both"])
+    # data_gen_ood_ads = iter(loaders["val_ood_ads"])
     data_gen_id = iter(loaders["val_id"])
     train_set_iterator = iter(loaders["train"])
     
     print("Testing batches...")
     batch_i = 0
-    while batch := next(data_gen_ood_both):
+    while batch := next(train_set_iterator):
         print(f"{batch_i=}")
         preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
         true_1 = np.array([b.y_relaxed for b in batch]).flatten()

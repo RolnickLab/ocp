@@ -87,7 +87,7 @@ class Evaluator:
     }
 
     def __init__(self, task=None, model_regresses_forces=""):
-        assert task in ["s2ef", "is2rs", "is2re", "qm9", "qm7x", "deup_is2re"]
+        assert task in ["s2ef", "is2rs", "is2re", "qm9", "qm7x", "deup_is2re", "is2re_oc22"]
         self.task = task
 
         self.metric_fn = self.task_metrics[task]

@@ -157,8 +157,8 @@ class EmbeddingBlock(nn.Module):
 
         # Concat period & group embedding
         if self.use_pg:
-            h_period = self.period_embedding(self.phys_emb.period[z])
-            h_group = self.group_embedding(self.phys_emb.group[z])
+            h_period = self.period_embedding(self.phys_emb.period[z] - 1)
+            h_group = self.group_embedding(self.phys_emb.group[z] - 1)
             h = torch.cat((h, h_period, h_group), dim=1)
 
         # MLP

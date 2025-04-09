@@ -551,8 +551,8 @@ class BaseTrainer(ABC):
             self.ema = None
 
         for key in checkpoint["normalizers"]:
-            if key in self.normalizers:
-                self.normalizers[key].load_state_dict(checkpoint["normalizers"][key])
+            # if key in self.normalizers:
+            #     self.normalizers[key].load_state_dict(checkpoint["normalizers"][key])
             if self.scaler and checkpoint["amp"]:
                 self.scaler.load_state_dict(checkpoint["amp"])
 

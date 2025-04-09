@@ -167,7 +167,7 @@ def move_lmdb_data_to_slurm_tmpdir(trainer_config):
 
     print("\n🚉 Copying data to slurm tmpdir", flush=True)
 
-    tmp_dir = os.environ.get("SLURM_TMPDIR") or f"/Tmp/slurm.{JOB_ID}.0"
+    tmp_dir = os.environ.get("SLURM_TMPDIR") or f"/tmp"
     tmp_dir = Path(tmp_dir)
     for s, split in trainer_config["dataset"].items():
         if not isinstance(split, dict):
@@ -1220,6 +1220,16 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
                 if isinstance(v, dict) and "src" in v
             }
         )
+        target_mean_std = copy.deepcopy(
+            {
+                k: {
+                    "target_mean": v["target_mean"],
+                    "target_std": v["target_std"]
+                }  # keep original src, if data was moved in the resumed exp
+                for k, v in config["dataset"].items()
+                if isinstance(v, dict) and "target_mean" in v
+            }
+        )
         # override new config with loaded config
         config = merge_dicts(config, loaded_config)
         # set new dirs back
@@ -1227,8 +1237,9 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
             config,
             {k: resolve(v) if isinstance(v, (str, Path)) else v for k, v in new_dirs},
         )
-        # set new data sources back
+        # set new data sources and target mean/std back
         config["dataset"] = merge_dicts(config["dataset"], data_srcs)
+        config["dataset"] = merge_dicts(config["dataset"], target_mean_std)
         # parse overriding command-line args
         cli = cli_args_dict()
         # check max steps/epochs
