@@ -58,6 +58,11 @@ class Evaluator:
             "energy_mse",
             "energy_within_threshold",
         ],
+        "is2re_oc22": [
+            "energy_mae",
+            "energy_mse",
+            "energy_within_threshold",
+        ],
         "qm9": [
             "energy_mae",
             "energy_mse",
@@ -78,6 +83,7 @@ class Evaluator:
         "is2rs": ["positions", "cell", "pbc", "natoms"],
         "is2re": ["energy"],
         "is2re_oc20": ["energy"],
+        "is2re_oc22": ["energy"],
         "qm9": ["energy"],
         "qm7x": ["energy"],
         "deup_is2re": ["energy"],
