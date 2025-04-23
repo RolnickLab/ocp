@@ -330,7 +330,14 @@ class TrajectoryLmdbDataset(LmdbDataset):
 
 
 def data_list_collater(data_list, otf_graph=False):
-    batch = Batch.from_data_list(data_list)
+    for d in data_list:
+        if isinstance(d.natoms, torch.Tensor):
+            d.natoms = d.natoms.item()
+            d.sid = d.sid.item()
+    # try:
+    batch = Batch.from_data_list(data_list,exclude_keys=['force','y_init','nads','oc22','distance_vec'])
+    # except:
+    #     breakpoint()
 
     if (
         not otf_graph
