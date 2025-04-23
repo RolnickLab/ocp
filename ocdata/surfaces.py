@@ -142,21 +142,25 @@ class Surface:
             surface_atoms   The surface where you are trying to find surface sites in
                             `ase.Atoms` format
         """
+
+        height_tags = self._find_surface_atoms_by_height(surface_atoms)
+        
         with Loader(
             "  [surface][tag_surface_atoms] _find_surface_atoms_with_voronoi",
             animate=False,
             ignore=self.no_loader,
         ) as loader:
             voronoi_tags = self._find_surface_atoms_with_voronoi(
-                bulk_atoms, surface_atoms
+                bulk_atoms, surface_atoms, mask=height_tags
             )
-
-        height_tags = self._find_surface_atoms_by_height(surface_atoms)
+            
         # If either of the methods consider an atom a "surface atom", then tag it as such.
-        tags = [max(v_tag, h_tag) for v_tag, h_tag in zip(voronoi_tags, height_tags)]
-        surface_atoms.set_tags(tags)
+        tags = np.array(height_tags)
+        tags[tags==0] = voronoi_tags
+        
+        surface_atoms.set_tags(tags.tolist())
 
-    def _find_surface_atoms_with_voronoi(self, bulk_atoms, surface_atoms):
+    def _find_surface_atoms_with_voronoi(self, bulk_atoms, surface_atoms, mask=None):
         """
         Labels atoms as surface or bulk atoms according to their coordination
         relative to their bulk structure. If an atom's coordination is less than it
@@ -179,6 +183,10 @@ class Surface:
                     `surface_atoms`. 0's indicate a bulk atom and 1 indicates a
                     surface atom.
         """
+
+        if mask is None:
+            mask = np.zeros(len(surface_atoms), dtype=bool)
+
         # Initializations
         surface_struct = AseAtomsAdaptor.get_structure(surface_atoms)
         center_of_mass = self.calculate_center_of_mass(surface_struct)
@@ -188,6 +196,10 @@ class Surface:
 
         tags = []
         for idx, site in enumerate(surface_struct):
+            # Skip if masked
+            if mask[idx]:
+                continue
+            
             # Tag as surface atom only if it's above the center of mass
             if site.frac_coords[2] > center_of_mass[2]:
                 # Run the voronoi tesselation with increasing cutoffs until it's
