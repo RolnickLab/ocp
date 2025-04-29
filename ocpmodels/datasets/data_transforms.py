@@ -41,11 +41,11 @@ class FrameAveraging(Transform):
             Can be 2D FA, 3D FA, Data Augmentation or no FA, respectively denoted by
             (`"2D"`, `"3D"`, `"DA"`, `""`)
         fa_method (str): the actual frame averaging technique used.
-            "stochastic" refers to sampling one frame at random (at each epoch), "det"
+            "random" refers to sampling one frame at random (at each epoch), "det"
             to chosing deterministically one frame, and "all" to using all frames. The
             prefix "se3-" refers to the SE(3) equivariant version of the method. ""
-            means that no frame averaging is used. (`""`, `"stochastic"`, `"all"`,
-            `"det"`, `"se3-stochastic"`, `"se3-all"`, `"se3-det"`)
+            means that no frame averaging is used. (`""`, `"random"`, `"all"`,
+            `"det"`, `"se3-random"`, `"se3-all"`, `"se3-det"`)
 
     Returns:
         (data.Data): updated data object with new positions (+ unit cell) attributes
@@ -127,6 +127,35 @@ class GraphRewiring(Transform):
         return self.rewiring_func(data)
 
 
+class Disconnected(Transform):
+    def __init__(self, is_disconnected=False) -> None:
+        self.inactive = not is_disconnected
+
+    def edge_classifier(self, edge_index, tags):
+        edges_with_tags = tags[
+            edge_index.type(torch.long)
+        ]  # Tensor with shape=edge_index.shape where every entry is a tag
+        filt1 = edges_with_tags[0] == edges_with_tags[1]
+        filt2 = (edges_with_tags[0] != 2) * (edges_with_tags[1] != 2)
+
+        # Edge is removed if tags are different (R1), and at least one end has tag 2 (R2). We want ~(R1*R2) = ~R1+~R2.
+        # filt1 = ~R1. Let L1 be that head has tag 2, and L2 is that tail has tag 2. Then R2 = L1+L2, so ~R2 = ~L1*~L2 = filt2.
+
+        return filt1 + filt2
+
+    def __call__(self, data):
+        if self.inactive:
+            return data
+
+        values = self.edge_classifier(data.edge_index, data.tags)
+
+        data.edge_index = data.edge_index[:, values]
+        data.cell_offsets = data.cell_offsets[values, :]
+        data.distances = data.distances[values]
+
+        return data
+
+
 class Compose:
     # https://pytorch.org/vision/stable/_modules/torchvision/transforms/transforms.html#Compose
     def __init__(self, transforms):
@@ -167,5 +196,6 @@ def get_transforms(trainer_config):
         AddAttributes(),
         GraphRewiring(trainer_config.get("graph_rewiring")),
         FrameAveraging(trainer_config["frame_averaging"], trainer_config["fa_method"]),
+        Disconnected(trainer_config["is_disconnected"]),
     ]
     return Compose(transforms)

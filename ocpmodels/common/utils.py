@@ -167,7 +167,7 @@ def move_lmdb_data_to_slurm_tmpdir(trainer_config):
 
     print("\n🚉 Copying data to slurm tmpdir", flush=True)
 
-    tmp_dir = os.environ.get("SLURM_TMPDIR") or f"/Tmp/slurm.{JOB_ID}.0"
+    tmp_dir = os.environ.get("SLURM_TMPDIR") or f"/tmp"
     tmp_dir = Path(tmp_dir)
     for s, split in trainer_config["dataset"].items():
         if not isinstance(split, dict):
@@ -755,7 +755,7 @@ def add_edge_distance_to_graph(
 
 
 # Copied from https://github.com/facebookresearch/mmf/blob/master/mmf/utils/env.py#L89.
-def setup_imports():
+def setup_imports(skip_imports=[]):
     from ocpmodels.common.registry import registry
 
     try:
@@ -803,10 +803,14 @@ def setup_imports():
                 splits = f.split(os.sep)
                 file_name = splits[-1]
                 module_name = file_name[: file_name.find(".py")]
-                importlib.import_module("ocpmodels.%s.%s" % (key[1:], module_name))
+                if module_name not in skip_imports:
+                    importlib.import_module("ocpmodels.%s.%s" % (key[1:], module_name))
 
     # manual model imports
-    importlib.import_module("ocpmodels.models.gemnet_oc.gemnet_oc")
+    try:
+        importlib.import_module("ocpmodels.models.gemnet_oc.gemnet_oc")
+    except:
+        print("unable to load gemnet_oc")
 
     experimental_folder = os.path.join(root_folder, "../experimental/")
     if os.path.exists(experimental_folder):
@@ -1216,6 +1220,16 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
                 if isinstance(v, dict) and "src" in v
             }
         )
+        target_mean_std = copy.deepcopy(
+            {
+                k: {
+                    "target_mean": v["target_mean"],
+                    "target_std": v["target_std"]
+                }  # keep original src, if data was moved in the resumed exp
+                for k, v in config["dataset"].items()
+                if isinstance(v, dict) and "target_mean" in v
+            }
+        )
         # override new config with loaded config
         config = merge_dicts(config, loaded_config)
         # set new dirs back
@@ -1223,8 +1237,9 @@ def build_config(args, args_override=[], dict_overrides={}, silent=None):
             config,
             {k: resolve(v) if isinstance(v, (str, Path)) else v for k, v in new_dirs},
         )
-        # set new data sources back
+        # set new data sources and target mean/std back
         config["dataset"] = merge_dicts(config["dataset"], data_srcs)
+        config["dataset"] = merge_dicts(config["dataset"], target_mean_std)
         # parse overriding command-line args
         cli = cli_args_dict()
         # check max steps/epochs
@@ -1797,7 +1812,7 @@ def make_script_trainer(str_args=[], overrides={}, silent=False, mode="train"):
     return trainer
 
 
-def make_config_from_dir(path, mode, overrides={}, silent=None):
+def make_config_from_dir(path, mode, overrides={}, silent=None, skip_imports=[]):
     """
     Make a config from a directory. This is useful when restarting or continuing from a
     previous run.
@@ -1834,11 +1849,11 @@ def make_config_from_dir(path, mode, overrides={}, silent=None):
     config = build_config(default_args, silent=silent)
     config = merge_dicts(config, overrides)
 
-    setup_imports()
+    setup_imports(skip_imports=skip_imports)
     return config
 
 
-def make_trainer_from_dir(path, mode, overrides={}, silent=None):
+def make_trainer_from_dir(path, mode, overrides={}, silent=None, skip_imports=[]):
     """
     Make a trainer from a directory.
 
@@ -1854,7 +1869,7 @@ def make_trainer_from_dir(path, mode, overrides={}, silent=None):
     Returns:
         Trainer: The loaded trainer.
     """
-    config = make_config_from_dir(path, mode, overrides, silent)
+    config = make_config_from_dir(path, mode, overrides, silent, skip_imports)
     return registry.get_trainer_class(config["trainer"])(**config)
 
 

@@ -8,6 +8,7 @@ import datetime
 import errno
 import logging
 import os
+import pickle
 import random
 import time
 from abc import ABC, abstractmethod
@@ -24,7 +25,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 from torch.nn.parallel.distributed import DistributedDataParallel
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch_geometric.data import Batch
 from tqdm import tqdm
 
@@ -57,6 +58,7 @@ from ocpmodels.modules.scheduler import EarlyStopper, LRScheduler
 class BaseTrainer(ABC):
     def __init__(self, load=True, **kwargs):
         run_dir = kwargs["run_dir"]
+
         model_name = kwargs["model"].pop(
             "name", kwargs.get("model_name", "Unknown - base_trainer issue")
         )
@@ -173,18 +175,73 @@ class BaseTrainer(ABC):
             )
             (run_dir / f"config-{JOB_ID}.yaml").write_text(yaml.dump(self.config))
 
-        if load:
-            self.load()
+        # Here's the models whose edges are removed as a transform
+        transform_models = [
+            "depfaenet",
+        ]
+        if self.config["is_disconnected"]:
+            print("\n\nHeads up: cat-ads edges being removed!")
+        if self.config["model_name"] in transform_models:
+            if not self.config["is_disconnected"]:
+                print(
+                    f"\n\nWhen using {self.config['model_name']},",
+                    "the flag 'is_disconnected' should be used! The flag has been turned on.\n",
+                )
+                self.config["is_disconnected"] = True
 
+        self.load()
         self.evaluator = Evaluator(
             task=self.task_name,
             model_regresses_forces=self.config["model"].get("regress_forces", ""),
         )
+    
+    def init_normalizer(self):
+        self.normalizers = {}
+        if self.normalizer.get("normalize_labels", False):
+            if "target_mean" in self.normalizer:
+                self.normalizers["target"] = Normalizer(
+                    mean=self.normalizer["target_mean"],
+                    std=self.normalizer["target_std"],
+                    device=self.device,
+                )
+                if "hof_stats" in self.normalizer:
+                    self.normalizers["target"].set_hof_rescales(
+                        self.normalizer["hof_stats"]
+                    )
 
+
+    def init_normalizer_from_target_mean(self):
+        if not hasattr(self,'normalizers'):
+            self.normalizers = {}
+        self.normalizers["target"] = Normalizer(
+            mean=self.normalizer["target_mean"],
+            std=self.normalizer["target_std"],
+            device=self.device,
+        )
+        if "hof_stats" in self.normalizer:
+            self.normalizers["target"].set_hof_rescales(
+                self.normalizer["hof_stats"]
+            )
+
+    def init_normalizer_from_data(self):
+        if not hasattr(self,'normalizers'):
+            self.normalizers = {}
+        self.normalizers["target"] = Normalizer(
+                    tensor=self.datasets["train"].data.y[
+                        self.datasets["train"].__indices__
+                    ],
+                    device=self.device,
+                )
+    
     def load(self):
         self.load_seed_from_config()
         self.load_logger()
-        self.load_datasets()
+        if self.config["load_datasets"]:
+            self.load_datasets()
+        else:
+            self.init_normalizer_from_target_mean() 
+            # Dataset loader already initializes the normalizer, so if we don't
+            # load the dataset, then we have to initialize the normalizer from target_mean here
         self.load_task()
         self.load_model()
         self.load_loss()
@@ -244,6 +301,7 @@ class BaseTrainer(ABC):
             pin_memory=True,
             batch_sampler=sampler,
         )
+
         return loader
 
     def load_datasets(self):
@@ -280,6 +338,16 @@ class BaseTrainer(ABC):
                     adsorbates_ref_dir=self.config.get("adsorbates_ref_dir"),
                     silent=self.silent,
                 )
+
+            if self.config["lowest_energy_only"]:
+                with open(
+                    "/network/scratch/a/alvaro.carbonero/lowest_energy.pkl", "rb"
+                ) as fp:
+                    good_indices = pickle.load(fp)
+                good_indices = list(good_indices)
+
+                self.real_dataset = self.datasets["train"]
+                self.datasets["train"] = Subset(self.datasets["train"], good_indices)
 
             shuffle = False
             if "train" in split:
@@ -358,22 +426,9 @@ class BaseTrainer(ABC):
         self.normalizers = {}
         if self.normalizer.get("normalize_labels", False):
             if "target_mean" in self.normalizer:
-                self.normalizers["target"] = Normalizer(
-                    mean=self.normalizer["target_mean"],
-                    std=self.normalizer["target_std"],
-                    device=self.device,
-                )
-                if "hof_stats" in self.normalizer:
-                    self.normalizers["target"].set_hof_rescales(
-                        self.normalizer["hof_stats"]
-                    )
+                self.init_normalizer_from_target_mean()
             else:
-                self.normalizers["target"] = Normalizer(
-                    tensor=self.datasets["train"].data.y[
-                        self.datasets["train"].__indices__
-                    ],
-                    device=self.device,
-                )
+                self.init_normalizer_from_data()
 
     @abstractmethod
     def load_task(self):
@@ -402,6 +457,7 @@ class BaseTrainer(ABC):
                 "task_name": self.task_name,
             },
             **self.config["model"],
+            "model_name": self.config["model_name"],
         }
 
         self.model = registry.get_model_class(self.config["model_name"])(
@@ -495,8 +551,8 @@ class BaseTrainer(ABC):
             self.ema = None
 
         for key in checkpoint["normalizers"]:
-            if key in self.normalizers:
-                self.normalizers[key].load_state_dict(checkpoint["normalizers"][key])
+            # if key in self.normalizers:
+            #     self.normalizers[key].load_state_dict(checkpoint["normalizers"][key])
             if self.scaler and checkpoint["amp"]:
                 self.scaler.load_state_dict(checkpoint["amp"])
 

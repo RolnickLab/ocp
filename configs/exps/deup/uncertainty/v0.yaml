@@ -3,7 +3,6 @@ job:
   cpus: 4
   gres: gpu:rtx8000:1
   partition: long
-  code_loc: /home/mila/s/schmidtv/ocp-project/run-repos/ocp-3
 
 default:
   config: deup_faenet-deup_is2re-all

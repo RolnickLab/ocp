@@ -11,7 +11,11 @@ from torch_geometric.data.batch import Batch
 from ocpmodels.common.utils import make_trainer_from_dir, resolve
 from ocpmodels.models.faenet import FAENet
 from ocpmodels.datasets.data_transforms import get_transforms
+from ocpmodels.modules.normalizer import Normalizer
 
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
 
 class FAENetWrapper(nn.Module):
     def __init__(
@@ -20,6 +24,7 @@ class FAENetWrapper(nn.Module):
         transform: Callable = None,
         frame_averaging: str = None,
         trainer_config: dict = None,
+        normalizers: dict = None,
     ):
         """
         `FAENetWrapper` is a wrapper class for the FAENet model. It is used to perform
@@ -31,6 +36,7 @@ class FAENetWrapper(nn.Module):
             frame_averaging (str, optional): The frame averaging method to use.
             trainer_config (dict, optional): The trainer config used to create the model.
                 Defaults to None.
+            normalizers (dict, optional): The normalizers used to create the model.
         """
         super().__init__()
 
@@ -39,6 +45,7 @@ class FAENetWrapper(nn.Module):
         self.frame_averaging = frame_averaging
         self.trainer_config = trainer_config
         self._is_frozen = None
+        self.normalizers = normalizers
 
     @property
     def frozen(self):
@@ -77,7 +84,6 @@ class FAENetWrapper(nn.Module):
         and collate them into a Batch.
 
         .. code-block:: python
-
             In [7]: %timeit wrapper.preprocess(batch)
             The slowest run took 4.94 times longer than the fastest.
             This could mean that an intermediate result is being cached.
@@ -107,6 +113,7 @@ class FAENetWrapper(nn.Module):
         self,
         batch: Union[Batch, Data, List[Data], List[Batch]],
         preprocess: bool = True,
+        retrieve_hidden: bool = False,
     ):
         """Perform a forward pass of the model when frame averaging is applied.
 
@@ -162,7 +169,17 @@ class FAENetWrapper(nn.Module):
         if preds["energy"].shape[-1] == 1:
             preds["energy"] = preds["energy"].view(-1)
 
-        return preds["energy"]  # denormalize?
+        if retrieve_hidden:
+            return preds
+        # Denormalize predictions
+        # self.normalizers["target"].mean = 0.38994525473291336
+        # self.normalizers["target"].std  = 2.524972595834097
+
+        preds["energy"] = self.normalizers["target"].denorm(
+                    preds["energy"],
+        )
+
+        return preds["energy"]
 
     def freeze(self):
         """Freeze the model parameters."""
@@ -230,8 +247,24 @@ def find_ckpt(ckpt_paths: dict, release: str) -> Path:
         )
     return ckpts[0]
 
+def get_test_dataset_configs(name):
+    if name == "OC22":
+        return {'default_val': 
+            'val_id', 
+            'train': {'src': 
+                      '/network/projects/crystalgfn/catalyst/ocp/oc22/train/', 
+                      'normalize_labels': True, 'target_mean': -1.525913953781128, 'target_std': 2.279365062713623, 'split': 'all'}, 
+                      'val_id': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_id/', 'split': 'all'}, 
+                      'val_ood_cat': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood_ads': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood_both': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 
+                                  'split': 'all'}}
+    elif name == "OC20":
+        return {'default_val': 'val_id', 'train': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/train/', 'normalize_labels': True, 'target_mean': -1.525913953781128, 'target_std': 2.279365062713623, 'split': 'all'}, 'val_id': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/', 'split': 'all'}, 'val_ood_cat': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_cat/', 'split': 'all'}, 'val_ood_ads': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_ads/', 'split': 'all'}, 'val_ood_both': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_both/', 'split': 'all'}}
 
-def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
+
+def prepare_for_gfn(ckpt_paths: dict, release: str, test_dataset_name=None) -> tuple:
     """
     Prepare a FAENet model for use in GFN. Loads the checkpoint for the given release
     on the current host, and wraps it in a FAENetWrapper.
@@ -255,28 +288,48 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
     """
     ckpt_path = find_ckpt(ckpt_paths, release)
     assert ckpt_path.exists(), f"Path {ckpt_path} does not exist."
+    if test_dataset_name:
+        overrides = {
+                "is_debug": True,
+                "silent": True,
+                "cp_data_to_tmpdir": False,
+                "dataset": get_test_dataset_configs(test_dataset_name)
+            }
+    else:
+        overrides = {
+        "is_debug": True,
+        "silent": True,
+        "cp_data_to_tmpdir": False
+        }
     trainer = make_trainer_from_dir(
         ckpt_path,
         mode="continue",
-        overrides={
-            "is_debug": True,
-            "silent": True,
-            "cp_data_to_tmpdir": False,
-        },
+        overrides=overrides,
         silent=True,
+        skip_imports=["qm7x", "gemnet", "spherenet", "painn", "comenet"]
     )
+    trainer.init_normalizer()
+    trainer.load_checkpoint(ckpt_path)
 
     wrapper = FAENetWrapper(
         faenet=trainer.model,
         transform=get_transforms(trainer.config),
         frame_averaging=trainer.config.get("frame_averaging", ""),
         trainer_config=trainer.config,
+        normalizers=trainer.normalizers,
     )
     wrapper.freeze()
     loaders = trainer.loaders
 
     return wrapper, loaders
 
+def to_data_list(batch):
+    '''Better Batch.to_data_list() because it preserves the neighbors which sometimes
+       get dropped when using Batch.to_data_list() only'''
+    batch_to_list = batch.to_data_list()
+    for idx,item in enumerate(batch_to_list):
+        item.neighbors = batch.neighbors[idx]
+    return batch_to_list
 
 if __name__ == "__main__":
     # for instance in ipython:
@@ -285,13 +338,106 @@ if __name__ == "__main__":
     from ocpmodels.common.gfn import prepare_for_gfn
 
     ckpt_paths = {"mila": "/path/to/releases_dir"}
-    release = "v2.3_graph_phys"
+    release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/scratch/s/schmidtv/ocp/runs/3789733/checkpoints/best_checkpoint.pt"
+        # "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_depfaenet.pt",
+        "mila":"/network/scratch/e/elena.podina/ocp/runs/6604136/checkpoints/best_checkpoint.pt", # LP trained this one on OC20
+        # "mila": "/home/mila/e/elena.podina/scratch/ocp/runs/6549923/checkpoints/best_checkpoint.pt",
+        # "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_OER.pt",
+        "lpodina": "/home/felixt/shared/checkpoints/best_checkpoint.pt",
+        "narval": "/home/felixt/shared/checkpoints/best_checkpoint.pt"
     }
     release = None
-    wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
-    data_gen = iter(loaders["train"])
-    batch = next(data_gen)
-    preds = wrapper(batch)
+    test_datset_name = "OC20"
+    wrapper, loaders = prepare_for_gfn(ckpt_paths, release,test_dataset_name=test_datset_name)
+    wrapper.eval()
+
+    # data_gen_ood_cat = iter(loaders["val_ood_cat"])
+    # data_gen_ood_both = iter(loaders["val_ood_both"])
+    # data_gen_ood_ads = iter(loaders["val_ood_ads"])
+    data_gen_id = iter(loaders["val_id"])
+    train_set_iterator = iter(loaders["train"])
+    
+    print("Testing batches...")
+    batch_i = 0
+    y_relaxed= []
+    while batch := next(data_gen_id):
+        print(f"{batch_i=}")
+        preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
+        true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+        print(f"{preds_1=}")
+        print(f"{true_1=}")
+        print(f"{np.mean(true_1)=}")
+        print(f"{(preds_1 - true_1)=}")
+        print(f"Test batch {batch_i} mae: {np.mean(np.abs(preds_1 - true_1))=}")
+        print(f"Test batch {batch_i} mae (only -5 to 5): {np.mean(np.abs(preds_1[(-5 < true_1) & (true_1  < 5)] - true_1[(-5 < true_1) & (true_1  < 5)]))=}")
+        batch_i += 1
+        # if batch_i >= 5:
+        #     break
+        plt.plot(true_1.flatten(),preds_1.flatten(),'o',label=f'batch = {batch_i}')
+    plt.grid()
+    plt.plot([-10, 10], [-10, 10])
+    plt.savefig(f'test_{test_datset_name}_gfn')
+    plt.clf()
+        # print(f"Mean of batch {batch_i}: ",np.mean(true_1))
+        # print(f"Stdev of batch {batch_i}: ",np.std(true_1))
+        # y_relaxed += [b.y_relaxed for b in batch]
+        # print(f"Mean: ",np.mean(y_relaxed))
+        # print(f"Stdev: ",np.std(y_relaxed))
+    exit(1)
+
+    # print("Testing val id 10 batches...")
+    # batch_i = 0
+    # while batch := next(data_gen_ood_ads):
+    #     print(f"{batch_i=}")
+    #     if batch_i < 5:
+    #         preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy().flatten()
+    #         true_1 = np.array([b.y_relaxed for b in batch]).flatten()
+    #         plt.plot(true_1,preds_1,'o',label=f'Batch {batch_i}')
+    #         plt.plot(true_1,true_1,c='r')
+    #         plt.legend()
+    #         print(f"Test batch {batch_i} val_id mae: {np.mean(np.abs(preds_1 - true_1))=}")
+    #     else:
+    #         break
+    #     batch_i += 1
+    # plt.savefig('val_ood_ads_depfaenet')
+    # exit(1)
+    
+    print("Testing whether the same samples within two different batches in fact give the same outputs...")
+    
+    train_batch_0 = next(data_gen_ood_ads)
+    # with open('train_batch_0.pickle', 'wb') as handle:
+    #     pickle.dump(train_batch_0, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    train_batch_0 = train_batch_0[0]
+    first_5 = to_data_list(train_batch_0)[:64]
+    first_10 = to_data_list(train_batch_0)[:128]
+    batch_first_5 = [Batch.from_data_list(first_5)]
+    print(f"{batch_first_5=}")
+    batch_first_10 = [Batch.from_data_list(first_10)]
+    print(f"{batch_first_10=}")
+    # with open('batch_first_10.pickle', 'wb') as handle:
+    #     pickle.dump(first_10, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # exit(1)
+
+    print("First 5")
+    preds_batch_first_5 = wrapper(deepcopy(batch_first_5)).detach().cpu().numpy()
+    true_batch_first_5 = np.array([b.y_relaxed for b in batch_first_5]).flatten()
+    # print(f"Test batch preds first 1: {preds_batch_first_5=}")
+    # print(f"Test batch true first 1: {true_batch_first_5=}")
+    print(f"Test mae: {np.mean(np.abs(preds_batch_first_5 - true_batch_first_5))=}")
+
+    print("First 10")
+    preds_batch_first_10 = wrapper(deepcopy(batch_first_10)).detach().cpu().numpy()
+    true_batch_first_10 = np.array([b.y_relaxed for b in batch_first_10]).flatten()
+    # print(f"Test batch preds first 2: {preds_batch_first_10=}")
+    # print(f"Test batch true first 2: {true_batch_first_10=}")
+    print(f"Test mae: {np.mean(np.abs(preds_batch_first_10 - true_batch_first_10))=}")
+
+
+    # print("First 256")
+    # print(f"{train_batch_0=}")
+    # preds_train_batch_0 = wrapper(deepcopy(train_batch_0)).detach().cpu().numpy()
+    # true_train_batch_0 = np.array([b.y_relaxed for b in train_batch_0]).flatten()
+    # print(f"Test batch preds first 2: {preds_train_batch_0=}")
+    # print(f"Test batch true first 2: {true_train_batch_0=}")
