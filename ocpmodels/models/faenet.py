@@ -258,7 +258,6 @@ class InteractionBlock(MessagePassing):
             e = self.act(self.lin_geom(e))
 
         # --- Message Passing block --
-
         if self.mp_type == "updownscale" or self.mp_type == "updownscale_base":
             h = self.act(self.lin_down(h))  # downscale node rep.
             h = self.propagate(edge_index, x=h, W=e)  # propagate
@@ -278,7 +277,7 @@ class InteractionBlock(MessagePassing):
             e = self.lin_geom(e)
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h, batch=ib))
+                h = self.act(self.graph_norm(h, batch=batch))
             h = torch.cat((h, chi), dim=1)
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
@@ -288,7 +287,7 @@ class InteractionBlock(MessagePassing):
         elif self.mp_type in {"base", "simple"}:
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h, batch=ib))
+                h = self.act(self.graph_norm(h, batch=batch))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )
