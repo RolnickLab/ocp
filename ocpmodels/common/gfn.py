@@ -171,11 +171,14 @@ class FAENetWrapper(nn.Module):
 
         if retrieve_hidden:
             return preds
-
         # Denormalize predictions
+        # self.normalizers["target"].mean = 0.38994525473291336
+        # self.normalizers["target"].std  = 2.524972595834097
+
         preds["energy"] = self.normalizers["target"].denorm(
                     preds["energy"],
         )
+
         return preds["energy"]
 
     def freeze(self):
@@ -244,8 +247,24 @@ def find_ckpt(ckpt_paths: dict, release: str) -> Path:
         )
     return ckpts[0]
 
+def get_test_dataset_configs(name):
+    if name == "OC22":
+        return {'default_val': 
+            'val_id', 
+            'train': {'src': 
+                      '/network/projects/crystalgfn/catalyst/ocp/oc22/train/', 
+                      'normalize_labels': True, 'target_mean': -1.525913953781128, 'target_std': 2.279365062713623, 'split': 'all'}, 
+                      'val_id': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_id/', 'split': 'all'}, 
+                      'val_ood_cat': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood_ads': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood_both': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 'split': 'all'}, 
+                      'val_ood': {'src': '/network/projects/crystalgfn/catalyst/ocp/oc22/val_ood/', 
+                                  'split': 'all'}}
+    elif name == "OC20":
+        return {'default_val': 'val_id', 'train': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/train/', 'normalize_labels': True, 'target_mean': -1.525913953781128, 'target_std': 2.279365062713623, 'split': 'all'}, 'val_id': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_id/', 'split': 'all'}, 'val_ood_cat': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_cat/', 'split': 'all'}, 'val_ood_ads': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_ads/', 'split': 'all'}, 'val_ood_both': {'src': '/network/scratch/s/schmidtv/ocp/datasets/ocp/is2re/all/val_ood_both/', 'split': 'all'}}
 
-def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
+
+def prepare_for_gfn(ckpt_paths: dict, release: str, test_dataset_name=None) -> tuple:
     """
     Prepare a FAENet model for use in GFN. Loads the checkpoint for the given release
     on the current host, and wraps it in a FAENetWrapper.
@@ -269,14 +288,23 @@ def prepare_for_gfn(ckpt_paths: dict, release: str) -> tuple:
     """
     ckpt_path = find_ckpt(ckpt_paths, release)
     assert ckpt_path.exists(), f"Path {ckpt_path} does not exist."
+    if test_dataset_name:
+        overrides = {
+                "is_debug": True,
+                "silent": True,
+                "cp_data_to_tmpdir": False,
+                "dataset": get_test_dataset_configs(test_dataset_name)
+            }
+    else:
+        overrides = {
+        "is_debug": True,
+        "silent": True,
+        "cp_data_to_tmpdir": False
+        }
     trainer = make_trainer_from_dir(
         ckpt_path,
         mode="continue",
-        overrides={
-            "is_debug": True,
-            "silent": True,
-            "cp_data_to_tmpdir": False,
-        },
+        overrides=overrides,
         silent=True,
         skip_imports=["qm7x", "gemnet", "spherenet", "painn", "comenet"]
     )
@@ -313,30 +341,50 @@ if __name__ == "__main__":
     release = "0.0.1"
     # or
     ckpt_paths = {
-        "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_OER.pt",
+        # "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_depfaenet.pt",
+        "mila":"/network/scratch/e/elena.podina/ocp/runs/6604136/checkpoints/best_checkpoint.pt", # LP trained this one on OC20
+        # "mila": "/home/mila/e/elena.podina/scratch/ocp/runs/6549923/checkpoints/best_checkpoint.pt",
+        # "mila": "/network/projects/crystalgfn/catalyst/checkpoints/best_checkpoint_OER.pt",
         "lpodina": "/home/felixt/shared/checkpoints/best_checkpoint.pt",
         "narval": "/home/felixt/shared/checkpoints/best_checkpoint.pt"
     }
     release = None
-    wrapper, loaders = prepare_for_gfn(ckpt_paths, release)
+    test_datset_name = "OC20"
+    wrapper, loaders = prepare_for_gfn(ckpt_paths, release,test_dataset_name=test_datset_name)
     wrapper.eval()
 
-    data_gen_ood_cat = iter(loaders["val_ood_cat"])
-    data_gen_ood_both = iter(loaders["val_ood_both"])
-    data_gen_ood_ads = iter(loaders["val_ood_ads"])
+    # data_gen_ood_cat = iter(loaders["val_ood_cat"])
+    # data_gen_ood_both = iter(loaders["val_ood_both"])
+    # data_gen_ood_ads = iter(loaders["val_ood_ads"])
     data_gen_id = iter(loaders["val_id"])
     train_set_iterator = iter(loaders["train"])
     
     print("Testing batches...")
     batch_i = 0
+    y_relaxed= []
     while batch := next(data_gen_id):
         print(f"{batch_i=}")
         preds_1 = wrapper(deepcopy(batch)).detach().cpu().numpy()
         true_1 = np.array([b.y_relaxed for b in batch]).flatten()
         print(f"{preds_1=}")
         print(f"{true_1=}")
+        print(f"{np.mean(true_1)=}")
+        print(f"{(preds_1 - true_1)=}")
         print(f"Test batch {batch_i} mae: {np.mean(np.abs(preds_1 - true_1))=}")
+        print(f"Test batch {batch_i} mae (only -5 to 5): {np.mean(np.abs(preds_1[(-5 < true_1) & (true_1  < 5)] - true_1[(-5 < true_1) & (true_1  < 5)]))=}")
         batch_i += 1
+        # if batch_i >= 5:
+        #     break
+        plt.plot(true_1.flatten(),preds_1.flatten(),'o',label=f'batch = {batch_i}')
+    plt.grid()
+    plt.plot([-10, 10], [-10, 10])
+    plt.savefig(f'test_{test_datset_name}_gfn')
+    plt.clf()
+        # print(f"Mean of batch {batch_i}: ",np.mean(true_1))
+        # print(f"Stdev of batch {batch_i}: ",np.std(true_1))
+        # y_relaxed += [b.y_relaxed for b in batch]
+        # print(f"Mean: ",np.mean(y_relaxed))
+        # print(f"Stdev: ",np.std(y_relaxed))
     exit(1)
 
     # print("Testing val id 10 batches...")

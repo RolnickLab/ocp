@@ -240,9 +240,8 @@ class InteractionBlock(MessagePassing):
             nn.init.xavier_uniform_(self.lin_h.weight)
             self.lin_h.bias.data.fill_(0)
 
-    def forward(self, h, edge_index, e, ib):
+    def forward(self, h, edge_index, e,batch=None):
         # Define edge embedding
-
         if self.dropout_lin > 0:
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
@@ -264,7 +263,7 @@ class InteractionBlock(MessagePassing):
             h = self.act(self.lin_down(h))  # downscale node rep.
             h = self.propagate(edge_index, x=h, W=e)  # propagate
             if self.graph_norm:
-                h = self.act(self.graph_norm(h, batch=ib))
+                h = self.act(self.graph_norm(h, batch=batch))
             h = F.dropout(
                 h, p=self.dropout_lin, training=self.training or self.deup_inference
             )

@@ -98,6 +98,135 @@ is2re:
       warmup_steps: 6000
       max_epochs: 20
 
+is2re_oc22:
+  # *** Important note ***
+  #   The total number of gpus used for this run was 1.
+  #   If the global batch size (num_gpus * batch_size) is modified
+  #   the lr_milestones and warmup_steps need to be adjusted accordingly.
+  10k:
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  100k:
+    model:
+      hidden_channels: 256
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  all:
+    model:
+      hidden_channels: 384
+      num_interactions: 4
+    optim:
+      batch_size: 256
+      eval_batch_size: 256
+      lr_initial: 0.001
+      lr_gamma: 0.1
+      lr_milestones: # steps at which lr_initial <- lr_initial * lr_gamma
+        - 18000
+        - 27000
+        - 37000
+      warmup_steps: 6000
+      max_epochs: 20
+
+is2re_both:
+  # *** Important note ***
+  #   The total number of gpus used for this run was 1.
+  #   If the global batch size (num_gpus * batch_size) is modified
+  #   the lr_milestones and warmup_steps need to be adjusted accordingly.
+  10k:
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  100k:
+    model:
+      hidden_channels: 256
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  all:
+    model:
+      hidden_channels: 384
+      num_interactions: 4
+    optim:
+      batch_size: 256
+      eval_batch_size: 256
+      lr_initial: 0.001
+      lr_gamma: 0.1
+      lr_milestones: # steps at which lr_initial <- lr_initial * lr_gamma
+        - 18000
+        - 27000
+        - 37000
+      warmup_steps: 6000
+      max_epochs: 20
+
+
+is2re_oc20:
+  # *** Important note ***
+  #   The total number of gpus used for this run was 1.
+  #   If the global batch size (num_gpus * batch_size) is modified
+  #   the lr_milestones and warmup_steps need to be adjusted accordingly.
+  10k:
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  100k:
+    model:
+      hidden_channels: 256
+    optim:
+      lr_initial: 0.005
+      lr_milestones: # epochs at which lr_initial <- lr_initial * lr_gamma
+        - 1562
+        - 2343
+        - 3125
+      warmup_steps: 468
+      max_epochs: 20
+
+  all:
+    model:
+      hidden_channels: 384
+      num_interactions: 4
+    optim:
+      batch_size: 256
+      eval_batch_size: 256
+      lr_initial: 0.001
+      lr_gamma: 0.1
+      lr_milestones: # steps at which lr_initial <- lr_initial * lr_gamma
+        - 18000
+        - 27000
+        - 37000
+      warmup_steps: 6000
+      max_epochs: 20
 # ------------------
 # -----  S2EF  -----
 # ------------------

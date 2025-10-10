@@ -63,7 +63,6 @@ class DiscOutputBlock(conOutputBlock):
         cat = ~ads
         ads_out = scatter(h[ads,:], batch[ads], dim=0, reduce="add",dim_size=batch.max().item()+1)
         cat_out = scatter(h[cat,:], batch[cat], dim=0, reduce="add",dim_size=batch.max().item()+1)
-
         if self.disconnected_mlp:
             ads_out = self.ads_lin(ads_out)
             cat_out = self.cat_lin(cat_out)
@@ -72,7 +71,6 @@ class DiscOutputBlock(conOutputBlock):
 
         # Finally, we predict a number.
         energy = self.combination(system)
-
         return energy
 
 
