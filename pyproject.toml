@@ -1,16 +1,47 @@
-[tool.black]
-line-length = 88
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
+[project]
+name = "gflownet"
+version = "0.1.0"
+description = "GFlowNets, generative flow networks for probabilistic modelling"
+requires-python = ">=3.10"
+authors = [{ name = "Alex", email = "alex.hernandez-garcia@mila.quebec" }]
+readme = "README.md"
+dependencies = [
+    "botorch>=0.10.0",
+    "catkit",
+    "dave",
+    "dgl",
+    "e3nn",
+    "h5py>=3.14.0",
+    "hydra-core>=1.3.2",
+    "mace>=1.1.2",
+    "mace-torch",
+    "matgl==1.1.3",
+    "matplotlib",
+    "mendeleev<1.0",
+    "numba>=0.61.2",
+    "numpy<2",
+    #"ocpmodels",
+    "orion>=0.2.7",
+    "pandas",
+    "pebble>=5.1.3",
+    "plotly>=5.17.0",
+    "pymatgen==2025.10.7",
+    "pyshtools==4.13.1",
+    "pytorch-warmup>=0.2.0",
+    "pyxtal>=0.6.1",
+    "rdkit==2024.3.5",
+    "scikit-learn>=1.2.2",
+    "scipy>=1.11.2",
+    "six>=1.16.0",
+    "tensorboard>=2.20.0",
+    "torch==2.4.0",
+    "torch-scatter>=2.1.2",
+    "torch-sim-atomistic>=0.3.0",
+    "torch-sparse",
+    "torch-spline-conv",
+    "torchani==2.2.4",
+    "torchtyping>=0.1.4",
+    "tqdm",
+    "wandb>=0.15.11",
+    "mp-api"
+]
